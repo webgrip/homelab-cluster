@@ -13,6 +13,7 @@ actually runs: Forgejo CI, Glide, Flux, Talos, Longhorn, CloudNativePG and the V
 | **Playlist** | Grafana's own rotation of dashboards on a timer. Every item is a wall. |
 | **Kiosk** | Grafana's full-screen mode (`?kiosk`): no menus, no time picker. |
 | **Neutral** | The grey `#898781` every tile shows when things are normal. |
+| **Business Text** | The Grafana panel plugin `marcusolsson-dynamictext-panel`. It renders an HTML template over query results after running a JavaScript view model, so one panel can draw a whole designed screen. The Today wall is one. |
 
 ## The rules
 
@@ -35,6 +36,7 @@ actually runs: Forgejo CI, Glide, Flux, Talos, Longhorn, CloudNativePG and the V
 
 | Wall | Uid | Answers |
 | --- | --- | --- |
+| Today | `today` | What landed on the trunks this week, where the work on each board is, wins, and what could use a hand |
 | Homelab now | `wall-now` | What is firing, is git what runs, are nodes, endpoints, volumes and backups whole, error budgets |
 | Forgejo CI | `wall-ci` | Runner capacity, queue wait, red trunks, running jobs against their usual time, builders, pulls around Harbor |
 | Glide | `wall-glide` | Runs and workers, what waits on a person, oldest queued Work Item, failed Runs with cost, model health |
@@ -48,14 +50,57 @@ actually runs: Forgejo CI, Glide, Flux, Talos, Longhorn, CloudNativePG and the V
 The Forgejo CI and Glide walls are the **first screens** of the desk boards `forgejo-ci` and
 `glide-plant`, built from the same panel functions, so a wall and its board can never disagree.
 
+## The Today wall
+
+`/d/today` is one Business Text panel across all 24 rows, ported from code14's Team C wall: the
+same night-blue ground, typefaces and layout, drawn from this cluster's sources. It answers three
+questions for whoever writes code here: what landed, where the work is, and what needs a hand.
+
+| Band | Shows | Source |
+| --- | --- | --- |
+| Top | `Week N · Mon – Sun · day N of 7`, commits landed on default branches this week, repositories, merged pull requests, releases, commits by bot accounts, last week's count | Forgejo database (`action`) |
+| Where the work is | One track per board: Backlog → To do → Doing → Reviewing → Done this week, stages derived from labels as ADR-0043 defines them. A board with nothing open and nothing closed is named on the quiet line | Vikunja database |
+| Wins this week | Fastest trunk push to green, longest run of green trunk runs per workflow (shown from two), tickets closed per board | Forgejo `action_run`, Vikunja |
+| Just landed | The last seven commits on default branches: time, initials, conventional-commit type, title, repository and scope, and the trunk CI verdict of that commit. ✦ marks a push by a bot account | Forgejo `action`, `action_run`, `user` |
+| Could use a hand | At most five: critical alerts, red trunks, Flux not ready, Glide work waiting on a human, board reviews waiting, open pull requests, pull-request pipelines red, bot pull requests | Alertmanager, forgejo-ci-exporter, Flux, ploeg exporter, Vikunja, Forgejo |
+| Footer | Whether the Forgejo database answered, CI exporter data age, blackbox probes, Flux | Prometheus |
+
+Things that read wrong if you do not know them:
+
+- **A CI pill on only some feed rows.** Forgejo runs workflows on the last commit of a push.
+  Earlier commits in the same push read `in a push`; a commit with no run at all reads `no CI`.
+  A run cancelled because a newer push superseded it is skipped when an older run of the same
+  commit finished.
+- **✦ is not "written with Claude".** Forgejo's activity feed stores only the first line of each
+  commit message, so `Co-Authored-By` trailers never reach the database. The mark means the
+  pusher is a bot account (Forgejo bot type, or a login matching `AGENT_LOGINS` in
+  `scripts/dashboards/today.py`). Claude Code sessions push as the owner and are not marked.
+- **Warnings alone never make an ask.** Only critical alerts interrupt the wall (rule 1); the
+  alert walls show warnings.
+
+How it is built: `scripts/dashboards/today.py` embeds `today_wall/wall.hbs` (template),
+`wall.css` (styles) and `wall.js` (view model) into the panel. The generator refuses a `$` in any
+of them, because Grafana reads `$` as a dashboard variable, and refuses to build unless
+`GF_INSTALL_PLUGINS` in `grafana-instance.yaml` installs the exact plugin version the panel pins.
+`node --test scripts/dashboards/today_wall/wall.test.mjs` runs the view model as it ships (read
+out of the generated CR) over frames recorded from a Forgejo 15 and Vikunja 2.6 instance; CI's
+Lint job runs it.
+
+The Forgejo numbers come from the `forgejo-db` Grafana datasource, logged in as `grafana_ro`.
+That role is **not** `pg_read_all_data`: the Forgejo database holds password hashes and runner
+tokens, so an hourly CronJob in the `forgejo` namespace grants SELECT on exactly the columns the
+wall reads (`grafana-ro-grants.cronjob.yaml`). It runs hourly because a Forgejo migration that
+recreates a table drops its grants. A panel that reads "The Forgejo database did not answer"
+means the datasource, the role or the grants are missing.
+
 ## Playlists and kiosk URLs
 
 | Playlist | For | Rotation | Turns every |
 | --- | --- | --- | --- |
-| **Wall · Homelab** | the default TV | now, alerts, CI, now, Glide, GitOps, now, data, nodes | 1 minute |
-| **Wall · Delivery** | a TV next to where code gets written | CI, Glide, delivery alerts, CI, GitOps, AI alerts | 1 minute |
+| **Wall · Homelab** | the default TV | now, Today, alerts, CI, now, Glide, GitOps, now, data, nodes | 1 minute |
+| **Wall · Delivery** | a TV next to where code gets written | Today, CI, Glide, Today, delivery alerts, GitOps, AI alerts | 1 minute |
 | **Incident · Platform** | any TV during an incident | alerts, now, nodes, edge, data | 30 seconds |
-| **Weekly · Review** | the weekly look back | roadmap, CI, Glide, GitOps, data, edge, nodes, security alerts | 2 minutes |
+| **Weekly · Review** | the weekly look back | Today, roadmap, CI, Glide, GitOps, data, edge, nodes, security alerts | 2 minutes |
 
 Homelab now appears three times in its loop, so the board that says whether anything is wrong
 is never more than two boards away. Rotation removes information before it is read (engagement
@@ -92,6 +137,7 @@ python3 scripts/dashboards/generate.py --check  # fail when a committed file is 
 | `scripts/dashboards/glide.py` | The Glide plant board and its wall |
 | `scripts/dashboards/platform_walls.py` | Now, GitOps, nodes, data, edge and roadmap walls |
 | `scripts/dashboards/alerts.py` | The alert walls |
+| `scripts/dashboards/today.py`, `today_wall/` | The Today wall: queries, and the Business Text template, styles and view model |
 | `scripts/dashboards/playlists.py` | The four playlists |
 | `kubernetes/apps/observability/grafana/app/dashboards/*.generated.yaml` | Output: `GrafanaDashboard` CRs |
 | `kubernetes/apps/observability/grafana/app/playlists/playlists.generated.yaml` | Output: one `GrafanaManifest` per playlist |
@@ -141,8 +187,8 @@ them. The pre-commit hook re-runs `--check` when that manifest changes.
 ## Known gaps
 
 - **No per-job queue wait or failure reason for Forgejo CI.** Forgejo stamps a task with its
-  run's start time and records no failure reason. A read-only Forgejo database datasource
-  (`action_run`, `action_run_job`, `action_task`) would add PR pipelines failing, flaky jobs,
+  run's start time and records no failure reason. The `forgejo-db` datasource reads `action_run`
+  for the Today wall; granting `action_run_job` and `action_task` as well would add flaky jobs,
   retries and per-job queue wait.
 - **No BuildKit cache hit ratio.** Job step output never reaches VictoriaLogs, and the BuildKit
   daemons export no metrics.

@@ -1,0 +1,77 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: forgejo-db-grafana-ro-grants
+spec:
+  schedule: "17 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: psql
+              image: docker.io/library/postgres:18.4-alpine3.23@sha256:996d0920e4ff9df1fc19dacb904492f3c1ec0ec1cc338f0ad7123be7731c5f5e
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - "ALL"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: PGHOST
+                  value: forgejo-db-rw
+                - name: PGPORT
+                  value: "5432"
+                - name: PGDATABASE
+                  value: forgejo
+                - name: PGSSLMODE
+                  value: require
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: forgejo-db-app
+                      key: username
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: forgejo-db-app
+                      key: password
+              command:
+                - /bin/sh
+                - -ceu
+              args:
+                - |
+                  psql -v ON_ERROR_STOP=1 <<'SQL'
+                  GRANT USAGE ON SCHEMA public TO grafana_ro;
+                  GRANT SELECT (id, user_id, op_type, act_user_id, repo_id, ref_name, content, created_unix) ON action TO grafana_ro;
+                  GRANT SELECT (id, owner_id, owner_name, name, default_branch, is_archived, is_mirror) ON repository TO grafana_ro;
+                  GRANT SELECT (id, lower_name, type) ON "user" TO grafana_ro;
+                  GRANT SELECT (id, repo_id, workflow_id, commit_sha, event, ref, status, created, stopped) ON action_run TO grafana_ro;
+                  GRANT SELECT (id, repo_id, index, poster_id, is_pull, is_closed, name, created_unix) ON issue TO grafana_ro;
+                  SQL
+          volumes:
+            - {name: tmp, emptyDir: {}}

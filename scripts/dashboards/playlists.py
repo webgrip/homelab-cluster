@@ -10,14 +10,14 @@ OUTPUT = APP / "playlists" / "playlists.generated.yaml"
 
 PLAYLISTS = [
     {"uid": "wall-homelab", "title": "Wall · Homelab", "interval": "1m",
-     "items": ["wall-now", "alerts-all", "wall-ci", "wall-now", "wall-glide", "wall-gitops", "wall-now",
+     "items": ["wall-now", "today", "alerts-all", "wall-ci", "wall-now", "wall-glide", "wall-gitops", "wall-now",
                "wall-data", "wall-nodes"]},
     {"uid": "wall-delivery", "title": "Wall · Delivery", "interval": "1m",
-     "items": ["wall-ci", "wall-glide", "alerts-delivery", "wall-ci", "wall-gitops", "alerts-ai"]},
+     "items": ["today", "wall-ci", "wall-glide", "today", "alerts-delivery", "wall-gitops", "alerts-ai"]},
     {"uid": "incident", "title": "Incident · Platform", "interval": "30s",
      "items": ["alerts-all", "wall-now", "wall-nodes", "wall-edge", "wall-data"]},
     {"uid": "weekly-review", "title": "Weekly · Review", "interval": "2m",
-     "items": ["wall-roadmap", "wall-ci", "wall-glide", "wall-gitops", "wall-data", "wall-edge", "wall-nodes",
+     "items": ["today", "wall-roadmap", "wall-ci", "wall-glide", "wall-gitops", "wall-data", "wall-edge", "wall-nodes",
                "alerts-security"]},
 ]
 SCREEN = 24

@@ -12,6 +12,7 @@ import glide
 import glide_runs
 import platform_walls
 import playlists
+import today
 from lib import DASHBOARDS, check_args, dashboard_cr, screen_height, write_or_check
 
 GENERATOR = "scripts/dashboards/generate.py"
@@ -24,6 +25,7 @@ MODULES = {
     "glide.generated.yaml": glide,
     "glide-runs.generated.yaml": glide_runs,
     "walls.generated.yaml": platform_walls,
+    "today.generated.yaml": today,
 }
 
 

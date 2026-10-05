@@ -1,0 +1,258 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: today
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: walls
+  json: |-
+    {
+      "uid": "today",
+      "title": "Today",
+      "description": "What landed this week, where the work is, and what could use a hand.",
+      "tags": [
+        "wall",
+        "today"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "1m",
+      "time": {
+        "from": "now-7d",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Forgejo CI",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/forgejo-ci",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Roadmap",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/wall-roadmap",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "marcusolsson-dynamictext-panel",
+          "title": "",
+          "pluginVersion": "6.3.0",
+          "transparent": true,
+          "description": "What landed on the trunks this week, where the work on the boards is, and what could use a hand. Commits, merges, releases and pull requests come from the Forgejo database (datasource forgejo-db), stages from the Vikunja database, red trunks and freshness from forgejo-ci-exporter, alerts from Alertmanager.",
+          "gridPos": {
+            "h": 24,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "datasource",
+            "uid": "-- Mixed --"
+          },
+          "options": {
+            "renderMode": "data",
+            "editors": [
+              "helpers",
+              "styles"
+            ],
+            "editor": {
+              "language": "html",
+              "format": "none"
+            },
+            "wrap": false,
+            "contentPartials": [],
+            "content": "{{#with wall}}\n<div class=\"wall\">\n<section class=\"top\">\n<div class=\"who\">\n<div class=\"team\">{{wallText title}}<small>{{wallText week.line}}</small></div>\n<div class=\"days\">{{#each week.cells}}<i class=\"day {{cls}}\" title=\"{{name}}\"></i>{{/each}}</div>\n<div class=\"dayslabel\"><span>{{wallText week.first}}</span><span>{{wallText week.last}}</span></div>\n</div>\n<a class=\"shipped\" href=\"{{links.activity}}\">\n<div class=\"big\">{{shipped.n}}<span>{{wallText shipped.word}}</span></div>\n<div class=\"facts\">{{#each shipped.facts}}<span class=\"fact {{cls}}\">{{wallText pre}}<b>{{wallText b}}</b>{{wallText txt}}</span>{{/each}}</div>\n</a>\n</section>\n{{#if available}}\n<section class=\"band2\">\n<div class=\"where\">\n<div class=\"h\">Where the work is <span class=\"legend\"><span><i class=\"lb\"></i>backlog</span><span><i class=\"lt\"></i>to do</span><span><i class=\"ld\"></i>doing</span><span><i class=\"lr\"></i>reviewing</span><span><i class=\"lp\"></i>done this week</span></span></div>\n<div class=\"boards\">\n{{#each cards}}<a class=\"board\" href=\"{{url}}\">\n<div class=\"bname\"><span class=\"board-label\">{{wallText name}}</span><small>{{wallText meta}}</small></div>\n<div class=\"track\">{{#each stations}}<div class=\"st {{cls}} {{fill}}\"><span class=\"node\">{{n}}</span><span class=\"lbl\">{{wallText lbl}}</span></div>{{/each}}</div>\n</a>\n{{else}}<div class=\"calm\">No open tickets on the boards and nothing closed this week.</div>\n{{/each}}\n{{#if quiet.length}}<div class=\"quiet\">Empty this week: {{#each quiet}}{{#if @index}} · {{/if}}<b>{{wallText this}}</b>{{/each}}</div>{{/if}}\n</div>\n</div>\n<div class=\"wins\">\n<div class=\"h\">Wins this week</div>\n{{#each wins}}<div class=\"win\"><span class=\"k\">{{wallText k}}</span><span class=\"v\">{{wallText v}}{{#if unit}}<span>{{wallText unit}}</span>{{/if}}</span><span class=\"s\">{{wallText s}}</span>{{#if bars}}<span class=\"streak\">{{#each bars}}<i></i>{{/each}}</span>{{/if}}</div>\n{{else}}<div class=\"calm\">The week's first wins land here: the fastest push to green, the longest green streak, tickets closed.</div>\n{{/each}}\n</div>\n</section>\n<section class=\"band3\">\n<div class=\"landed\">\n<div class=\"h\">Just landed <em>newest first on the trunks · ✦ pushed by a bot account</em></div>\n<div class=\"feed\">\n{{#each feed}}<a class=\"row\" href=\"{{url}}\"><span class=\"t\">{{wallText t}}</span><span class=\"av{{#if agent}} ai{{/if}}\">{{wallText who}}</span><span class=\"chip {{type}}\">{{wallText type}}</span><span class=\"title\"><b>{{wallText title}}</b><small>{{wallText where}}</small></span><span class=\"state {{ci.cls}}\">{{wallText ci.txt}}</span></a>\n{{else}}<div class=\"calm pad\">Nothing has landed on a trunk in 30 days. The next push shows up here at the next refresh.</div>\n{{/each}}\n</div>\n</div>\n<div class=\"hand\">\n<div class=\"h\">Could use a hand</div>\n{{#each hand}}<a class=\"ask {{cls}}\" href=\"{{url}}\"><span class=\"k\">{{wallText k}}</span><span class=\"v\">{{wallText v}}</span>{{#if s}}<span class=\"s\">{{wallText s}}</span>{{/if}}{{#if chips}}<span class=\"chips\">{{#each chips}}<span>{{wallText c}} <b>{{n}}</b></span>{{/each}}</span>{{/if}}</a>\n{{else}}<div class=\"calm\">Nothing needs a hand. Every trunk green, no review waiting, nothing firing.</div>\n{{/each}}\n{{#if more}}<div class=\"calm\">and {{more}} more on the walls</div>{{/if}}\n</div>\n</section>\n{{else}}<div class=\"notice\">{{wallText notice}}</div>{{/if}}\n<footer class=\"foot\"><span><a href=\"{{links.ci}}\">Forgejo CI</a> · <a href=\"{{links.glide}}\">Glide</a> · <a href=\"{{links.roadmap}}\">Roadmap</a> · <a href=\"{{links.alerts}}\">Alerts</a></span><span>{{#each foot}}{{#if @index}} · {{/if}}<span class=\"{{cls}}\">{{wallText txt}}</span>{{/each}}</span></footer>\n</div>\n{{/with}}\n",
+            "defaultContent": "{{#with wall}}\n<div class=\"wall\">\n<section class=\"top\">\n<div class=\"who\">\n<div class=\"team\">{{wallText title}}<small>{{wallText week.line}}</small></div>\n<div class=\"days\">{{#each week.cells}}<i class=\"day {{cls}}\" title=\"{{name}}\"></i>{{/each}}</div>\n<div class=\"dayslabel\"><span>{{wallText week.first}}</span><span>{{wallText week.last}}</span></div>\n</div>\n<a class=\"shipped\" href=\"{{links.activity}}\">\n<div class=\"big\">{{shipped.n}}<span>{{wallText shipped.word}}</span></div>\n<div class=\"facts\">{{#each shipped.facts}}<span class=\"fact {{cls}}\">{{wallText pre}}<b>{{wallText b}}</b>{{wallText txt}}</span>{{/each}}</div>\n</a>\n</section>\n{{#if available}}\n<section class=\"band2\">\n<div class=\"where\">\n<div class=\"h\">Where the work is <span class=\"legend\"><span><i class=\"lb\"></i>backlog</span><span><i class=\"lt\"></i>to do</span><span><i class=\"ld\"></i>doing</span><span><i class=\"lr\"></i>reviewing</span><span><i class=\"lp\"></i>done this week</span></span></div>\n<div class=\"boards\">\n{{#each cards}}<a class=\"board\" href=\"{{url}}\">\n<div class=\"bname\"><span class=\"board-label\">{{wallText name}}</span><small>{{wallText meta}}</small></div>\n<div class=\"track\">{{#each stations}}<div class=\"st {{cls}} {{fill}}\"><span class=\"node\">{{n}}</span><span class=\"lbl\">{{wallText lbl}}</span></div>{{/each}}</div>\n</a>\n{{else}}<div class=\"calm\">No open tickets on the boards and nothing closed this week.</div>\n{{/each}}\n{{#if quiet.length}}<div class=\"quiet\">Empty this week: {{#each quiet}}{{#if @index}} · {{/if}}<b>{{wallText this}}</b>{{/each}}</div>{{/if}}\n</div>\n</div>\n<div class=\"wins\">\n<div class=\"h\">Wins this week</div>\n{{#each wins}}<div class=\"win\"><span class=\"k\">{{wallText k}}</span><span class=\"v\">{{wallText v}}{{#if unit}}<span>{{wallText unit}}</span>{{/if}}</span><span class=\"s\">{{wallText s}}</span>{{#if bars}}<span class=\"streak\">{{#each bars}}<i></i>{{/each}}</span>{{/if}}</div>\n{{else}}<div class=\"calm\">The week's first wins land here: the fastest push to green, the longest green streak, tickets closed.</div>\n{{/each}}\n</div>\n</section>\n<section class=\"band3\">\n<div class=\"landed\">\n<div class=\"h\">Just landed <em>newest first on the trunks · ✦ pushed by a bot account</em></div>\n<div class=\"feed\">\n{{#each feed}}<a class=\"row\" href=\"{{url}}\"><span class=\"t\">{{wallText t}}</span><span class=\"av{{#if agent}} ai{{/if}}\">{{wallText who}}</span><span class=\"chip {{type}}\">{{wallText type}}</span><span class=\"title\"><b>{{wallText title}}</b><small>{{wallText where}}</small></span><span class=\"state {{ci.cls}}\">{{wallText ci.txt}}</span></a>\n{{else}}<div class=\"calm pad\">Nothing has landed on a trunk in 30 days. The next push shows up here at the next refresh.</div>\n{{/each}}\n</div>\n</div>\n<div class=\"hand\">\n<div class=\"h\">Could use a hand</div>\n{{#each hand}}<a class=\"ask {{cls}}\" href=\"{{url}}\"><span class=\"k\">{{wallText k}}</span><span class=\"v\">{{wallText v}}</span>{{#if s}}<span class=\"s\">{{wallText s}}</span>{{/if}}{{#if chips}}<span class=\"chips\">{{#each chips}}<span>{{wallText c}} <b>{{n}}</b></span>{{/each}}</span>{{/if}}</a>\n{{else}}<div class=\"calm\">Nothing needs a hand. Every trunk green, no review waiting, nothing firing.</div>\n{{/each}}\n{{#if more}}<div class=\"calm\">and {{more}} more on the walls</div>{{/if}}\n</div>\n</section>\n{{else}}<div class=\"notice\">{{wallText notice}}</div>{{/if}}\n<footer class=\"foot\"><span><a href=\"{{links.ci}}\">Forgejo CI</a> · <a href=\"{{links.glide}}\">Glide</a> · <a href=\"{{links.roadmap}}\">Roadmap</a> · <a href=\"{{links.alerts}}\">Alerts</a></span><span>{{#each foot}}{{#if @index}} · {{/if}}<span class=\"{{cls}}\">{{wallText txt}}</span>{{/each}}</span></footer>\n</div>\n{{/with}}\n",
+            "helpers": "const CONFIG = {\"org\": \"webgrip\", \"tz\": \"Europe/Amsterdam\", \"forgejo\": \"https://forgejo.webgrip.dev\", \"boards\": [{\"id\": 3, \"name\": \"Homelab Roadmap\", \"url\": \"https://vikunja.${SECRET_DOMAIN}/projects/3\"}, {\"id\": 6, \"name\": \"Vellum\", \"url\": \"https://vikunja.${SECRET_DOMAIN}/projects/6\"}, {\"id\": 9, \"name\": \"CI/CD\", \"url\": \"https://vikunja.${SECRET_DOMAIN}/projects/9\"}, {\"id\": 10, \"name\": \"Glide\", \"url\": \"https://vikunja.${SECRET_DOMAIN}/projects/10\"}], \"links\": {\"ci\": \"/d/forgejo-ci\", \"glide\": \"/d/wall-glide\", \"roadmap\": \"/d/wall-roadmap\", \"alerts\": \"/d/alerts-all\", \"gitops\": \"/d/wall-gitops\", \"now\": \"/d/wall-now\", \"pulls\": \"https://forgejo.webgrip.dev/pulls\", \"activity\": \"https://forgejo.webgrip.dev/webgrip\"}};\n\nconst HOUR_S = 3600;\nconst DAY_S = 86400;\nconst WEEK_S = 7 * DAY_S;\nconst DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst TYPES = ['feat', 'fix', 'ci', 'chore', 'test', 'refactor', 'docs', 'perf', 'build', 'revert'];\nconst STATIONS = [\n  { key: 'backlog', cls: 'b', lbl: 'Backlog' },\n  { key: 'todo', cls: 't', lbl: 'To do' },\n  { key: 'doing', cls: 'd', lbl: 'Doing' },\n  { key: 'reviewing', cls: 'r', lbl: 'Reviewing' },\n  { key: 'done', cls: 'p', lbl: 'Done this week' },\n];\nconst CI_STATE = {\n  success: { cls: 'ok', txt: '✓ green' },\n  failure: { cls: 'bad', txt: '✗ red' },\n  running: { cls: 'wait', txt: '● running' },\n  cancelled: { cls: 'wait', txt: 'superseded' },\n};\nconst MAX_ASKS = 5;\nconst STREAK_BARS = 30;\nconst CI_AGE_WARN_S = 900;\nconst CI_AGE_ALARM_S = 1800;\nconst AGENT_AUTHOR = /(\\[bot\\]|\\bbot\\b|renovate)/i;\nconst CONVENTIONAL = /^([a-z]+)(?:\\(([^)]*)\\))?!?:\\s*(.+)/;\n\nfunction values(field) {\n  if (!field || field.values == null) return [];\n  const v = field.values;\n  if (Array.isArray(v)) return v;\n  if (typeof v.toArray === 'function') return v.toArray();\n  return Array.from(v);\n}\n\nfunction lastNumber(field) {\n  const vs = values(field);\n  for (let i = vs.length - 1; i >= 0; i--) {\n    if (vs[i] !== null && vs[i] !== undefined && !Number.isNaN(Number(vs[i]))) return Number(vs[i]);\n  }\n  return null;\n}\n\nfunction isSeries(fields) {\n  const numbers = fields.filter((f) => f.type === 'number');\n  const labelled = numbers.some((f) => f.labels && Object.keys(f.labels).length);\n  const timeAndValue = numbers.length === 1 && fields.length === 2 && fields.some((f) => f.type === 'time');\n  return labelled || timeAndValue;\n}\n\nfunction rows(series, ref) {\n  const out = [];\n  for (const frame of series || []) {\n    if (frame.refId !== ref) continue;\n    const fields = frame.fields || [];\n    if (isSeries(fields)) {\n      for (const f of fields) {\n        if (f.type === 'number') out.push(Object.assign({}, f.labels || {}, { value: lastNumber(f) }));\n      }\n      continue;\n    }\n    const n = Math.max(0, ...fields.map((f) => values(f).length));\n    for (let i = 0; i < n; i++) {\n      const row = {};\n      for (const f of fields) row[f.name] = values(f)[i];\n      out.push(row);\n    }\n  }\n  return out;\n}\n\nfunction answered(series, ref) {\n  return (series || []).some((f) => f.refId === ref && (f.fields || []).length > 0);\n}\n\nfunction scalar(series, ref) {\n  const r = rows(series, ref);\n  if (!r.length) return null;\n  const v = r[0].value !== undefined ? r[0].value : r[0][Object.keys(r[0])[0]];\n  return v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v);\n}\n\nfunction num(v) {\n  const n = Number(v);\n  return Number.isFinite(n) ? n : 0;\n}\n\nfunction plural(n, one, many) {\n  return n + ' ' + (n === 1 ? one : many);\n}\n\nfunction duration(seconds) {\n  const s = Math.max(0, Math.round(num(seconds)));\n  if (s < 60) return s + 's';\n  if (s < HOUR_S) return Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';\n  if (s < DAY_S) return Math.floor(s / HOUR_S) + 'h ' + String(Math.floor((s % HOUR_S) / 60)).padStart(2, '0') + 'm';\n  return Math.floor(s / DAY_S) + 'd ' + Math.floor((s % DAY_S) / HOUR_S) + 'h';\n}\n\nfunction age(seconds) {\n  const s = Math.max(0, num(seconds));\n  if (s < HOUR_S) return Math.max(1, Math.round(s / 60)) + 'm';\n  if (s < DAY_S) return Math.round(s / HOUR_S) + 'h';\n  return Math.round(s / DAY_S) + 'd';\n}\n\nfunction zoned(ms, tz) {\n  const parts = new Intl.DateTimeFormat('en-US', {\n    timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric',\n    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',\n  }).formatToParts(new Date(ms));\n  const out = {};\n  for (const p of parts) out[p.type] = p.value;\n  const y = Number(out.year);\n  const m = Number(out.month);\n  const d = Number(out.day);\n  const weekday = DAY_NAMES[(new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7];\n  return { year: y, month: MONTHS[m - 1], monthNumber: m, day: String(d), weekday: weekday,\n    hour: out.hour.padStart(2, '0'), minute: out.minute.padStart(2, '0') };\n}\n\nfunction isoWeek(ms, tz) {\n  const z = zoned(ms, tz);\n  const date = new Date(Date.UTC(z.year, z.monthNumber - 1, Number(z.day)));\n  const dayNumber = (date.getUTCDay() + 6) % 7;\n  date.setUTCDate(date.getUTCDate() - dayNumber + 3);\n  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));\n  return 1 + Math.round(((date - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);\n}\n\nfunction week(now, cfg) {\n  const today = DAY_NAMES.indexOf(zoned(now, cfg.tz).weekday);\n  const monday = zoned(now - today * DAY_S * 1000, cfg.tz);\n  const sunday = zoned(now + (6 - today) * DAY_S * 1000, cfg.tz);\n  return {\n    line: 'Week ' + isoWeek(now, cfg.tz) + ' · ' + monday.day + ' ' + monday.month + ' – ' + sunday.day + ' ' +\n      sunday.month + ' · day ' + (today + 1) + ' of 7',\n    cells: DAY_NAMES.map((name, i) => ({ cls: i < today ? 'done' : i === today ? 'today' : '', name: name })),\n    first: 'Mon ' + monday.day + ' ' + monday.month,\n    last: 'Sun ' + sunday.day + ' ' + sunday.month,\n  };\n}\n\nfunction initials(name) {\n  const words = String(name || '?').replace(/\\[bot\\]/i, '').trim().split(/[\\s._-]+/).filter(Boolean);\n  if (!words.length) return '?';\n  const first = words[0][0];\n  const last = words.length > 1 ? words[words.length - 1][0] : (words[0][1] || '');\n  return (first + last).toUpperCase();\n}\n\nfunction conventional(title) {\n  const m = CONVENTIONAL.exec(String(title || ''));\n  if (!m) return { type: 'other', scope: '', text: String(title || '') };\n  return { type: TYPES.indexOf(m[1]) >= 0 ? m[1] : 'other', scope: m[2] || '', text: m[3] };\n}\n\nfunction clock(atSeconds, now, cfg) {\n  const at = zoned(atSeconds * 1000, cfg.tz);\n  const same = zoned(now, cfg.tz);\n  const hm = at.hour + ':' + at.minute;\n  if (at.day === same.day && at.month === same.month && now - atSeconds * 1000 < DAY_S * 1000) return hm;\n  return at.weekday + ' ' + hm;\n}\n\nfunction feed(series, now, cfg) {\n  return rows(series, 'FEED').map((r) => {\n    const c = conventional(r.title);\n    const agent = r.agent === true || r.agent === 't' || AGENT_AUTHOR.test(String(r.author || ''));\n    const ci = r.ci ? CI_STATE[r.ci] || CI_STATE.cancelled\n      : r.head === false || r.head === 'f' ? { cls: 'wait', txt: 'in a push' } : { cls: 'wait', txt: 'no CI' };\n    return {\n      t: clock(num(r.at), now, cfg),\n      who: initials(r.author),\n      agent: agent,\n      type: c.type,\n      title: c.text,\n      where: r.repo + (c.scope ? ' · ' + c.scope : ''),\n      ci: ci,\n      url: cfg.forgejo + '/' + cfg.org + '/' + r.repo + '/commit/' + r.sha,\n    };\n  });\n}\n\nfunction shipped(series) {\n  const w = rows(series, 'WEEK')[0] || {};\n  const n = num(w.commits);\n  const facts = [];\n  if (num(w.repos)) facts.push({ b: String(num(w.repos)), txt: num(w.repos) === 1 ? ' repository' : ' repositories' });\n  facts.push({ b: String(num(w.merged)), txt: num(w.merged) === 1 ? ' pull request merged' : ' pull requests merged' });\n  if (num(w.releases)) facts.push({ b: String(num(w.releases)), txt: num(w.releases) === 1 ? ' release' : ' releases' });\n  if (num(w.agent_commits)) facts.push({ b: String(num(w.agent_commits)), txt: ' by bot accounts', cls: 'agent' });\n  facts.push({ pre: 'last week ', b: String(num(w.last_week)), txt: '', cls: 'muted' });\n  return { n: n, word: n === 1 ? 'commit landed this week' : 'commits landed this week', facts: facts };\n}\n\nfunction boards(series, cfg) {\n  const byId = {};\n  for (const r of rows(series, 'STAGES')) byId[num(r.board)] = r;\n  const cards = [];\n  const quiet = [];\n  for (const b of cfg.boards) {\n    const r = byId[b.id] || {};\n    const stations = STATIONS.map((s) => {\n      const n = num(r[s.key]);\n      return { cls: s.cls, lbl: s.lbl, n: n, fill: n > 0 ? 'full' : 'empty' };\n    });\n    const open = num(r.backlog) + num(r.todo) + num(r.doing) + num(r.reviewing);\n    if (open + num(r.done) === 0) {\n      quiet.push(b.name);\n      continue;\n    }\n    cards.push({\n      name: b.name, url: b.url, stations: stations, open: open,\n      meta: num(r.do_next) ? plural(num(r.do_next), 'do-next', 'do-next') : plural(open, 'open ticket', 'open tickets'),\n    });\n  }\n  return { cards: cards, quiet: quiet };\n}\n\nfunction wins(series, cfg) {\n  const out = [];\n  for (const r of rows(series, 'WINS')) {\n    if (r.kind === 'fastest') {\n      out.push({ k: 'Fastest push to green', v: duration(r.value), s: r.repo + ' · ' + r.workflow });\n    } else if (r.kind === 'streak' && num(r.value) > 1) {\n      const n = num(r.value);\n      out.push({\n        k: 'Longest green streak', v: String(n), unit: 'runs in a row', s: r.repo + ' · ' + r.workflow,\n        bars: Array.from({ length: Math.min(n, STREAK_BARS) }, () => ({})),\n      });\n    }\n  }\n  const stages = rows(series, 'STAGES');\n  const closed = stages.reduce((sum, r) => sum + num(r.done), 0);\n  if (closed) {\n    const names = {};\n    for (const b of cfg.boards) names[b.id] = b.name;\n    const split = stages.filter((r) => num(r.done)).map((r) => (names[num(r.board)] || 'board ' + r.board) + ' ' + num(r.done));\n    out.push({ k: 'Closed on the boards', v: String(closed), unit: closed === 1 ? 'ticket' : 'tickets', s: split.join(' · ') });\n  }\n  return out;\n}\n\nfunction asks(series, now, cfg) {\n  const out = [];\n  const alerts = rows(series, 'ALERTS')[0] || {};\n  const critical = num(alerts.critical);\n  const warning = num(alerts.warning);\n  if (critical) {\n    out.push({ k: 'Alerts firing', v: plural(critical, 'critical alert', 'critical alerts') +\n      (warning ? ' · ' + warning + ' warning' : ''), s: 'Fix or silence: the alert walls name each one', url: cfg.links.alerts, cls: 'alarm' });\n  }\n  const red = rows(series, 'TRUNK_RED').sort((a, b) => num(b.value) - num(a.value));\n  if (red.length) {\n    const worst = red[0];\n    const since = num(worst.value) > 0 ? 'red for ' + age(worst.value) : 'not green in the exporter window';\n    out.push({\n      k: 'Trunk red', v: red.length === 1 ? worst.repo + ' · ' + worst.workflow : plural(red.length, 'trunk', 'trunks') + ' red',\n      s: red.length === 1 ? since : worst.repo + ' ' + since, url: cfg.links.ci,\n    });\n  }\n  const flux = scalar(series, 'FLUX');\n  if (flux) out.push({ k: 'Flux not ready', v: plural(flux, 'object', 'objects'), s: 'Git is not what runs', url: cfg.links.gitops });\n  const glide = {};\n  for (const r of rows(series, 'GLIDE')) glide[r.state] = num(r.value);\n  if (glide.needs_human) {\n    out.push({ k: 'Glide waits on you', v: plural(glide.needs_human, 'work item', 'work items'),\n      s: glide.awaiting_review ? glide.awaiting_review + ' more awaiting review' : 'needs a human decision', url: cfg.links.glide });\n  }\n  const stages = rows(series, 'STAGES');\n  const reviewing = stages.reduce((sum, r) => sum + num(r.reviewing), 0);\n  if (reviewing) {\n    const oldest = Math.min.apply(null, stages.filter((r) => num(r.reviewing)).map((r) => num(r.oldest_review) || now / 1000));\n    const names = {};\n    for (const b of cfg.boards) names[b.id] = b.name;\n    out.push({ k: 'Reviews waiting', v: plural(reviewing, 'ticket', 'tickets'), s: 'oldest waiting ' + age(now / 1000 - oldest),\n      url: cfg.links.roadmap,\n      chips: stages.filter((r) => num(r.reviewing)).map((r) => ({ c: names[num(r.board)] || 'board ' + r.board, n: num(r.reviewing) })) });\n  }\n  const pulls = rows(series, 'PULLS');\n  const people = pulls.filter((p) => !(p.agent === true || p.agent === 't'));\n  const bots = pulls.filter((p) => p.agent === true || p.agent === 't');\n  const failing = pulls.filter((p) => p.ci === 'failure');\n  if (people.length) {\n    const oldest = people[0];\n    out.push({ k: 'Pull requests open', v: plural(people.length, 'waiting to merge', 'waiting to merge'),\n      s: 'oldest #' + oldest.number + ' ' + oldest.repo + ' · ' + age(now / 1000 - num(oldest.opened)), url: cfg.links.pulls });\n  }\n  if (failing.length) {\n    out.push({ k: 'Pull request pipelines red', v: plural(failing.length, 'pull request', 'pull requests'),\n      s: '#' + failing[0].number + ' ' + failing[0].repo + ' · ' + failing[0].title, url: cfg.links.pulls });\n  }\n  if (bots.length) {\n    const stale = bots.filter((p) => now / 1000 - num(p.opened) > WEEK_S).length;\n    out.push({ k: 'Bot pull requests', v: plural(bots.length, 'open', 'open'),\n      s: stale ? stale + ' older than a week' : 'none older than a week', url: cfg.links.pulls });\n  }\n  return { shown: out.slice(0, MAX_ASKS), more: Math.max(0, out.length - MAX_ASKS) };\n}\n\nfunction foot(series, forgejoUp) {\n  const out = [];\n  out.push(forgejoUp ? { txt: 'Forgejo database live', cls: '' } : { txt: 'Forgejo database not answering', cls: 'alarm' });\n  const ciAge = scalar(series, 'CI_AGE');\n  if (ciAge === null) out.push({ txt: 'CI exporter not reporting', cls: 'warn' });\n  else out.push({ txt: 'CI data ' + age(ciAge) + ' old', cls: ciAge > CI_AGE_ALARM_S ? 'alarm' : ciAge > CI_AGE_WARN_S ? 'warn' : '' });\n  const probes = scalar(series, 'PROBES');\n  if (probes === null || probes < 0) out.push({ txt: 'probes not reporting', cls: 'warn' });\n  else out.push(probes >= 1 ? { txt: 'all probes up', cls: '' } : { txt: 'a probe is failing', cls: 'alarm' });\n  const flux = scalar(series, 'FLUX');\n  if (flux === 0) out.push({ txt: 'Flux in sync', cls: '' });\n  return out;\n}\n\nfunction build(series, now, cfg) {\n  const forgejoUp = answered(series, 'FEED') || answered(series, 'WEEK');\n  const hand = asks(series, now, cfg);\n  const where = boards(series, cfg);\n  return {\n    title: cfg.org,\n    week: week(now, cfg),\n    available: forgejoUp,\n    notice: 'The Forgejo database did not answer, so nothing on this wall can say what landed. Check the forgejo-db ' +\n      'datasource and the grafana_ro role before reading the rest as quiet.',\n    shipped: shipped(series),\n    cards: where.cards,\n    quiet: where.quiet,\n    wins: wins(series, cfg),\n    feed: feed(series, now, cfg),\n    hand: hand.shown,\n    more: hand.more,\n    foot: foot(series, forgejoUp),\n    links: cfg.links,\n  };\n}\n\nfunction wallText(value) {\n  const s = value === null || value === undefined ? '' : String(value);\n  const out = s.replace(/[&<>\"'`=*_[\\]\\\\~!#|]/g, (ch) => '&#' + ch.charCodeAt(0) + ';');\n  return new context.handlebars.SafeString(out);\n}\n\nif (typeof module !== 'undefined' && module.exports) {\n  module.exports = { build, rows, duration, age, initials, conventional, week, isoWeek };\n}\n\nif (typeof context !== 'undefined' && context && context.handlebars) {\n  context.handlebars.registerHelper('wallText', wallText);\n  context.data.wall = build((context.panelData && context.panelData.series) || [], Date.now(), CONFIG);\n}\n",
+            "afterRender": "",
+            "styles": "--ground: #0e1420;\n--panel: #151d2c;\n--line: #233047;\n--ink: #eef1f6;\n--ink-2: #9aa7bd;\n--ink-3: #5e6b83;\n--backlog: #8b98b4;\n--todo: #5fb7ff;\n--doing: #c6a8ff;\n--review: #ffb45e;\n--done: #4fd59a;\n--warm: #ffb45e;\n--win: #ffd166;\n--alarm: #ff7a6b;\n--display: \"Bricolage Grotesque\", \"Avenir Next\", \"Segoe UI\", sans-serif;\n--body: \"IBM Plex Sans\", \"Helvetica Neue\", Arial, sans-serif;\n--mono: \"JetBrains Mono\", \"SFMono-Regular\", Menlo, monospace;\nbackground: var(--ground);\ncolor: var(--ink);\nfont-family: var(--body);\ncontainer-type: size;\noverflow: hidden !important;\nborder-radius: 6px;\n\n.dt-row { padding: 0; margin: 0; border: 0; height: 100%; }\n* { box-sizing: border-box; }\na { color: inherit; text-decoration: none; }\na:hover { color: var(--ink); }\na:focus-visible { outline: 2px solid var(--todo); outline-offset: 3px; }\n\n.wall {\n  height: 100%;\n  font-size: 14.5px;\n  font-size: clamp(9px, min(0.77cqw, 1.6cqh), 22px);\n  line-height: 1.35;\n  padding: 0.8em 1.6em 0.6em;\n  display: grid;\n  grid-template-rows: auto minmax(0, 1fr) auto auto;\n  gap: 0.85em;\n  overflow: hidden;\n}\n\n.h { font-family: var(--display); font-weight: 700; font-size: 1.3em; letter-spacing: -0.01em; display: flex; align-items: baseline; gap: 0.7em; margin: 0 0 0.45em; white-space: nowrap; }\n.h em { font-style: normal; font-family: var(--body); font-weight: 400; font-size: 0.62em; color: var(--ink-3); }\n.calm { color: var(--ink-3); font-size: 0.95em; padding: 0.3em 0.1em; }\n.calm.pad { padding: 0.9em 1.2em; }\n.notice { color: var(--warm); font-size: 1.4em; padding: 2em; grid-row: span 2; }\n\n.top { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 1.5em; align-items: end; }\n.team { font-family: var(--display); font-weight: 800; font-size: 4em; line-height: 0.95; letter-spacing: -0.02em; text-transform: capitalize; }\n.team small { display: block; font-family: var(--body); font-weight: 500; font-size: 0.245em; color: var(--ink-2); letter-spacing: 0; margin-top: 0.55em; text-transform: none; }\n.days { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0.35em; margin-top: 0.85em; max-width: 36em; }\n.day { display: block; height: 0.7em; border-radius: 0.2em; background: var(--line); }\n.day.done { background: var(--ink-2); }\n.day.today { background: var(--ink); box-shadow: 0 0 0 0.2em rgba(238, 241, 246, 0.15); }\n.dayslabel { display: flex; justify-content: space-between; max-width: 36em; font-size: 0.8em; color: var(--ink-3); margin-top: 0.4em; font-family: var(--mono); }\n\n.shipped { display: grid; gap: 0.7em; justify-items: end; text-align: right; }\n.shipped .big { font-family: var(--display); font-weight: 800; font-size: 6.2em; line-height: 1.05; letter-spacing: -0.03em; }\n.shipped .big span { font-size: 0.26em; font-weight: 600; color: var(--ink-2); letter-spacing: 0; margin-left: 0.6em; }\n.facts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5em; }\n.fact { font-size: 0.88em; color: var(--ink-2); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 0.3em 0.85em; white-space: nowrap; }\n.fact b { color: var(--ink); font-weight: 600; font-family: var(--mono); }\n.fact.agent b { color: var(--win); }\n.fact.muted { color: var(--ink-3); }\n.fact.muted b { color: var(--ink-2); }\n\n.band2, .band3 { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr); gap: 1.5em; min-height: 0; }\n.band2 > div, .band3 > div { min-height: 0; overflow: hidden; }\n.legend { display: flex; gap: 1em; font-family: var(--body); font-weight: 400; font-size: 0.6em; color: var(--ink-2); letter-spacing: 0; }\n.legend i { display: inline-block; width: 0.75em; height: 0.75em; border-radius: 50%; margin-right: 0.45em; }\n.legend .lb { background: var(--backlog); } .legend .lt { background: var(--todo); } .legend .ld { background: var(--doing); } .legend .lr { background: var(--review); } .legend .lp { background: var(--done); }\n\n.boards { display: grid; gap: 0.45em; align-content: start; }\n.board { background: var(--panel); border: 1px solid var(--line); border-radius: 0.9em; padding: 0.5em 1.1em; display: grid; grid-template-columns: 13em minmax(0, 1fr); gap: 1.1em; align-items: center; }\n.bname { display: grid; font-family: var(--display); font-weight: 700; font-size: 1.15em; line-height: 1.1; min-width: 0; }\n.board-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.bname small { display: block; font-family: var(--body); font-weight: 400; font-size: 0.62em; color: var(--ink-3); margin-top: 0.3em; white-space: nowrap; }\n\n.track { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: relative; }\n.track::before { content: \"\"; position: absolute; left: 0.4em; right: calc(20% - 0.9em); top: 0.8em; height: 2px; background: linear-gradient(90deg, var(--backlog), var(--todo) 25%, var(--doing) 50%, var(--review) 75%, var(--done)); opacity: 0.35; }\n.st { position: relative; display: grid; gap: 0.3em; justify-items: start; }\n.st .node { width: 1.75em; height: 1.75em; border-radius: 50%; background: var(--ground); border: 2px solid var(--c); display: grid; place-items: center; font-family: var(--mono); font-weight: 600; font-size: 0.9em; color: var(--c); }\n.st.empty .node { border-color: var(--line); color: var(--ink-3); }\n.st.full .node { background: var(--c); color: var(--ground); box-shadow: 0 0 0 0.3em var(--glow); }\n.st .lbl { font-size: 0.7em; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }\n.st.b { --c: var(--backlog); --glow: rgba(139, 152, 180, 0.18); }\n.st.t { --c: var(--todo); --glow: rgba(95, 183, 255, 0.18); }\n.st.d { --c: var(--doing); --glow: rgba(198, 168, 255, 0.18); }\n.st.r { --c: var(--review); --glow: rgba(255, 180, 94, 0.18); }\n.st.p { --c: var(--done); --glow: rgba(79, 213, 154, 0.18); }\n.quiet { font-size: 0.85em; color: var(--ink-3); padding: 0.15em 0.3em 0; }\n.quiet b { color: var(--ink-2); font-weight: 500; }\n\n.wins { display: grid; gap: 0.45em; align-content: start; }\n.wins .h { margin-bottom: 0; }\n.win { border-radius: 0.9em; padding: 0.45em 1em; background: linear-gradient(160deg, #1f2430, var(--panel) 60%); border: 1px solid #3b3a35; display: grid; gap: 0.2em; }\n.win .k { font-size: 0.72em; letter-spacing: 0.08em; text-transform: uppercase; color: var(--win); }\n.win .v { font-family: var(--display); font-weight: 800; font-size: 1.75em; line-height: 1; letter-spacing: -0.02em; }\n.win .v span { font-size: 0.47em; font-weight: 600; color: var(--ink-2); margin-left: 0.4em; letter-spacing: 0; }\n.win .s { font-size: 0.85em; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.streak { display: flex; gap: 0.2em; margin-top: 0.1em; }\n.streak i { width: 0.45em; height: 0.7em; border-radius: 2px; background: var(--done); opacity: 0.85; }\n\n.feed { background: var(--panel); border: 1px solid var(--line); border-radius: 0.9em; padding: 0.2em 0; }\n.row { display: grid; grid-template-columns: 5.4em 2.1em 4.6em minmax(0, 1fr) 7.6em; gap: 0.8em; align-items: center; padding: 0.24em 1.1em; border-top: 1px solid var(--line); }\n.row:first-child { border-top: 0; }\n.row .t { font-family: var(--mono); font-size: 0.8em; color: var(--ink-3); white-space: nowrap; }\n.av { width: 2em; height: 2em; border-radius: 50%; display: grid; place-items: center; font-size: 0.72em; font-weight: 600; background: #2b3a57; color: var(--ink); position: relative; }\n.av.ai::after { content: \"✦\"; position: absolute; right: -0.35em; bottom: -0.25em; font-size: 0.95em; color: var(--win); }\n.chip { font-family: var(--mono); font-size: 0.74em; font-weight: 600; padding: 0.2em 0.5em; border-radius: 0.4em; text-align: center; background: rgba(139, 152, 180, 0.16); color: var(--backlog); }\n.chip.feat { background: rgba(95, 183, 255, 0.14); color: var(--todo); }\n.chip.fix { background: rgba(255, 180, 94, 0.14); color: var(--warm); }\n.chip.ci, .chip.build { background: rgba(198, 168, 255, 0.14); color: var(--doing); }\n.chip.test, .chip.perf { background: rgba(79, 213, 154, 0.14); color: var(--done); }\n.title { min-width: 0; line-height: 1.25; }\n.title b { display: block; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.title small { display: block; color: var(--ink-3); font-size: 0.8em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.state { font-size: 0.74em; font-weight: 600; letter-spacing: 0.04em; padding: 0.3em 0.6em; border-radius: 999px; text-align: center; white-space: nowrap; }\n.state.ok { color: var(--done); background: rgba(79, 213, 154, 0.14); }\n.state.bad { color: var(--warm); background: rgba(255, 180, 94, 0.14); }\n.state.wait { color: var(--ink-2); background: rgba(94, 107, 131, 0.16); }\n\n.hand { display: grid; gap: 0.4em; align-content: start; }\n.hand .h { margin-bottom: 0.05em; }\n.ask { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--warm); border-radius: 0.75em; padding: 0.3em 0.9em; display: grid; gap: 0; min-width: 0; line-height: 1.3; }\n.ask .k { font-size: 0.7em; letter-spacing: 0.08em; text-transform: uppercase; color: var(--warm); }\n.ask .v { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.ask .s { font-size: 0.82em; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }\n.ask.alarm { border-left-color: var(--alarm); }\n.ask.alarm .k { color: var(--alarm); }\n.chips { display: flex; flex-wrap: wrap; gap: 0.3em; margin-top: 0.15em; max-height: 3.6em; overflow: hidden; }\n.chips span { font-size: 0.78em; background: var(--ground); border: 1px solid var(--line); border-radius: 999px; padding: 0.1em 0.6em; color: var(--ink-2); }\n.chips b { color: var(--ink); font-family: var(--mono); }\n\n.foot { font-size: 0.8em; color: var(--ink-3); display: flex; justify-content: space-between; gap: 1em; border-top: 1px solid var(--line); padding-top: 0.5em; white-space: nowrap; overflow: hidden; }\n.foot .warn { color: var(--warm); }\n.foot .alarm { color: var(--alarm); font-weight: 600; }\n\n@media (prefers-reduced-motion: no-preference) {\n  .st.full .node { animation: wall-breathe 3.2s ease-in-out infinite; }\n}\n@keyframes wall-breathe { 50% { box-shadow: 0 0 0 0.55em transparent; } }\n",
+            "externalStyles": [
+              {
+                "id": "wall-fonts",
+                "url": "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap"
+              }
+            ],
+            "status": ""
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "FEED",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "WITH pushes AS ( SELECT a.id, a.created_unix, a.act_user_id, r.id AS repo_id, r.name AS repo, a.ref_name, a.content::json AS c FROM action a JOIN repository r ON r.id = a.repo_id WHERE a.user_id = r.owner_id AND a.op_type = 5 AND a.ref_name = 'refs/heads/' || r.default_branch AND a.content LIKE '{%' AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror AND a.created_unix > extract(epoch FROM now() - interval '30 days') ORDER BY a.id DESC LIMIT 7 ) SELECT p.created_unix AS at, p.repo, cm.value->>'Sha1' AS sha, cm.value->>'Message' AS title, cm.value->>'AuthorName' AS author, u.lower_name AS pusher, coalesce((u.type = 4 OR u.lower_name ~ '^(renovate.*|agent-.+|ploeg.*|glide.*|webgrip-ci|.+-bot|.+\\[bot\\])$$'), false) AS agent, cm.ordinality = 1 AS head, (SELECT CASE WHEN count(*) = 0 THEN NULL WHEN bool_or(x.status = 2) THEN 'failure' WHEN bool_or(x.status IN (5, 6, 7)) THEN 'running' WHEN bool_and(x.status IN (1, 4)) THEN 'success' ELSE 'cancelled' END FROM (SELECT DISTINCT ON (ar.workflow_id) ar.status FROM action_run ar WHERE ar.repo_id = p.repo_id AND ar.commit_sha = cm.value->>'Sha1' AND ar.ref = p.ref_name ORDER BY ar.workflow_id, ar.status = 3, ar.id DESC) x) AS ci FROM pushes p CROSS JOIN LATERAL json_array_elements(p.c->'Commits') WITH ORDINALITY cm LEFT JOIN \"user\" u ON u.id = p.act_user_id ORDER BY p.id DESC, cm.ordinality LIMIT 7"
+            },
+            {
+              "refId": "WEEK",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "WITH b AS (SELECT extract(epoch FROM date_trunc('week', now() AT TIME ZONE 'Europe/Amsterdam') AT TIME ZONE 'Europe/Amsterdam')::bigint AS ws), ev AS ( SELECT a.op_type, a.repo_id, a.created_unix >= b.ws AS this_week, coalesce((u.type = 4 OR u.lower_name ~ '^(renovate.*|agent-.+|ploeg.*|glide.*|webgrip-ci|.+-bot|.+\\[bot\\])$$'), false) AS agent, CASE WHEN a.op_type = 5 THEN (a.content::json->>'Len')::int ELSE 0 END AS commits FROM action a JOIN repository r ON r.id = a.repo_id CROSS JOIN b LEFT JOIN \"user\" u ON u.id = a.act_user_id WHERE a.user_id = r.owner_id AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror AND a.created_unix >= b.ws - 604800 AND (((a.op_type = 5 AND a.ref_name = 'refs/heads/' || r.default_branch AND a.content LIKE '{%')) OR a.op_type IN (11, 24, 27)) ) SELECT (SELECT ws FROM b) AS week_start, coalesce(sum(commits) FILTER (WHERE this_week), 0) AS commits, coalesce(sum(commits) FILTER (WHERE NOT this_week), 0) AS last_week, coalesce(sum(commits) FILTER (WHERE this_week AND agent), 0) AS agent_commits, count(DISTINCT repo_id) FILTER (WHERE this_week AND op_type = 5) AS repos, count(*) FILTER (WHERE this_week AND op_type IN (11, 27)) AS merged, count(*) FILTER (WHERE this_week AND op_type = 24) AS releases FROM ev"
+            },
+            {
+              "refId": "WINS",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "WITH b AS (SELECT extract(epoch FROM date_trunc('week', now() AT TIME ZONE 'Europe/Amsterdam') AT TIME ZONE 'Europe/Amsterdam')::bigint AS ws), fastest AS ( SELECT 'fastest' AS kind, r.name AS repo, ar.workflow_id AS workflow, ar.stopped - ar.created AS value FROM action_run ar JOIN repository r ON r.id = ar.repo_id CROSS JOIN b WHERE ar.event = 'push' AND ar.ref = 'refs/heads/' || r.default_branch AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror AND ar.status = 1 AND ar.created >= b.ws AND ar.stopped > ar.created ORDER BY value ASC LIMIT 1 ), graded AS ( SELECT ar.repo_id, ar.workflow_id, ar.id, ar.status, max(ar.id) FILTER (WHERE ar.status = 2) OVER (PARTITION BY ar.repo_id, ar.workflow_id) AS last_red FROM action_run ar JOIN repository r ON r.id = ar.repo_id WHERE ar.event = 'push' AND ar.ref = 'refs/heads/' || r.default_branch AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror AND ar.status IN (1, 2) ), streak AS ( SELECT 'streak' AS kind, r.name AS repo, g.workflow_id AS workflow, count(*) AS value FROM graded g JOIN repository r ON r.id = g.repo_id WHERE g.status = 1 AND g.id > coalesce(g.last_red, 0) GROUP BY r.name, g.workflow_id ORDER BY value DESC, r.name LIMIT 1 ) SELECT kind, repo, workflow, value FROM fastest UNION ALL SELECT kind, repo, workflow, value FROM streak"
+            },
+            {
+              "refId": "PULLS",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT r.name AS repo, i.index AS number, i.name AS title, u.lower_name AS poster, coalesce((u.type = 4 OR u.lower_name ~ '^(renovate.*|agent-.+|ploeg.*|glide.*|webgrip-ci|.+-bot|.+\\[bot\\])$$'), false) AS agent, i.created_unix AS opened, (SELECT CASE WHEN count(*) = 0 THEN NULL WHEN bool_or(x.status = 2) THEN 'failure' WHEN bool_or(x.status IN (5, 6, 7)) THEN 'running' WHEN bool_and(x.status IN (1, 4)) THEN 'success' ELSE 'cancelled' END FROM (SELECT DISTINCT ON (ar.workflow_id) ar.status FROM action_run ar WHERE ar.repo_id = r.id AND ar.ref = 'refs/pull/' || i.index || '/head' ORDER BY ar.workflow_id, ar.status = 3, ar.id DESC) x) AS ci FROM issue i JOIN repository r ON r.id = i.repo_id LEFT JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND NOT i.is_closed AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror ORDER BY i.created_unix ASC LIMIT 200"
+            },
+            {
+              "refId": "STAGES",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "vikunja-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "WITH t AS ( SELECT t.id, t.project_id, t.done, t.updated, coalesce(bool_or(l.title = 'review'), false) AS review, coalesce(bool_or(l.title LIKE 'agent/%'), false) AS claimed, coalesce(bool_or(l.title = 'ready'), false) AS ready, coalesce(bool_or(l.title = 'do-next'), false) AS do_next FROM tasks t LEFT JOIN label_tasks lt ON lt.task_id = t.id LEFT JOIN labels l ON l.id = lt.label_id WHERE t.project_id IN (3, 6, 9, 10) AND (NOT t.done OR t.done_at >= date_trunc('week', now() AT TIME ZONE 'Europe/Amsterdam') AT TIME ZONE 'Europe/Amsterdam') GROUP BY t.id, t.project_id, t.done, t.updated ) SELECT project_id AS board, count(*) FILTER (WHERE NOT done AND NOT review AND NOT claimed AND NOT ready) AS backlog, count(*) FILTER (WHERE NOT done AND NOT review AND NOT claimed AND ready) AS todo, count(*) FILTER (WHERE NOT done AND NOT review AND claimed) AS doing, count(*) FILTER (WHERE NOT done AND review) AS reviewing, count(*) FILTER (WHERE done) AS done, count(*) FILTER (WHERE NOT done AND do_next) AS do_next, (min(extract(epoch FROM updated)) FILTER (WHERE NOT done AND review))::bigint AS oldest_review FROM t GROUP BY project_id ORDER BY project_id"
+            },
+            {
+              "refId": "TRUNK_RED",
+              "expr": "(time() - (max by (repo, workflow, ref) (forgejo_ci_last_success_timestamp_seconds) > 0) or max by (repo, workflow, ref) (forgejo_ci_consecutive_failures) * 0 - 1) and on (repo, workflow, ref) ((max by (repo, workflow, ref) (forgejo_ci_last_run_status{status=\"failure\"}) == 1) and on (repo, workflow, ref) (time() - max by (repo, workflow, ref) (forgejo_ci_last_run_timestamp_seconds) < 604800))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "CI_AGE",
+              "expr": "time() - max(forgejo_ci_last_refresh_timestamp_seconds)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "PROBES",
+              "expr": "min(probe_success) or on() vector(-1)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "FLUX",
+              "expr": "count(flux_resource_info{ready=\"False\", suspended=\"False\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "GLIDE",
+              "expr": "sum by (state) (ploeg_work_items_count{state=~\"needs_human|awaiting_review\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "ALERTS",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"critical\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and labels.severity = \"critical\"]), \"warning\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and labels.severity = \"warning\"]) }]",
+              "columns": [
+                {
+                  "selector": "critical",
+                  "text": "critical",
+                  "type": "number"
+                },
+                {
+                  "selector": "warning",
+                  "text": "warning",
+                  "type": "number"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }

@@ -32,8 +32,9 @@ def scaledjob_capacity():
 WARM, CEILING = scaledjob_capacity()
 
 
-def red_trunks(extra=""):
-    red = f'max by (repo, workflow, ref) (forgejo_ci_last_run_status{{status="failure", {REPO_SEL}{extra}}}) == 1'
+def red_trunks(extra="", repo=REPO_SEL):
+    selector = ", ".join(s for s in ('status="failure"', repo) if s) + extra
+    red = f"max by (repo, workflow, ref) (forgejo_ci_last_run_status{{{selector}}}) == 1"
     recent = f"time() - max by (repo, workflow, ref) (forgejo_ci_last_run_timestamp_seconds) < {WEEK}"
     return f"({red}) and on (repo, workflow, ref) ({recent})"
 

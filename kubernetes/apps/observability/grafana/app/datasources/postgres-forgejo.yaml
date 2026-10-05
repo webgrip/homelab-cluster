@@ -1,0 +1,31 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: postgres-forgejo
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  valuesFrom:
+    - targetPath: secureJsonData.password
+      valueFrom:
+        secretKeyRef:
+          name: forgejo-grafana-ro
+          key: password
+  datasource:
+    name: Forgejo DB
+    type: grafana-postgresql-datasource
+    uid: forgejo-db
+    access: proxy
+    url: forgejo-db-rw.forgejo.svc.cluster.local:5432
+    user: grafana_ro
+    database: forgejo
+    editable: true
+    jsonData:
+      sslmode: require
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: $${password}
