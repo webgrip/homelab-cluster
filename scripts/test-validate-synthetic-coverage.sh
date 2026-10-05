@@ -25,23 +25,27 @@ expect() {
   printf '%s\n' "$out" | tail -3 | sed 's/^/        /'
 }
 
+rewrite() {
+  sed -i.orig "$1" "$2" && rm -f "$2.orig"
+}
+
 d=$(fresh current)
 expect pass "current tree" "$d"
 
 d=$(fresh k6-claim)
-sed -i 's/synthetic-check: blackbox-omnigraph$/synthetic-check: k6-ingress-canary/' "$d/kubernetes/apps/ai/omnigraph/app/httproute.yaml"
+rewrite 's/synthetic-check: blackbox-omnigraph$/synthetic-check: k6-ingress-canary/' "$d/kubernetes/apps/ai/omnigraph/app/httproute.yaml"
 expect fail "route claims the suspended k6 canary" "$d"
 
 d=$(fresh label-true)
-sed -i 's/synthetic-check: blackbox-omnigraph$/synthetic-check: "true"/' "$d/kubernetes/apps/ai/omnigraph/app/httproute.yaml"
+rewrite 's/synthetic-check: blackbox-omnigraph$/synthetic-check: "true"/' "$d/kubernetes/apps/ai/omnigraph/app/httproute.yaml"
 expect fail "route claims a bare \"true\"" "$d"
 
 d=$(fresh unlisted-probe)
-sed -i '/probe-omnigraph.yaml/d' "$d/$blackbox/kustomization.yaml"
+rewrite '/probe-omnigraph.yaml/d' "$d/$blackbox/kustomization.yaml"
 expect fail "probe file dropped from the kustomization" "$d"
 
 d=$(fresh missing-module)
-sed -i 's/module: http_omnigraph_gateway/module: http_omnigraph_gateway_renamed/' "$d/$blackbox/probe-omnigraph.yaml"
+rewrite 's/module: http_omnigraph_gateway/module: http_omnigraph_gateway_renamed/' "$d/$blackbox/probe-omnigraph.yaml"
 expect fail "probe names an undefined module" "$d"
 
 d=$(fresh deleted-probe)
