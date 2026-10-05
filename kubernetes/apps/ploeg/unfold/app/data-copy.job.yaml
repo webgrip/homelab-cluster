@@ -2,7 +2,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: unfold-data-copy
+  name: unfold-data-copy-workbench
 spec:
   backoffLimit: 20
   ttlSecondsAfterFinished: 604800
@@ -30,15 +30,16 @@ spec:
             - sh
             - -ec
             - |
-              if [ -e /to/unfold.sqlite ] || [ -e /to/.copied-from-de-vloer ]; then
-                echo "unfold-data already holds a database; nothing copied"
-                ls -la /to
+              if [ -e /to/workbench ]; then
+                echo "unfold-data already holds a workbench directory; nothing copied"
+                ls -la /to /to/workbench
                 exit 0
               fi
-              [ -e /from/unfold.sqlite ] || { echo "de-vloer-data has no unfold.sqlite"; ls -la /from; exit 1; }
-              cp -a /from/. /to/
-              touch /to/.copied-from-de-vloer
-              ls -la /to
+              [ -e /from/workbench/unfold.sqlite ] || { echo "de-vloer-data has no workbench/unfold.sqlite"; ls -la /from /from/workbench; exit 1; }
+              rm -rf /to/.workbench-copy
+              cp -a /from/workbench /to/.workbench-copy
+              mv /to/.workbench-copy /to/workbench
+              ls -la /to/workbench
           resources:
             requests:
               cpu: 50m
