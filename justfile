@@ -446,7 +446,7 @@ cloudflare-tofu-cred:
     echo "ESO syncs within ~1h (or: kubectl -n forgejo annotate externalsecret forgejo-cloudflare-tofu force-sync=$(date +%s) --overwrite)"
     echo "the forgejo-actions-secrets CronJob publishes the four secrets to the webgrip/cloudflare repo on its next hourly tick (:23)"
 
-[doc('Seed the Open VSX publish token for webgrip/de-vloer into OpenBao (secret/openvsx/de-vloer)')]
+[doc('Seed the Open VSX publish token for the Unfold extension into OpenBao (secret/openvsx/unfold)')]
 [group('secrets')]
 openvsx-cred:
     #!/usr/bin/env bash
@@ -461,8 +461,8 @@ openvsx-cred:
         echo "Open VSX rejected that token (HTTP ${code}); nothing written." >&2
         exit 1
     fi
-    bao kv put secret/openvsx/de-vloer OVSX_PAT="${ovsx_token}"
-    echo "wrote secret/openvsx/de-vloer (verified against open-vsx.org first)"
+    bao kv put secret/openvsx/unfold OVSX_PAT="${ovsx_token}"
+    echo "wrote secret/openvsx/unfold (verified against open-vsx.org first)"
     echo "force the sync: kubectl -n forgejo annotate externalsecret forgejo-openvsx-publish force-sync=$(date +%s) --overwrite"
     echo "wait for SecretSynced, THEN: kubectl -n forgejo create job --from=cronjob/forgejo-actions-secrets forgejo-actions-secrets-now"
 

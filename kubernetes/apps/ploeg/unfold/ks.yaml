@@ -2,31 +2,31 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: de-vloer-workspaces
+  name: unfold-workspaces
 spec:
   dependsOn:
     - name: external-secrets-stores
       namespace: security
   interval: 10m
-  path: ./kubernetes/apps/ploeg/de-vloer/workspaces
+  path: ./kubernetes/apps/ploeg/unfold/workspaces
   prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
     namespace: flux-system
-  targetNamespace: de-vloer-workspaces
+  targetNamespace: unfold-workspaces
   wait: true
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: de-vloer
+  name: unfold
 spec:
   dependsOn:
     - name: ploeg
-    - name: de-vloer-workspaces
+    - name: unfold-workspaces
   interval: 10m
-  path: ./kubernetes/apps/ploeg/de-vloer/app
+  path: ./kubernetes/apps/ploeg/unfold/app
   postBuild:
     substituteFrom:
       - kind: Secret

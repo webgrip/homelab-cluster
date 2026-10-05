@@ -9,6 +9,8 @@ resources:
   - helmrelease.yaml
   - httproute.yaml
   - networkpolicy.yaml
+  - former-host.httproute.yaml
+  - data-copy.job.yaml
 patches:
   - target:
       kind: NetworkPolicy
@@ -28,19 +30,19 @@ patches:
                 - ploeg
   - target:
       kind: HelmRelease
-      name: de-vloer
+      name: unfold
     patch: |-
       - op: add
         path: /spec/postRenderers/0/kustomize/patches/-
         value:
           target:
             kind: Deployment
-            name: de-vloer
+            name: unfold
           patch: |-
             apiVersion: apps/v1
             kind: Deployment
             metadata:
-              name: de-vloer
+              name: unfold
             spec:
               template:
                 spec:
@@ -52,3 +54,16 @@ patches:
                             secretKeyRef:
                               name: agent-vikunja-token
                               key: VIKUNJA_API_TOKEN
+      - op: add
+        path: /spec/postRenderers/0/kustomize/patches/-
+        value:
+          target:
+            kind: Deployment
+            name: unfold
+          patch: |-
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: unfold
+            spec:
+              replicas: 0

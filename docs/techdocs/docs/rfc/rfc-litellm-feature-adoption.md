@@ -41,7 +41,7 @@ Measured 2026-09-29 from the ledger exporter (90-day spend-log window) and the l
 | Prompt-cache reads as a share of input tokens | DeepSeek 95%, Fireworks DeepSeek V4.1 flash 95%, gpt-oss 81%, Sonnet 5 49% |
 | Keys | 74 live `ploeg-*` per-run keys plus the git-declared ones. **Every key has `team_id` none** |
 | Users | 2 rows: `default_user_id` and `ryan@webgrip.nl` (`proxy_admin`) |
-| Consumers | Ploeg/Glide, De Vloer, Open WebUI, Omnigraph (server, distiller, brain eval), the key-register Jobs, and Ryan's opencode and Claude Code (MCP only) |
+| Consumers | Ploeg/Glide, Unfold, Open WebUI, Omnigraph (server, distiller, brain eval), the key-register Jobs, and Ryan's opencode and Claude Code (MCP only) |
 
 What is already on, and stays on: virtual keys minted from git, provider day caps, per-group
 fallbacks with retry policy per error class, pre-call context checks, prompt-cache injection for
@@ -193,7 +193,7 @@ the cheapest cache win left for Glide. *Works when* a Glide run's rows carry its
 
 ### Wave 2: control cost
 
-**W2.1 Teams.** One team per consumer group: `ploeg` (Glide runs), `vloer`, `omnigraph` (distiller,
+**W2.1 Teams.** One team per consumer group: `ploeg` (Glide runs), `unfold`, `omnigraph` (distiller,
 eval, embeddings), `humans` (Open WebUI, opencode). Each team carries a 30-day budget and tpm/rpm
 limits; keys are minted into their team. The per-run keys keep their own caps; the team adds the
 ceiling a leaking minter cannot exceed. *Works when* `litellm_team_spend` has four series.
@@ -376,7 +376,7 @@ Ploeg at `webgrip/glide 6150dd0` and LiteLLM v1.102.1:
 
 | Feature | For Glide | Verdict |
 | --- | --- | --- |
-| Teams per tier | One LiteLLM team per tier (`bronze`, `silver`, `copper`) plus `vloer`; each run's key minted into its tier's team. The shift pool becomes a LiteLLM team budget that Ploeg cannot miss (its own pool bound "has never once fired"), and each tier gets team metrics. `MintRequest` sends no `team_id` today | **Adopt**: VIK-264 (teams), VIK-1463 (Ploeg) |
+| Teams per tier | One LiteLLM team per tier (`bronze`, `silver`, `copper`) plus `unfold`; each run's key minted into its tier's team. The shift pool becomes a LiteLLM team budget that Ploeg cannot miss (its own pool bound "has never once fired"), and each tier gets team metrics. `MintRequest` sends no `team_id` today | **Adopt**: VIK-264 (teams), VIK-1463 (Ploeg) |
 | Iteration cap per run | `max_iterations` in the run key's metadata; the limiter is loaded by default and counts calls per `x-litellm-session-id`. Median run 34 calls, p95 about 193, max 252 (ledger, 2026-09-29), so 400 stops loops only. On cheap models the money cap catches a loop after about 15 runs' worth of calls | **Adopt**: VIK-1464. The session header comes from Ploeg's key-isolation proxy, which also carries VIK-1435's tags |
 | Read-only cluster evidence tools | The unused `observability` access group (Grafana, VictoriaLogs, Kubernetes view, OpenCost) per role, so builders can verify against live state and reviewers can check the evidence. Tool results go to DeepSeek and Fireworks | **Adopt after VIK-1300**, owner decision on the data: VIK-1466 |
 | Docs search | `docs-mcp-server` (SSE :6280) behind the gateway as group `docs` | **Adopt**: VIK-1465 |

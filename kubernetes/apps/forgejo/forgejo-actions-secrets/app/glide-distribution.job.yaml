@@ -65,8 +65,8 @@ spec:
               repo=https://api.github.com/repos/webgrip/unfold
               status="$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GHCR_TOKEN" "$repo")"
               case "$status" in
-                404) gh -X POST --data '{"name":"unfold","private":false,"auto_init":false,"description":"Vloer and Ploeg. Forgejo is the source of truth.","homepage":"https://docs.webgrip.dev/glide/"}' https://api.github.com/orgs/webgrip/repos >/dev/null; echo 'created GitHub webgrip/unfold' ;;
-                200) echo 'GitHub webgrip/unfold already exists' ;;
+                404) gh -X POST --data '{"name":"unfold","private":false,"auto_init":false,"description":"Unfold: work items to review-ready pull requests. Ploeg is pinned from github.com/ploeg-hq/ploeg. Forgejo is the source of truth.","homepage":"https://docs.webgrip.dev/glide/"}' https://api.github.com/orgs/webgrip/repos >/dev/null; echo 'created GitHub webgrip/unfold' ;;
+                200) gh -X PATCH --data '{"description":"Unfold: work items to review-ready pull requests. Ploeg is pinned from github.com/ploeg-hq/ploeg. Forgejo is the source of truth."}' "$repo" >/dev/null; echo 'GitHub webgrip/unfold already exists; description refreshed' ;;
                 *) echo "GitHub repository lookup returned HTTP $status"; exit 1 ;;
               esac
               gh -X PUT --data '{"enabled":false}' "$repo/actions/permissions" >/dev/null

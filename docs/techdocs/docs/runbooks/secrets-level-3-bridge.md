@@ -61,12 +61,12 @@ The first instance of this recipe is `BREVO_API_KEY` for `twente.dev`: `secret/b
 
 ## The Open VSX publish token
 
-`webgrip/de-vloer` ships a VS Code extension, and its publish token needs a verify call that is
+`webgrip/unfold` ships a VS Code extension, and its publish token needs a verify call that is
 not the obvious one. It is recorded here because the block itself carries no comment.
 
 | Secret | Vault path | Secret name | Seed | Verify |
 | --- | --- | --- | --- | --- |
-| `OVSX_PAT` | `secret/openvsx/de-vloer` | `forgejo-openvsx-publish` | `just openvsx-cred` | `POST https://open-vsx.org/api/-/namespace/create` |
+| `OVSX_PAT` | `secret/openvsx/unfold` | `forgejo-openvsx-publish` | `just openvsx-cred` | `POST https://open-vsx.org/api/-/namespace/create` |
 
 The seed goes through `just openvsx-cred`, which prompts with `gum` so the token never reaches argv or shell history, and rejects a token Open VSX does not accept rather than writing a dead value into the vault.
 
@@ -80,9 +80,9 @@ creates nothing that should not already be there.
 
 There is deliberately no Visual Studio Marketplace row. Publishing there needs an Azure DevOps
 organization, which since 2026 requires an attached Azure subscription, and the PAT it would
-issue is retired on 2026-12-01 regardless. De Vloer ships to Open VSX only until that trade is
+issue is retired on 2026-12-01 regardless. Unfold ships to Open VSX only until that trade is
 worth making; see its
-[ADR-0021](https://forgejo.webgrip.dev/webgrip/de-vloer/src/branch/development/docs/adrs/0021-the-extension-ships-through-open-vsx-first.md).
+[ADR-0021](https://forgejo.webgrip.dev/webgrip/unfold/src/branch/development/apps/unfold/docs/adrs/0021-the-extension-ships-through-open-vsx-first.md).
 
 Until the table refactor named in the ADR lands, this is three edits in one file. When it
 lands, steps 2 and 3 collapse into one row plus one ExternalSecret; this runbook is updated then.

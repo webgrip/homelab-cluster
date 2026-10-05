@@ -173,12 +173,12 @@
     },
     {
       customType: "regex",
-      description: "Vloer's image is pinned as repository + tag + digest, and the chart renders repository@digest whenever digest is set. helm-values and flux read only repository + tag, so their bump would move the tag and leave the digest, and the pod would keep running the old build. This manager reads all three so tag and digest move together.",
+      description: "The Unfold image is pinned as repository + tag + digest, and the chart renders repository@digest whenever digest is set. helm-values and flux read only repository + tag, so their bump would move the tag and leave the digest, and the pod would keep running the old build. This manager reads all three so tag and digest move together.",
       managerFilePatterns: [
-        "/(^|/)kubernetes/apps/ploeg/de-vloer/app/helmrelease\\.ya?ml$/",
+        "/(^|/)kubernetes/apps/ploeg/unfold/app/helmrelease\\.ya?ml$/",
       ],
       matchStrings: [
-        "repository:\\s*(?<depName>harbor\\.webgrip\\.dev/webgrip/de-vloer)\\s*\\n\\s*tag:\\s*[\"']?(?<currentValue>[^@\"'\\s]+)[\"']?\\s*\\n\\s*digest:\\s*[\"']?(?<currentDigest>sha256:[a-f0-9]{64})",
+        "repository:\\s*(?<depName>harbor\\.webgrip\\.dev/webgrip/unfold)\\s*\\n\\s*tag:\\s*[\"']?(?<currentValue>[^@\"'\\s]+)[\"']?\\s*\\n\\s*digest:\\s*[\"']?(?<currentDigest>sha256:[a-f0-9]{64})",
       ],
       datasourceTemplate: "docker",
     },
@@ -806,7 +806,7 @@
       // gate, where automerging a first-party chart would remove it. (Renovate
       // forbids combining matchUpdateTypes with ignoreUnstable anyway, so an
       // automerge policy would have to be a second rule — there is none.)
-      description: "Ploeg and Vloer charts remain on reviewed 0.x prereleases",
+      description: "Ploeg and Unfold charts remain on reviewed 0.x prereleases",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/ocirepository.yaml"
       ],
@@ -835,21 +835,21 @@
       // No automerge here either, for the same reason recorded above: tag and
       // values move together and every bump so far has reasoned about values
       // compatibility by hand. A PR keeps that gate.
-      description: "Ploeg and Vloer images remain on reviewed 0.x prereleases",
+      description: "Ploeg and Unfold images remain on reviewed 0.x prereleases",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/helmrelease.yaml"
       ],
       matchDepNames: [
         "harbor.webgrip.dev/webgrip/ploegd",
-        "harbor.webgrip.dev/webgrip/de-vloer",
-        "harbor.webgrip.dev/webgrip/de-vloer-agent"
+        "harbor.webgrip.dev/webgrip/unfold",
+        "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
       allowedVersions: "/^0\\./",
       automerge: false,
       ignoreUnstable: false,
     },
     {
-      description: "Unfold pins are read by exactly one manager each: the Vloer image by the repo-local repository/tag/digest manager, the workspace image by helm-values, ploegd by the annotation. The flux and helm-values readings that duplicate them are dropped, so an Unfold release is exactly five upgrades in one branch and never a tag bump that leaves the digest behind.",
+      description: "Unfold pins are read by exactly one manager each: the Unfold image by the repo-local repository/tag/digest manager, the workspace image by helm-values, ploegd by the annotation. The flux and helm-values readings that duplicate them are dropped, so an Unfold release is exactly five upgrades in one branch and never a tag bump that leaves the digest behind.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/helmrelease.yaml"
       ],
@@ -858,35 +858,35 @@
       ],
       matchDepNames: [
         "harbor.webgrip.dev/webgrip/ploegd",
-        "harbor.webgrip.dev/webgrip/de-vloer",
-        "harbor.webgrip.dev/webgrip/de-vloer-agent"
+        "harbor.webgrip.dev/webgrip/unfold",
+        "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
       enabled: false,
     },
     {
-      description: "The helm-values reading of the Vloer image ignores its digest field; the repo-local manager owns that pin.",
+      description: "The helm-values reading of the Unfold image ignores its digest field; the repo-local manager owns that pin.",
       matchFileNames: [
-        "kubernetes/apps/ploeg/de-vloer/app/helmrelease.yaml"
+        "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml"
       ],
       matchManagers: [
         "helm-values"
       ],
       matchDepNames: [
-        "harbor.webgrip.dev/webgrip/de-vloer"
+        "harbor.webgrip.dev/webgrip/unfold"
       ],
       enabled: false,
     },
     {
-      description: "One Unfold release is one PR: Unfold releases Vloer and Ploeg together as unfold-v<version> (glide-v before the rename; Unfold ADR-0004), so both charts and all three images move in a single reviewed branch. Merge only when every row in the PR table shows the same version; a partial publication shows up as a shorter table.",
+      description: "One Unfold release is one PR: Unfold releases its application and Ploeg together as unfold-v<version> (glide-v before the rename; Unfold ADR-0004), so both charts and all three images move in a single reviewed branch. Merge only when every row in the PR table shows the same version; a partial publication shows up as a shorter table.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**"
       ],
       matchDepNames: [
         "harbor.webgrip.dev/webgrip/charts/ploeg",
-        "harbor.webgrip.dev/webgrip/charts/de-vloer",
+        "harbor.webgrip.dev/webgrip/charts/unfold",
         "harbor.webgrip.dev/webgrip/ploegd",
-        "harbor.webgrip.dev/webgrip/de-vloer",
-        "harbor.webgrip.dev/webgrip/de-vloer-agent"
+        "harbor.webgrip.dev/webgrip/unfold",
+        "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
       groupName: "Unfold release",
       groupSlug: "glide-release",

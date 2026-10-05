@@ -41,13 +41,13 @@ containers run in CI, in CI's own images.
 A worker pod (`app.kubernetes.io/name: ploeg-worker`) reaches DNS, the pods in `ploeg`, LiteLLM
 (`ai:4000`), in-cluster Forgejo (`forgejo:3000`) and the Vikunja API (`vikunja:3456`). It has no
 route to the public gateway, the LAN or the internet: `allow-gateway-egress` (from
-`components/gateway-egress`, patched in `de-vloer/app/kustomization.yaml`) selects only `de-vloer`
+`components/gateway-egress`, patched in `unfold/app/kustomization.yaml`) selects only `unfold`
 and `ploeg` (ploegd). `worker-egress-probe` checks both halves as a worker-labelled Job; rerun it
 by changing its `PROBED_POLICY` value.
 
 - Workers clone, push and call the PR API through `executor.forgejo.url`, the in-cluster
   service. ploegd keeps the public `https://forgejo.<domain>` through a post-render env patch,
-  because it checks De Vloer's https repository URL against its own forge URL. Glide VIK-1298
+  because it checks Unfold's https repository URL against its own forge URL. Glide VIK-1298
   asks the chart for a separate value so the patch can go.
 - `forgeTokenIsolation: proxy` and `litellm.keyIsolation: proxy` (Glide ADR-0034) keep the forge
   token and the per-Run LiteLLM key in `ploeg-worker`; OpenHands gets placeholders and loopback

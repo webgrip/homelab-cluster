@@ -1,0 +1,67 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: unfold-data-copy
+spec:
+  backoffLimit: 20
+  ttlSecondsAfterFinished: 604800
+  template:
+    spec:
+      restartPolicy: OnFailure
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/instance: de-vloer
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: copy
+          image: harbor.webgrip.dev/dockerhub/node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+          command:
+            - sh
+            - -ec
+            - |
+              if [ -e /to/unfold.sqlite ] || [ -e /to/.copied-from-de-vloer ]; then
+                echo "unfold-data already holds a database; nothing copied"
+                ls -la /to
+                exit 0
+              fi
+              [ -e /from/unfold.sqlite ] || { echo "de-vloer-data has no unfold.sqlite"; ls -la /from; exit 1; }
+              cp -a /from/. /to/
+              touch /to/.copied-from-de-vloer
+              ls -la /to
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: from
+              mountPath: /from
+              readOnly: true
+            - name: to
+              mountPath: /to
+      volumes:
+        - name: from
+          persistentVolumeClaim:
+            claimName: de-vloer-data
+            readOnly: true
+        - name: to
+          persistentVolumeClaim:
+            claimName: unfold-data

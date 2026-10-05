@@ -140,8 +140,7 @@ kubernetes/apps/security/access-plane/model/
 
 `projects.yaml` replaces staging's `teams.yaml` on purpose. Staging's RFC-0017 found that the
 team was an indirection that kept being wrong, and that in the end a project is linked to a
-person. This estate is organised by product and customer (erfbeeld, glide, twente.dev, de
-vloer, the cluster itself), not by team, so the where-axis is the project. A person holds one
+person. This estate is organised by product and customer (erfbeeld, unfold, twente.dev, the cluster itself), not by team, so the where-axis is the project. A person holds one
 role and a list of project memberships; a scoped capability resolves against the union of what
 those projects own. A dated grant can additionally name a project. Cluster scope is never
 inherited from a role: it is a dated grant on a person with a named owner and a reason, exactly
@@ -250,7 +249,7 @@ and a dated grant covers the gap until a second holder makes a role worth writin
 
 | Role | Holds | Who |
 | --- | --- | --- |
-| `platform-engineer` | `k8s-operate` (scope: project), `secrets-admin`, `registry-admin`, `repo-admin`, `grafana-admin`, `dashboards-view`, `storage-admin`, `litellm-admin`, `vloer-admin`, `tasks-use`, `catalog-use` | the owner; cluster-scope `k8s-admin` is a dated personal grant on top |
+| `platform-engineer` | `k8s-operate` (scope: project), `secrets-admin`, `registry-admin`, `repo-admin`, `grafana-admin`, `dashboards-view`, `storage-admin`, `litellm-admin`, `unfold-admin`, `tasks-use`, `catalog-use` | the owner; cluster-scope `k8s-admin` is a dated personal grant on top |
 | `developer` | `k8s-read` (project), `registry-push` (project), `repo-contribute`, `grafana-edit`, `tasks-use`, `catalog-use` | nobody today; the entry a collaborator gets |
 | `client` | `previews-use` (project) | nobody today; the entry a customer gets, `kind: external` |
 | `agent` | `act-as-human` (cluster, projection deferred) | `human: false` |
@@ -270,7 +269,7 @@ of `repo-admin` and `repo-contribute`, because Forgejo's `groupTeamMap` already 
 | `grafana-edit` / `grafana-admin` | medium / medium | Grafana role via claim | — |
 | `dashboards-view` | high | group `cluster-dashboards` → SecurityPolicies | `secrets-read-all` via logged credentials |
 | `storage-admin` | critical | group `storage-admins` → Longhorn SecurityPolicy | — |
-| `litellm-admin`, `vloer-admin`, `vloer-operate`, `tasks-use`, `catalog-use`, `previews-use` | medium | one group each | — |
+| `litellm-admin`, `unfold-admin`, `unfold-operate`, `tasks-use`, `catalog-use`, `previews-use` | medium | one group each | — |
 | `break-glass-k8s` / `-authentik` / `-openbao` / `-forgejo` / `-harbor` / `-grafana` | critical | none; `alert:` required on the Kubernetes one | each is its target, without SSO |
 | `secrets-read-all`, `supply-chain-write`, `flux-suspend`, `db-admin` | derived | none; targets of edges only | — |
 
@@ -368,7 +367,7 @@ The first plan in stages 2, 3 and 5 is approved by a person. After stage 5, both
 | OpenBao | `auth/oidc`, configured by `config.sh` | identity group `openbao-admins` ← alias `homelab-admins` → policy `admins` (`path "*"`, `sudo`) | read live from the Authentik API |
 | Backstage, Vikunja | native OIDC | none | `secret/backstage/oidc`, `secret/vikunja/oidc` |
 | LiteLLM | generic SSO, `litellm_role` claim | `homelab-admins` → `proxy_admin` | `secret/litellm/oidc` |
-| De Vloer | public client, PKCE | `homelab-admins` → admin | none |
+| Unfold | public client, PKCE | `homelab-admins` → admin | none |
 | Cloudflare Access | Authentik as IdP | none | `secret/cloudflare/access-oidc` |
 | SearXNG public | gateway basic auth | n/a | `secret/searxng/basic-auth` |
 | Longhorn, flux-ui, Hubble, VictoriaLogs, Alertmanager, policy-reporter, drawio, excalidraw, kroki, k8s-mcp, mcp-grafana | **none**, LAN only | — | — |

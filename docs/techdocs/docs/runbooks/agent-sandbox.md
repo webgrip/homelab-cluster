@@ -27,7 +27,7 @@ Each step is one commit; push it, wait for Flux, check, then go on.
 
 Remove `executorType: sandbox` from the team (or revert step 2's commit). The ScaledJob returns to the worker pod on its next reconcile; Runs already running finish under their Leases, and leftover claims are removed by their `shutdownTime`, their TTL or Job garbage collection. Stuck objects: `kubectl -n ploeg get sandboxclaims,sandboxes`.
 
-Removing the controller is a separate step: first no team may use `sandbox` and no Vloer pool may exist, because pruning the CRDs deletes every `Sandbox`, claim, template and pool in the cluster.
+Removing the controller is a separate step: first no team may use `sandbox` and no Unfold pool may exist, because pruning the CRDs deletes every `Sandbox`, claim, template and pool in the cluster.
 
 ## Upgrading
 

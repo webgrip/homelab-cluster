@@ -47,7 +47,7 @@ def waiting_on_you():
         targets=[target(review, "A", "review", instant=True), target(human, "B", "needs a human", instant=True)],
         thresholds=alarm_at(amber=1),
         desc="Work Items no agent will move until a person does. Review is a pull request ready for you; needs a "
-             "human is a Work Item an agent gave up on or could not start, with the reason in Vloer. Amber from "
+             "human is a Work Item an agent gave up on or could not start, with the reason in Unfold. Amber from "
              "one, because both are the queue in front of the owner, not in front of the machine.")
     return panel
 
@@ -59,9 +59,9 @@ def oldest_queued():
                         "{{team}}", instant=True)],
         thresholds=alarm_at(amber=HOUR, vermillion=6 * HOUR), no_value="nothing queued",
         desc="Age of the oldest Work Item in state queued, per team. Queued means assigned and not yet leased: a "
-             "worker should pick it up within minutes. Amber from an hour, vermillion from six. A Work Item Vloer "
-             "owns (operator_owned) also counts here but is started from Vloer, not by KEDA, so an old one on "
-             "the vloer team is a person who has not pressed start.")
+             "worker should pick it up within minutes. Amber from an hour, vermillion from six. A Work Item Unfold "
+             "owns (operator_owned) also counts here but is started from Unfold, not by KEDA, so an old one on "
+             "the unfold team is a person who has not pressed start.")
 
 
 def leases_expired():
@@ -285,9 +285,9 @@ def row_gateway():
               unit="ms", decimals=0, fixed_color=NEUTRAL,
               desc="95th percentile time from claim to a started kata sandbox. The histogram's buckets are coarse, "
                    "so read this as the bucket bound."), 12, 6, 5),
-        (stat("De Vloer up", f'max(kube_deployment_status_replicas_available{{{KSM}, deployment="de-vloer"}}) '
+        (stat("Unfold up", f'max(kube_deployment_status_replicas_available{{{KSM}, deployment="unfold"}}) '
                              "or on() vector(0)", decimals=0, thresholds=kiosk_steps((VERMILLION, 0), (NEUTRAL, 1)),
-              desc="Available De Vloer replicas."), 18, 6, 5),
+              desc="Available Unfold replicas."), 18, 6, 5),
     ]
 
 
@@ -330,7 +330,7 @@ LINKS = [link("Unfold Loop", "/d/glide-loop"), link("Unfold · Runs", "/d/glide-
 
 def desk():
     sections = [("Dispatch and workers", row_dispatch()), ("Work Items and Runs", row_work()),
-                ("Spend", row_spend()), ("Model gateway, sandboxes and Vloer", row_gateway()),
+                ("Spend", row_spend()), ("Model gateway, sandboxes and Unfold", row_gateway()),
                 ("ploegd gauges", row_native()), ("Ploeg logs", row_logs())]
     panels = number(first_screen() + lay_out_rows(24, sections))
     return dashboard(

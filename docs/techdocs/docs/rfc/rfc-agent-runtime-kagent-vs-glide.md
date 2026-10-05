@@ -31,7 +31,7 @@ Two capabilities are in play, and they are easy to blur:
 * **Ops Q&A.** A person asks "why is X failing" and an agent reads the cluster, metrics and
   logs and answers. This is what VIK-1229 wants: read-only, interactive, the person's identity.
 * **Code-writing agents.** A Work Item becomes a pull request. That is Glide's job today
-  (Ploeg dispatches, Vloer is the workbench), and kagent 1.0 reaches for it too with its
+  (Ploeg dispatches, Unfold is the workbench), and kagent 1.0 reaches for it too with its
   Claude Code and Codex harnesses.
 
 ## What is true today (evidence)
@@ -49,7 +49,7 @@ Read on 2026-09-27 unless marked otherwise.
 | Glide is already deployed: `ploeg` (chart `0.3.0-rc.6`) and `de-vloer` (`0.3.0-rc.14`) in namespace `ploeg` | HelmReleases `ploeg/ploeg`, `ploeg/de-vloer` |
 | The LiteLLM MCP gateway serves `grafana`, `victorialogs`, `kubernetes`, `opencost` (access group `observability`) and `vikunja` (`board`), with `require_key_mcp_access_defined: true` | `kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml` |
 | Ploeg already has an experimental agent-sandbox executor: a launcher creates one cold `SandboxClaim` (`extensions.agents.x-k8s.io/v1beta1`), the template takes `executor.sandbox.runtimeClassName` | Glide `apps/ploeg/pkg/sandboxlaunch/launcher.go`, `apps/ploeg/docs/contracts/executor.md` § "The agent-sandbox executor", chart value `executor.sandbox.runtimeClassName: ""` |
-| Vloer ADR-0013 (accepted) already chose Sandbox CRDs with warm Kata pools for its Kubernetes provisioner; it is unqualified here because the controller is not installed | Glide `apps/vloer/docs/adrs/0013-sandbox-crd-placement-with-warm-kata-pools.md`, `apps/vloer/src/runtime/sandbox.ts` (defaults `runtimeClassName` to `kata`) |
+| Unfold ADR-0013 (accepted) already chose Sandbox CRDs with warm Kata pools for its Kubernetes provisioner; it is unqualified here because the controller is not installed | Glide `apps/unfold/docs/adrs/0013-sandbox-crd-placement-with-warm-kata-pools.md`, `apps/unfold/src/runtime/sandbox.ts` (defaults `runtimeClassName` to `kata`) |
 
 ### Measured: what the pieces cost at rest
 
@@ -204,7 +204,7 @@ credential model that fights Ploeg's. So: no.
 
 * **Runtime.** Install kubernetes-sigs/agent-sandbox `v1.0.4` (2026-09-24,
   [releases](https://github.com/kubernetes-sigs/agent-sandbox/releases)) (controller
-  plus extensions) through Flux. Ploeg's sandbox executor and Vloer's provisioner both already
+  plus extensions) through Flux. Ploeg's sandbox executor and Unfold's provisioner both already
   speak `v1beta1`. Set `executor.sandbox.runtimeClassName: kata`.
 * **Isolation.** A hardware-virtualised guest kernel per Run through the existing `kata`
   RuntimeClass, proven by the smoke Job. That is a stronger kernel boundary than Substrate's
@@ -233,18 +233,18 @@ credential model that fights Ploeg's. So: no.
 * **Ops Q&A.** A Glide reader Role (a reader takes no Lease and never writes the tree) whose
   harness reaches the MCP gateway with its per-Run key, granted the `observability` access
   group or a narrower `glide-ops` group (grafana, victorialogs, kubernetes). A person asks in
-  Vloer, gets an answer, and the Run's cost is settled against its Shift. Vloer's "session
-  without a repository" (Vloer ADR-0016, PV-084) is not built yet; it is the one product gap
+  Unfold, gets an answer, and the Run's cost is settled against its Shift. Unfold's "session
+  without a repository" (Unfold ADR-0016, PV-084) is not built yet; it is the one product gap
   on this path.
 * **Identity.** Today the gateway's `kubernetes` server reads the cluster as its own
   ServiceAccount bound to `view`. That is the standing identity rfc-mcp-identity removes. The
   person-bound answer is the same work ADR-0063 already designed, moved one hop: the API server
   trusts the broker for an agent audience and maps it to a prefixed, read-only user; the
   person's token reaches the MCP server through the Ploeg worker's loopback proxy (ADR-0034),
-  never through the harness. Vloer already signs people in with the broker (Vloer ADR-0016).
+  never through the harness. Unfold already signs people in with the broker (Unfold ADR-0016).
   None of this is built; it is not free, but it is not kagent-specific either.
 * **Spend.** Per-Run LiteLLM keys with authorize-then-settle budgets, per Team and Shift,
-  already in production for code-writing Runs. The person is known to Vloer; whether Ploeg
+  already in production for code-writing Runs. The person is known to Unfold; whether Ploeg
   writes the person into the key's metadata so the LiteLLM ledger names them is unverified.
   The owner requires it (D4).
 * **Weight.** One more controller Deployment at rest; sandboxes exist only while a Run
@@ -283,14 +283,14 @@ credential model that fights Ploeg's. So: no.
 | Person-bound Kubernetes read | Designed (1b), unverified live | trusted-proxy wired in 0.10.2; unverified | As 1 | Same design, one hop moved; unbuilt | Via kagent-tools pass-through on a direct route |
 | Person on LiteLLM / MCP legs | No (per-agent keys) | No | No | Not yet (per-Run keys; person metadata unverified) | n/a |
 | Spend control | Static per-agent key, 30-day budget | Per ModelConfig key | Collides with per-Run keys | Per-Run keys, authorize then settle | n/a |
-| In-app authentication | None (alpha) | trusted-proxy (0.10.2) | As 1 | Vloer OIDC sign-in (ADR-0016) | n/a |
+| In-app authentication | None (alpha) | trusted-proxy (0.10.2) | As 1 | Unfold OIDC sign-in (ADR-0016) | n/a |
 | Resident components | kagent controller, UI, tools, Postgres; Substrate API server, router, controller, cert controller, `atelet` on every worker, egress gateway, second Postgres, snapshot store; upstream's guide adds a 6-node valkey cluster | controller, UI, tools, Postgres | 1 plus Glide | +1 controller Deployment | +1 MCP server (optional) |
 | Maturity | Alpha (`v1.0.0-alpha4`), Substrate beta | `v0.10.2` maintenance; line superseded by 1.0 | Pre-1.0 inside pre-1.0 | agent-sandbox 1.0.x `v1beta1`; Ploeg executor experimental | kagent-tools `v0.3.0` |
 | Ops Q&A | Yes, with a UI | Yes, with a UI and a catalogue | Yes | After a reader Role + repo-less session | Through any client |
 | Code-writing agents | Harnesses exist; no tracker, forge or spend | No | Conflicts with Ploeg | Yes, in production | n/a |
 | Scheduled runs | Yes (unused by decision) | No | n/a | No (by decision) | n/a |
 | Lock-in / exit cost | CRDs, Substrate, a second Postgres; 1.0 already broke 0.x | Rebuild at 1.0 | Two engines to unpick | `agents.x-k8s.io` is a SIG standard; Ploeg owns the rest | Low |
-| Fit with Glide records | Beside, partially competing (landscape §6) | n/a | Violates landscape §10 "never", ADR-0009 pattern, ADR-0032 | Is ADR-0032 and Vloer ADR-0013 | ADR-0007 facade, MCP as tool seam |
+| Fit with Glide records | Beside, partially competing (landscape §6) | n/a | Violates landscape §10 "never", ADR-0009 pattern, ADR-0032 | Is ADR-0032 and Unfold ADR-0013 | ADR-0007 facade, MCP as tool seam |
 | Fit with homelab records | Against ADR-0053's privileged-free agent plane | n/a | As 1 | Matches ADR-0053, ADR-0044 | Matches rfc-mcp-identity |
 
 ## Verdict
@@ -300,7 +300,7 @@ ADR-0063's identity design kept and made runtime-neutral.**
 
 1. Install agent-sandbox through Flux and qualify Ploeg's sandbox executor with
    `runtimeClassName: kata`, then with a gVisor RuntimeClass once the worker schematic carries
-   the extension (D3, VIK-1249). This is Glide's own recorded plan (ADR-0032, Vloer ADR-0013)
+   the extension (D3, VIK-1249). This is Glide's own recorded plan (ADR-0032, Unfold ADR-0013)
    and it costs no exception.
 2. Build the ops assistant as a Glide reader Role with an MCP-gateway grant limited to
    grafana, victorialogs and a read-only Kubernetes server. It waits until after Kubernetes
@@ -372,10 +372,10 @@ Listed only; this RFC does not edit Glide.
   daemonless worker on `kata`.
 * Backlog #58: mark it superseded by the existing `sandboxlaunch` executor if that is the
   intent, and add warm pools as the follow-up.
-* A Role or Team for read-only ops questions, and Vloer's repository-less session (PV-084), as
+* A Role or Team for read-only ops questions, and Unfold's repository-less session (PV-084), as
   the product work behind the ops assistant.
 * Put the requesting person on every per-Run LiteLLM key (D4): key metadata and LiteLLM user
-  attribution, taken from the Vloer session, so the spend ledger names them.
+  attribution, taken from the Unfold session, so the spend ledger names them.
 
 ## Owner decisions (2026-09-27)
 
@@ -388,7 +388,7 @@ standalone MCP server) is still open.
   weighed again then only if a re-evaluation trigger above has fired. Waiting removes option
   1's upgrade-chain cost, not its privilege and authentication costs, so the recommendation
   stands.
-* **D2. A Vloer session counts as "the person asking".** A person signed in to Vloer behind the
+* **D2. An Unfold session counts as "the person asking".** A person signed in to Unfold behind the
   gateway OIDC login (ADR-0060) is the person for person-bound identity. A Run started from that
   session carries that person, so option 4 meets ADR-0063's no-unattended rule without a
   separate agent login.
@@ -419,7 +419,7 @@ standalone MCP server) is still open.
     `runtime.webgrip.io/gvisor` label, as the `kata` one does. Ticket: VIK-1249.
 * **D4. The person appears on the LiteLLM spend ledger.** Per-Team and per-Shift attribution is
   not enough. Each Run's LiteLLM key carries the requesting person (key metadata and LiteLLM
-  user attribution, from the Vloer session of D2), so spend reads per person as well as per
+  user attribution, from the Unfold session of D2), so spend reads per person as well as per
   Team and Shift.
 
 ## Open questions for the owner
@@ -428,13 +428,13 @@ Answered on 2026-09-27 except question 4; see [Owner decisions](#owner-decisions
 
 1. Is ops Q&A worth having before Kubernetes 1.37, or is it fine to wait months for it? If it
    can wait, option 1 loses its main cost, but the privilege and authentication problems stay.
-2. Does a Vloer session count as "the person asking" for the ops assistant, given Vloer signs
+2. Does an Unfold session count as "the person asking" for the ops assistant, given Unfold signs
    people in through the broker? If yes, option 4 satisfies ADR-0063's no-unattended rule.
 3. Kata only, or also install the Talos gVisor extension for reader Runs? Kata is proven here;
    gVisor would be a schematic change on three workers for a lighter footprint.
 4. Accept kagent-tools as a standalone MCP server (read-only, pass-through) beside or instead
    of `k8s-mcp`?
-5. Should the person appear on the LiteLLM spend ledger (key metadata from Vloer), or is
+5. Should the person appear on the LiteLLM spend ledger (key metadata from Unfold), or is
    per-Team and per-Shift attribution enough?
 
 ## References
@@ -450,7 +450,7 @@ Answered on 2026-09-27 except question 4; see [Owner decisions](#owner-decisions
 * [RFC: Dark factory](rfc-dark-factory.md).
 * Glide: `apps/ploeg/docs/research/2026-09-26-agent-orchestration-landscape.md` (§2, §6, §9,
   §10), `apps/ploeg/docs/research/2026-07-28-a2a-fit.md`, Ploeg ADRs 0005, 0007, 0009, 0032,
-  0034, Vloer ADRs 0013 and 0016, `apps/vloer/src/runtime/sandbox.ts`,
+  0034, Unfold ADRs 0013 and 0016, `apps/unfold/src/runtime/sandbox.ts`,
   `apps/ploeg/pkg/sandboxlaunch/launcher.go`.
 * Vikunja: VIK-1229, VIK-1246, VIK-1247, VIK-1249.
 * Upstream, read 2026-09-27: [kagent releases](https://github.com/kagent-dev/kagent/releases)

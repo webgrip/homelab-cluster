@@ -2,11 +2,11 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: de-vloer
+  name: unfold
 spec:
   chartRef:
     kind: OCIRepository
-    name: de-vloer
+    name: unfold
   interval: 10m
   install:
     remediation:
@@ -17,18 +17,18 @@ spec:
       retries: 3
   values:
     mode: live
-    baseUrl: https://vloer.${SECRET_DOMAIN}
+    baseUrl: https://unfold.${SECRET_DOMAIN}
     image:
       repository: harbor.webgrip.dev/webgrip/unfold
       tag: 0.4.0-rc.40
       digest: sha256:753af3537ee0a4cd9c6bcfb0c842ce8af1d1c813b6ca76dfde92b77ee8b4a8a7
     imagePullSecrets:
       - name: harbor-pull
-    credentialsSecret: ploeg-workbench
+    credentialsSecret: unfold-operator
     storage:
       className: longhorn
       size: 4Gi
-    workspaceNamespace: de-vloer-workspaces
+    workspaceNamespace: unfold-workspaces
     createWorkspaceNamespace: false
     workspaceProvisioner: pod
     workspaceTransport: pull
@@ -74,8 +74,8 @@ spec:
       maxBudgetUsd: 0.25
       auth:
         oidc:
-          issuer: https://authentik.${SECRET_DOMAIN}/application/o/vloer/
-          clientId: vloer
+          issuer: https://authentik.${SECRET_DOMAIN}/application/o/unfold/
+          clientId: unfold
           displayName: Homelab login
           scopes:
             - openid
@@ -90,9 +90,9 @@ spec:
             viewer: []
       ploeg:
         url: http://ploeg.ploeg.svc.cluster.local:8080
-        tokenEnv: PLOEG_OPERATOR_VLOER_TOKEN
+        tokenEnv: PLOEG_OPERATOR_UNFOLD_TOKEN
         teams:
-          - vloer
+          - unfold
           - bronze
           - silver
           - copper
@@ -105,7 +105,7 @@ spec:
         tracesDatasource: victoriatraces-tempo
         logsDatasource: victorialogs
       execution:
-        team: vloer
+        team: unfold
       litellm:
         baseUrl: http://litellm.ai.svc.cluster.local:4000/v1
         ttl: 10m

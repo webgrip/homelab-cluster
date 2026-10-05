@@ -128,18 +128,19 @@ locals {
       redirects     = [{ matching_mode = "strict", url = "https://webgrip.cloudflareaccess.com/cdn-cgi/access/callback" }]
       extra_scopes  = []
     }
-    vloer = {
-      provider_name = "vloer-oidc"
-      app_name      = "Vloer"
+    unfold = {
+      provider_name = "unfold-oidc"
+      app_name      = "Unfold"
       description   = "Human workbench for Ploeg and remote agent workspaces."
-      launch_url    = "https://vloer.${var.SECRET_DOMAIN}"
-      client_id     = "vloer"
+      launch_url    = "https://unfold.${var.SECRET_DOMAIN}"
+      client_id     = "unfold"
       client_secret = null
       client_type   = "public"
       signing_key   = true
       grant_types   = ["authorization_code"]
-      redirects     = [{ matching_mode = "strict", url = "https://vloer.${var.SECRET_DOMAIN}/api/auth/oidc/callback" }]
+      redirects     = [{ matching_mode = "strict", url = "https://unfold.${var.SECRET_DOMAIN}/api/auth/oidc/callback" }]
       extra_scopes  = ["groups"]
+      adopt         = false
     }
     longhorn = {
       provider_name = "longhorn-oidc"

@@ -57,14 +57,14 @@ roadmap file in git — see
 - The custom board front end has its own project: `Vellum` (id 6, since 2026-07-18) —
   the board page itself (`kubernetes/apps/vikunja/board`, served at
   `vikunja.<domain>/board`); same conventions/labels as the main board
-- The agent-execution program has one project: `Unfold` (id 10, formerly Glide). It holds Unfold itself (Ploeg +
-  Vloer, repo `webgrip/unfold`, formerly `webgrip/glide`) and everything around it: LiteLLM inference plane, MCP gateway,
+- The agent-execution program has one project: `Unfold` (id 10, formerly Glide). It holds Unfold itself (Ploeg and
+  the Unfold application, repo `webgrip/unfold`, formerly `webgrip/glide`) and everything around it: LiteLLM inference plane, MCP gateway,
   agent identity/budgets, classifiers, factory observability. Merged into it: `De Vloer` (id 14,
   2026-09-29), `Dark Factory` (id 5), `Ploeg Test` and `Ploeg Bench` tickets (2026-09-30). Each
   ticket's `repo/*` label names the repo its work lands in; ploegd routes by that label once Unfold
   ADR-0038 ships, and until then routes the whole board to `webgrip/unfold`, so never assign an
   Unfold team to a ticket whose `repo/*` is not `repo/unfold`
-- Fixture boards, never backlogs: `Ploeg Test` (id 11, Vloer's test task source and the `vloer`
+- Fixture boards, never backlogs: `Ploeg Test` (id 11, Unfold's test task source and the `unfold`
   team's route) and `Ploeg Bench` (id 49, benchmark trials, one fresh ticket per trial; id 48 is
   an archived empty duplicate). Pinned by id in the ploegd routing config
 - Enumerating a board: `tasks_list` returns one capped page and reports the page size as

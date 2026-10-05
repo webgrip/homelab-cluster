@@ -22,9 +22,9 @@ KATA_RUN_CPU = 0.2
 KATA_RUN_MEMORY = (768 + 160) * 2 ** 20
 
 WORK_ITEM = ("CASE WHEN w.provider = 'vikunja' THEN 'vikunja #' || w.external_id WHEN w.provider = 'manual' "
-             "THEN 'vloer ' || left(split_part(w.external_id, ':', 2), 8) ELSE w.provider || ' ' || w.external_id END")
+             "THEN 'unfold ' || left(split_part(w.external_id, ':', 2), 8) ELSE w.provider || ' ' || w.external_id END")
 WORK_ITEM_URL = ("CASE WHEN w.provider = 'vikunja' THEN 'https://vikunja.webgrip.dev/tasks/' || w.external_id "
-                 "ELSE coalesce(nullif(w.url, ''), 'https://vloer.webgrip.dev') END")
+                 "ELSE coalesce(nullif(w.url, ''), 'https://unfold.webgrip.dev') END")
 QUEUED_AT = ("LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l "
              "WHERE l.action IN ('round.opened', 'round.reopened') AND l.detail->>'shift' = r.shift_id::text "
              "AND l.detail->>'round' = r.round::text AND l.at <= coalesce(r.started_at, now())) q ON true")
