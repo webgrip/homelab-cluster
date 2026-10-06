@@ -54,15 +54,17 @@ The Forgejo CI and Glide walls are the **first screens** of the desk boards `for
 
 `/d/today` is one Business Text panel across all 24 rows, ported from code14's Team C wall: the
 same night-blue ground, typefaces and layout, drawn from this cluster's sources. It answers three
-questions for whoever writes code here: what landed, where the work is, and what needs a hand.
+questions for whoever writes code here: what landed, where the work is and how fast it flows, what
+the machine did, and what needs a hand.
 
 | Band | Shows | Source |
 | --- | --- | --- |
-| Top | `Week N · Mon – Sun · day N of 7`, commits landed on default branches this week, repositories, merged pull requests, releases, commits by bot accounts, last week's count | Forgejo database (`action`) |
-| Where the work is | One track per board: Backlog → To do → Doing → Reviewing → Done this week, stages derived from labels as ADR-0043 defines them. A board with nothing open and nothing closed is named on the quiet line | Vikunja database |
-| Wins this week | Fastest trunk push to green, longest run of green trunk runs per workflow (shown from two), tickets closed per board | Forgejo `action_run`, Vikunja |
-| Just landed | The last seven commits on default branches: time, initials, conventional-commit type, title, repository and scope, and the trunk CI verdict of that commit. ✦ marks a push by a bot account | Forgejo `action`, `action_run`, `user` |
-| Could use a hand | At most five: critical alerts, red trunks, Flux not ready, Glide work waiting on a human, board reviews waiting, open pull requests, pull-request pipelines red, bot pull requests | Alertmanager, forgejo-ci-exporter, Flux, ploeg exporter, Vikunja, Forgejo |
+| Top | `Week N · Mon – Sun · day N of 7`, commits landed on default branches this week, repositories, merged pull requests, releases, commits by bot accounts, and last week's count **up to the same moment** of the week. A push of more than 100 commits is a history import: it is named on its own and kept out of both counts | Forgejo database (`action`) |
+| Where the work is | One track per board: Backlog → To do → Doing → Reviewing → Done this week, stages derived from labels as ADR-0043 defines them. Under the board name: tickets in and out this week (amber when arrivals are more than twice the closes), and the lead time 85 % of closed tickets met over 28 days, created to done. Under Doing and Reviewing: how long the oldest ticket has held that stage's label, amber once it is past the board's 85th percentile | Vikunja database (`tasks`, `label_tasks`) |
+| Wins this week | Longest run of green trunk runs per workflow (shown from two), agent pull requests merged with the latest title, tickets closed per board | Forgejo `action_run`, `pull_request`, Vikunja |
+| The machine this week | **CI now**: jobs running, jobs queued (KEDA), runner pods and Pending runner pods. **Agents**: Unfold Runs this week by role, running, work items, pull requests `agent-builder` opened and merged, and the share of its closed pull requests that merged over 28 days. **AI spend**: LiteLLM spend and tokens this week and today, split per project (Unfold per target repository, Omnigraph, Brain tools). **Error rates**: CI jobs failed (7 days), agent Runs failed or stuck, model calls failed with the worst consumer of at least 20 calls | forgejo-ci-exporter, KEDA, kube-state-metrics, Ploeg database, LiteLLM ledger, Forgejo |
+| Just landed | The last six commits on default branches: time, initials, conventional-commit type, title, repository and scope, and the trunk CI verdict of that commit. ✦ marks a push by a bot account | Forgejo `action`, `action_run`, `user` |
+| Could use a hand | At most five: critical alerts, red trunks, Flux not ready, Unfold work waiting on a human, board reviews waiting, open pull requests, pull-request pipelines red, bot pull requests | Alertmanager, forgejo-ci-exporter, Flux, ploeg exporter, Vikunja, Forgejo |
 | Footer | Whether the Forgejo database answered, CI exporter data age, blackbox probes, Flux | Prometheus |
 
 Things that read wrong if you do not know them:
@@ -75,6 +77,15 @@ Things that read wrong if you do not know them:
   commit message, so `Co-Authored-By` trailers never reach the database. The mark means the
   pusher is a bot account (Forgejo bot type, or a login matching `AGENT_LOGINS` in
   `scripts/dashboards/today.py`). Claude Code sessions push as the owner and are not marked.
+- **AI spend is LiteLLM's ledger, not a bill.** Every agent model call goes through LiteLLM, which
+  prices it from its own model table. Each Unfold Run has its own key, `ploeg-` and the first 12
+  characters of its run token, so the wall joins LiteLLM's spend per key to Ploeg's Run records to
+  name the repository. A key whose Run started before this week reads `Unfold · earlier Run`.
+  Claude Code sessions billed by subscription cost nothing in the ledger and are left off the bars.
+- **Lead time is created to done**, because Vikunja deletes a label row when the label comes off:
+  how long a ticket sat in a stage it has left cannot be read back, only how long the current
+  stage has held. Lead times are bimodal here (half the Homelab Roadmap closes within a day, the
+  85th percentile is about 70 days), which is why the wall shows the 85th percentile and no average.
 - **Warnings alone never make an ask.** Only critical alerts interrupt the wall (rule 1); the
   alert walls show warnings.
 
@@ -86,7 +97,9 @@ of them, because Grafana reads `$` as a dashboard variable, and refuses to build
 out of the generated CR) over frames recorded from a Forgejo 15 and Vikunja 2.6 instance; CI's
 Lint job runs it.
 
-The Forgejo numbers come from the `forgejo-db` Grafana datasource, logged in as `grafana_ro`.
+The Ploeg and LiteLLM numbers come from the `ploeg-db` and `litellm-db` datasources (read-only
+roles that already existed). The Forgejo numbers come from the `forgejo-db` Grafana datasource,
+logged in as `grafana_ro`.
 That role is **not** `pg_read_all_data`: the Forgejo database holds password hashes and runner
 tokens, so an hourly CronJob in the `forgejo` namespace grants SELECT on exactly the columns the
 wall reads (`grafana-ro-grants.cronjob.yaml`). It runs hourly because a Forgejo migration that

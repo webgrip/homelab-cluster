@@ -54,7 +54,8 @@ test('the shipped panel is a Business Text panel in data mode with inline render
   assert.equal(panel.gridPos.h, 24);
   assert.ok(!panel.options.styles.includes('$'));
   assert.deepEqual(panel.targets.map((t) => t.refId).sort(),
-    ['ALERTS', 'CI_AGE', 'FEED', 'FLUX', 'GLIDE', 'PROBES', 'PULLS', 'STAGES', 'TRUNK_RED', 'WEEK', 'WINS']);
+    ['AGENTS', 'AGENT_PRS', 'AGING', 'ALERTS', 'CI_AGE', 'CI_FAILED', 'CI_NOW', 'FEED', 'FLOW', 'FLUX', 'GLIDE', 'PROBES',
+      'PULLS', 'RUN_KEYS', 'SPEND', 'STAGES', 'TRUNK_RED', 'WEEK', 'WINS']);
 });
 
 test('the week clock counts Monday to Sunday in Amsterdam time', () => {
@@ -70,7 +71,7 @@ test('the headline counts commits landed on trunks this week and what merged and
   assert.equal(wall.shipped.n, 4);
   assert.equal(wall.shipped.word, 'commits landed this week');
   const facts = wall.shipped.facts.map((f) => (f.pre || '') + f.b + f.txt);
-  assert.deepEqual(facts, ['1 repository', '1 pull request merged', '1 release', 'last week 0']);
+  assert.deepEqual(facts, ['1 repository', '1 pull request merged', '1 release', 'this time last week 0']);
 });
 
 test('the feed reads each commit with its type, its trunk CI verdict and a link', () => {
@@ -102,18 +103,19 @@ test('every board shows its stages, and an empty board is named on the quiet lin
   const { wall } = render(FRAMES);
   const byName = Object.fromEntries(wall.cards.map((c) => [c.name, c.stations.map((s) => s.n)]));
   assert.deepEqual(byName['Homelab Roadmap'], [2, 2, 1, 1, 2]);
-  assert.deepEqual(byName.Glide, [0, 1, 1, 2, 1]);
+  assert.deepEqual(byName.Unfold, [0, 1, 1, 2, 1]);
   assert.deepEqual(byName['CI/CD'], [1, 0, 0, 0, 0]);
   assert.deepEqual(wall.quiet, ['Vellum']);
   assert.equal(wall.cards[0].meta, '1 do-next');
 });
 
-test('wins name the fastest push to green and the tickets closed, and skip a streak of one', () => {
+test('wins name agent pull requests merged and the tickets closed, and skip a streak of one', () => {
   const { wall } = render(FRAMES);
   assert.deepEqual(wall.wins.map((w) => [w.k, w.v]), [
-    ['Fastest push to green', '1m 35s'],
+    ['Agent pull requests merged', '1'],
     ['Closed on the boards', '3'],
   ]);
+  assert.equal(wall.wins[0].s, 'unfold #88 feat(vloer): link a Run by URL');
   const streak = { fields: [
     { name: 'kind', type: 'string', values: ['streak'] },
     { name: 'repo', type: 'string', values: ['glide'] },
@@ -127,7 +129,7 @@ test('wins name the fastest push to green and the tickets closed, and skip a str
 test('could-use-a-hand orders alerts first, caps at five and says how many more', () => {
   const { wall } = render(FRAMES);
   assert.deepEqual(wall.hand.map((a) => a.k), [
-    'Alerts firing', 'Trunk red', 'Glide waits on you', 'Reviews waiting', 'Pull request pipelines red',
+    'Alerts firing', 'Trunk red', 'Unfold waits on you', 'Reviews waiting', 'Pull request pipelines red',
   ]);
   assert.equal(wall.hand[0].cls, 'alarm');
   assert.equal(wall.hand[0].v, '1 critical alert · 3 warning');
@@ -155,6 +157,58 @@ test('a stale CI exporter turns the footer amber then vermillion', () => {
   assert.equal(render(age(240)).wall.foot[1].cls, '');
   assert.equal(render(age(1200)).wall.foot[1].cls, 'warn');
   assert.equal(render(age(4000)).wall.foot[1].cls, 'alarm');
+});
+
+test('a push over the import size is named but kept out of the headline and the comparison', () => {
+  const week = JSON.parse(JSON.stringify(FRAMES.find((f) => f.refId === 'WEEK')));
+  week.fields.find((f) => f.name === 'imported').values = [1119];
+  const { wall } = render(replace('WEEK', week));
+  assert.equal(wall.shipped.n, 4);
+  assert.equal(wall.shipped.facts.at(-1).pre + wall.shipped.facts.at(-1).b + wall.shipped.facts.at(-1).txt,
+    'not counted: 1119 imported in pushes over 100');
+});
+
+test('each board card carries this week\'s flow, its lead time and how long work has sat in a stage', () => {
+  const { wall } = render(FRAMES);
+  const roadmap = wall.cards.find((c) => c.name === 'Homelab Roadmap');
+  assert.deepEqual([roadmap.flow.arrived, roadmap.flow.closed, roadmap.flow.cls], [6, 2, 'warn']);
+  assert.equal(roadmap.flow.last, 'last week by now +4 / −3');
+  assert.equal(roadmap.lead, '85% closed within 10d · 28d');
+  const reviewing = roadmap.stations.find((st) => st.lbl === 'Reviewing');
+  assert.deepEqual([reviewing.sub, reviewing.late], ['oldest 14d', true]);
+  const doing = roadmap.stations.find((st) => st.lbl === 'Doing');
+  assert.deepEqual([doing.sub, doing.late], ['oldest 3d', false]);
+  const unfold = wall.cards.find((c) => c.name === 'Unfold');
+  assert.deepEqual([unfold.flow.arrived, unfold.flow.closed, unfold.flow.cls], [2, 1, '']);
+});
+
+test('the machine band shows CI now, the agents, the spend per project and the error rates', () => {
+  const { wall } = render(FRAMES);
+  const m = wall.machine;
+  assert.deepEqual([m.ci.v, m.ci.lines.map((l) => l.txt)], ['2', ['0 jobs queued', '3 runner pods']]);
+  assert.equal(m.agents.v, '8');
+  assert.equal(m.agents.unit, 'Runs · 1 running · 5 work items');
+  assert.deepEqual(m.agents.lines.map((l) => l.txt),
+    ['5 builder · 3 reviewer', '2 PRs opened · 1 merged · 4 open', '90% of closed agent PRs merged · 28d']);
+  assert.equal(m.spend.v, 'USD 2.45');
+  assert.equal(m.spend.unit, '62.9M tokens · today USD 0.42');
+  assert.deepEqual(m.spend.projects.map((p) => [p.name, p.usd, p.tokens]), [
+    ['Unfold', 'USD 1.20', '40.0M'],
+    ['Unfold · homelab-cluster', 'USD 0.80', '20.0M'],
+    ['Omnigraph', 'USD 0.40', '1.9M'],
+    ['Unfold · earlier Run', 'USD 0.05', '1.0M'],
+  ]);
+  assert.deepEqual(m.errors.rates.map((r) => [r.k, r.v, r.cls]), [
+    ['CI jobs', '12%', 'warn'], ['Agent Runs', '29%', 'warn'], ['Model calls', '1.4%', '']]);
+  assert.equal(m.errors.rates[2].s, 'worst Omnigraph 1.7%');
+});
+
+test('a silent LiteLLM ledger is said, and an idle machine reads as idle rather than broken', () => {
+  const { wall } = render(without('SPEND', 'RUN_KEYS', 'AGENTS', 'AGENT_PRS', 'CI_NOW', 'CI_FAILED'));
+  assert.equal(wall.machine.spend.known, false);
+  assert.equal(wall.machine.ci.unit, 'not reporting');
+  assert.equal(wall.machine.agents.v, '0');
+  assert.deepEqual(wall.machine.errors.rates, []);
 });
 
 test('text reaching markdown-it is escaped', () => {

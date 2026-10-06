@@ -23,6 +23,21 @@ const MAX_ASKS = 5;
 const STREAK_BARS = 30;
 const CI_AGE_WARN_S = 900;
 const CI_AGE_ALARM_S = 1800;
+const CI_FAIL_WARN = 0.1;
+const CI_FAIL_ALARM = 0.25;
+const RUN_FAIL_WARN = 0.25;
+const RUN_FAIL_ALARM = 0.5;
+const CALL_FAIL_WARN = 0.02;
+const CALL_FAIL_ALARM = 0.1;
+const MIN_CALLS_FOR_RATE = 20;
+const SPEND_PROJECTS = 5;
+const RUN_KEY = /^ploeg-[0-9a-f]{12}(?![\s\S])/;
+const CONSUMERS = [
+  { is: (a) => a === 'omnigraph' || a.startsWith('omnigraph-'), name: 'Omnigraph' },
+  { is: (a) => a === 'claude-code', name: 'Claude Code' },
+  { is: (a) => a === 'brain-tools', name: 'Brain tools' },
+  { is: (a) => a === '(none)', name: 'No key alias' },
+];
 const AGENT_AUTHOR = /(\[bot\]|\bbot\b|renovate)/i;
 const CONVENTIONAL = /^([a-z]+)(?:\(([^)]*)\))?!?:\s*(.+)/;
 
@@ -183,7 +198,7 @@ function feed(series, now, cfg) {
   });
 }
 
-function shipped(series) {
+function shipped(series, cfg) {
   const w = rows(series, 'WEEK')[0] || {};
   const n = num(w.commits);
   const facts = [];
@@ -191,29 +206,64 @@ function shipped(series) {
   facts.push({ b: String(num(w.merged)), txt: num(w.merged) === 1 ? ' pull request merged' : ' pull requests merged' });
   if (num(w.releases)) facts.push({ b: String(num(w.releases)), txt: num(w.releases) === 1 ? ' release' : ' releases' });
   if (num(w.agent_commits)) facts.push({ b: String(num(w.agent_commits)), txt: ' by bot accounts', cls: 'agent' });
-  facts.push({ pre: 'last week ', b: String(num(w.last_week)), txt: '', cls: 'muted' });
+  facts.push({ pre: 'this time last week ', b: String(num(w.last_week)), txt: '', cls: 'muted' });
+  if (num(w.imported)) {
+    facts.push({ pre: 'not counted: ', b: String(num(w.imported)), txt: ' imported in pushes over ' + cfg.importCommits,
+      cls: 'muted' });
+  }
   return { n: n, word: n === 1 ? 'commit landed this week' : 'commits landed this week', facts: facts };
 }
 
+function byBoard(series, ref) {
+  const out = {};
+  for (const r of rows(series, ref)) out[num(r.board)] = r;
+  return out;
+}
+
+function lead(f, cfg) {
+  if (!num(f.lead_sample)) return '';
+  return '85% closed within ' + age(f.lead_p85) + ' · ' + cfg.leadWindowDays + 'd';
+}
+
+function flow(f) {
+  const arrived = num(f.arrived);
+  const closed = num(f.closed);
+  if (!arrived && !closed && !num(f.arrived_last) && !num(f.closed_last)) return null;
+  const net = arrived - closed;
+  return {
+    arrived: arrived, closed: closed,
+    cls: net > 0 && arrived > 2 * Math.max(closed, 1) ? 'warn' : '',
+    last: 'last week by now +' + num(f.arrived_last) + ' / −' + num(f.closed_last),
+  };
+}
+
 function boards(series, cfg) {
-  const byId = {};
-  for (const r of rows(series, 'STAGES')) byId[num(r.board)] = r;
+  const stages = byBoard(series, 'STAGES');
+  const flows = byBoard(series, 'FLOW');
+  const aging = {};
+  for (const r of rows(series, 'AGING')) aging[num(r.board) + '/' + r.stage] = r;
   const cards = [];
   const quiet = [];
   for (const b of cfg.boards) {
-    const r = byId[b.id] || {};
+    const r = stages[b.id] || {};
+    const f = flows[b.id] || {};
     const stations = STATIONS.map((s) => {
       const n = num(r[s.key]);
-      return { cls: s.cls, lbl: s.lbl, n: n, fill: n > 0 ? 'full' : 'empty' };
+      const held = aging[b.id + '/' + s.key];
+      const sub = held && n ? 'oldest ' + age(held.oldest) : '';
+      const late = held && num(f.lead_p85) && num(held.oldest) > num(f.lead_p85);
+      return { cls: s.cls, lbl: s.lbl, n: n, fill: n > 0 ? 'full' : 'empty', sub: sub, late: late,
+        why: held ? '#' + held.ticket + ' ' + held.title : '' };
     });
     const open = num(r.backlog) + num(r.todo) + num(r.doing) + num(r.reviewing);
-    if (open + num(r.done) === 0) {
+    if (open + num(r.done) === 0 && !num(f.arrived)) {
       quiet.push(b.name);
       continue;
     }
     cards.push({
       name: b.name, url: b.url, stations: stations, open: open,
       meta: num(r.do_next) ? plural(num(r.do_next), 'do-next', 'do-next') : plural(open, 'open ticket', 'open tickets'),
+      flow: flow(f), lead: lead(f, cfg),
     });
   }
   return { cards: cards, quiet: quiet };
@@ -222,15 +272,18 @@ function boards(series, cfg) {
 function wins(series, cfg) {
   const out = [];
   for (const r of rows(series, 'WINS')) {
-    if (r.kind === 'fastest') {
-      out.push({ k: 'Fastest push to green', v: duration(r.value), s: r.repo + ' · ' + r.workflow });
-    } else if (r.kind === 'streak' && num(r.value) > 1) {
+    if (r.kind === 'streak' && num(r.value) > 1) {
       const n = num(r.value);
       out.push({
         k: 'Longest green streak', v: String(n), unit: 'runs in a row', s: r.repo + ' · ' + r.workflow,
         bars: Array.from({ length: Math.min(n, STREAK_BARS) }, () => ({})),
       });
     }
+  }
+  const prs = rows(series, 'AGENT_PRS')[0];
+  if (prs && num(prs.merged)) {
+    out.push({ k: 'Agent pull requests merged', v: String(num(prs.merged)),
+      unit: 'this week', s: prs.last_merged || '' });
   }
   const stages = rows(series, 'STAGES');
   const closed = stages.reduce((sum, r) => sum + num(r.done), 0);
@@ -241,6 +294,143 @@ function wins(series, cfg) {
     out.push({ k: 'Closed on the boards', v: String(closed), unit: closed === 1 ? 'ticket' : 'tickets', s: split.join(' · ') });
   }
   return out;
+}
+
+function money(usd) {
+  const v = num(usd);
+  if (v === 0) return 'USD 0';
+  if (v < 0.01) return 'USD <0.01';
+  return 'USD ' + (v < 100 ? v.toFixed(2) : Math.round(v).toString());
+}
+
+function tokens(n) {
+  const v = num(n);
+  if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+  if (v >= 1e6) return (v / 1e6).toFixed(v >= 1e8 ? 0 : 1) + 'M';
+  if (v >= 1e3) return Math.round(v / 1e3) + 'k';
+  return String(Math.round(v));
+}
+
+function pct(r) {
+  return (r * 100 < 10 ? (r * 100).toFixed(1) : Math.round(r * 100)) + '%';
+}
+
+function grade(r, warn, alarm) {
+  return r >= alarm ? 'alarm' : r >= warn ? 'warn' : '';
+}
+
+function consumer(alias, keys) {
+  if (RUN_KEY.test(alias)) {
+    const k = keys[alias];
+    if (!k) return 'Unfold · earlier Run';
+    return k.project === 'unfold' ? 'Unfold' : 'Unfold · ' + k.project;
+  }
+  for (const c of CONSUMERS) if (c.is(alias)) return c.name;
+  return alias;
+}
+
+function ciCard(series, cfg) {
+  const now = {};
+  for (const r of rows(series, 'CI_NOW')) now[r.k] = num(r.value);
+  const known = Object.keys(now).length > 0;
+  return {
+    k: 'CI now', url: cfg.links.ci,
+    v: known ? String(now.running || 0) : '–', unit: known ? 'jobs running' : 'not reporting',
+    lines: known ? [
+      { txt: plural(now.queued || 0, 'job queued', 'jobs queued'), cls: now.queued ? 'warn' : '' },
+      { txt: plural(now.runners || 0, 'runner pod', 'runner pods') + (now.pending ? ' · ' + now.pending + ' pending' : ''),
+        cls: now.pending ? 'warn' : '' },
+    ] : [],
+  };
+}
+
+function agentsCard(series, cfg) {
+  const roles = rows(series, 'AGENTS');
+  const runs = roles.reduce((s, r) => s + num(r.runs), 0);
+  const running = roles.reduce((s, r) => s + num(r.running), 0);
+  const items = roles.reduce((s, r) => s + num(r.work_items), 0);
+  const prs = rows(series, 'AGENT_PRS')[0] || {};
+  const lines = [];
+  if (roles.length) lines.push({ txt: roles.map((r) => num(r.runs) + ' ' + r.role).join(' · ') });
+  lines.push({ txt: plural(num(prs.opened), 'PR opened', 'PRs opened') + ' · ' + num(prs.merged) + ' merged · ' +
+    num(prs.open_now) + ' open' });
+  if (num(prs.merged_28d) + num(prs.closed_28d)) {
+    const kept = num(prs.merged_28d) / (num(prs.merged_28d) + num(prs.closed_28d));
+    lines.push({ txt: pct(kept) + ' of closed agent PRs merged · 28d', cls: kept < 0.5 ? 'warn' : '' });
+  }
+  return {
+    k: 'Agents this week', url: cfg.links.plant,
+    v: String(runs), unit: (runs === 1 ? 'Run' : 'Runs') + (running ? ' · ' + running + ' running' : '') +
+      ' · ' + plural(items, 'work item', 'work items'),
+    lines: lines,
+  };
+}
+
+function spendCard(series, cfg) {
+  const keys = {};
+  for (const r of rows(series, 'RUN_KEYS')) keys[r.alias] = r;
+  const projects = {};
+  let usd = 0;
+  let today = 0;
+  let toks = 0;
+  for (const r of rows(series, 'SPEND')) {
+    const name = consumer(String(r.alias), keys);
+    const p = projects[name] || (projects[name] = { name: name, usd: 0, tokens: 0 });
+    p.usd += num(r.usd);
+    p.tokens += num(r.tokens);
+    usd += num(r.usd);
+    today += num(r.usd_today);
+    toks += num(r.tokens);
+  }
+  const ranked = Object.values(projects).filter((p) => p.usd > 0 || p.tokens > 0)
+    .sort((a, b) => b.usd - a.usd || b.tokens - a.tokens);
+  const top = ranked.slice(0, SPEND_PROJECTS);
+  const widest = Math.max(1e-9, ...top.map((p) => p.usd));
+  return {
+    k: 'AI spend this week', url: cfg.links.plant,
+    v: money(usd), unit: tokens(toks) + ' tokens · today ' + money(today),
+    projects: top.map((p) => ({ name: p.name, usd: money(p.usd), tokens: tokens(p.tokens),
+      w: Math.max(2, Math.round((100 * p.usd) / widest)) })),
+    more: Math.max(0, ranked.length - top.length),
+    known: rows(series, 'SPEND').length > 0,
+  };
+}
+
+function errorsCard(series, cfg) {
+  const lines = [];
+  const ci = scalar(series, 'CI_FAILED');
+  if (ci !== null) lines.push({ k: 'CI jobs', v: pct(ci), cls: grade(ci, CI_FAIL_WARN, CI_FAIL_ALARM), s: '7 days' });
+  const roles = rows(series, 'AGENTS');
+  const finished = roles.reduce((s, r) => s + num(r.finished), 0);
+  const failed = roles.reduce((s, r) => s + num(r.failed), 0);
+  if (finished) {
+    lines.push({ k: 'Agent Runs', v: pct(failed / finished), cls: grade(failed / finished, RUN_FAIL_WARN, RUN_FAIL_ALARM),
+      s: failed + ' of ' + finished + ' failed or stuck' });
+  }
+  const keys = {};
+  for (const r of rows(series, 'RUN_KEYS')) keys[r.alias] = r;
+  const calls = {};
+  for (const r of rows(series, 'SPEND')) {
+    const name = consumer(String(r.alias), keys).replace(/ · .*/, '');
+    const c = calls[name] || (calls[name] = { name: name, calls: 0, failed: 0 });
+    c.calls += num(r.calls);
+    c.failed += num(r.failed);
+  }
+  const all = Object.values(calls);
+  const total = all.reduce((s, c) => s + c.calls, 0);
+  if (total) {
+    const bad = all.reduce((s, c) => s + c.failed, 0);
+    const worst = all.filter((c) => c.calls >= MIN_CALLS_FOR_RATE)
+      .sort((a, b) => b.failed / b.calls - a.failed / a.calls)[0];
+    lines.push({ k: 'Model calls', v: pct(bad / total), cls: grade(bad / total, CALL_FAIL_WARN, CALL_FAIL_ALARM),
+      s: worst && worst.failed ? 'worst ' + worst.name + ' ' + pct(worst.failed / worst.calls) : plural(total, 'call', 'calls') });
+  }
+  return { k: 'Error rates', url: cfg.links.ci, rates: lines };
+}
+
+function machine(series, cfg) {
+  return { ci: ciCard(series, cfg), agents: agentsCard(series, cfg), spend: spendCard(series, cfg),
+    errors: errorsCard(series, cfg) };
 }
 
 function asks(series, now, cfg) {
@@ -266,7 +456,7 @@ function asks(series, now, cfg) {
   const glide = {};
   for (const r of rows(series, 'GLIDE')) glide[r.state] = num(r.value);
   if (glide.needs_human) {
-    out.push({ k: 'Glide waits on you', v: plural(glide.needs_human, 'work item', 'work items'),
+    out.push({ k: 'Unfold waits on you', v: plural(glide.needs_human, 'work item', 'work items'),
       s: glide.awaiting_review ? glide.awaiting_review + ' more awaiting review' : 'needs a human decision', url: cfg.links.glide });
   }
   const stages = rows(series, 'STAGES');
@@ -324,7 +514,8 @@ function build(series, now, cfg) {
     available: forgejoUp,
     notice: 'The Forgejo database did not answer, so nothing on this wall can say what landed. Check the forgejo-db ' +
       'datasource and the grafana_ro role before reading the rest as quiet.',
-    shipped: shipped(series),
+    shipped: shipped(series, cfg),
+    machine: machine(series, cfg),
     cards: where.cards,
     quiet: where.quiet,
     wins: wins(series, cfg),
@@ -343,7 +534,7 @@ function wallText(value) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { build, rows, duration, age, initials, conventional, week, isoWeek };
+  module.exports = { build, rows, duration, age, initials, conventional, week, isoWeek, money, tokens };
 }
 
 if (typeof context !== 'undefined' && context && context.handlebars) {

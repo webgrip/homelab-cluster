@@ -17,8 +17,8 @@
 <div class="h">Where the work is <span class="legend"><span><i class="lb"></i>backlog</span><span><i class="lt"></i>to do</span><span><i class="ld"></i>doing</span><span><i class="lr"></i>reviewing</span><span><i class="lp"></i>done this week</span></span></div>
 <div class="boards">
 {{#each cards}}<a class="board" href="{{url}}">
-<div class="bname"><span class="board-label">{{wallText name}}</span><small>{{wallText meta}}</small></div>
-<div class="track">{{#each stations}}<div class="st {{cls}} {{fill}}"><span class="node">{{n}}</span><span class="lbl">{{wallText lbl}}</span></div>{{/each}}</div>
+<div class="bname"><span class="board-label">{{wallText name}}</span><small>{{wallText meta}}</small>{{#if flow}}<span class="flow {{flow.cls}}" title="{{wallText flow.last}}"><b>+{{flow.arrived}}</b> in · <b>{{flow.closed}}</b> out</span>{{/if}}{{#if lead}}<small class="lead">{{wallText lead}}</small>{{/if}}</div>
+<div class="track">{{#each stations}}<div class="st {{cls}} {{fill}}"><span class="node">{{n}}</span><span class="lbl">{{wallText lbl}}</span>{{#if sub}}<span class="age{{#if late}} late{{/if}}" title="{{wallText why}}">{{wallText sub}}</span>{{/if}}</div>{{/each}}</div>
 </a>
 {{else}}<div class="calm">No open tickets on the boards and nothing closed this week.</div>
 {{/each}}
@@ -31,6 +31,14 @@
 {{else}}<div class="calm">The week's first wins land here: the fastest push to green, the longest green streak, tickets closed.</div>
 {{/each}}
 </div>
+</section>
+<section class="machine">
+{{#with machine}}
+<a class="mcard" href="{{ci.url}}"><span class="k">{{wallText ci.k}}</span><span class="v">{{wallText ci.v}}<span>{{wallText ci.unit}}</span></span>{{#each ci.lines}}<span class="s {{cls}}">{{wallText txt}}</span>{{/each}}</a>
+<a class="mcard" href="{{agents.url}}"><span class="k">{{wallText agents.k}}</span><span class="v">{{wallText agents.v}}<span>{{wallText agents.unit}}</span></span>{{#each agents.lines}}<span class="s {{cls}}">{{wallText txt}}</span>{{/each}}</a>
+<a class="mcard spend" href="{{spend.url}}"><span class="k">{{wallText spend.k}}</span><span class="v">{{wallText spend.v}}<span>{{wallText spend.unit}}</span></span>{{#if spend.known}}<span class="bars">{{#each spend.projects}}<span class="bar"><span class="name">{{wallText name}}</span><span class="fill"><i style="width:{{w}}%"></i></span><span class="amt">{{wallText usd}} · {{wallText tokens}}</span></span>{{/each}}</span>{{#if spend.more}}<span class="s">and {{spend.more}} more</span>{{/if}}{{else}}<span class="s warn">LiteLLM ledger not answering</span>{{/if}}</a>
+<a class="mcard" href="{{errors.url}}"><span class="k">{{wallText errors.k}}</span>{{#each errors.rates}}<span class="rate {{cls}}"><span class="rk">{{wallText k}}</span><b>{{wallText v}}</b><small>{{wallText s}}</small></span>{{/each}}</a>
+{{/with}}
 </section>
 <section class="band3">
 <div class="landed">

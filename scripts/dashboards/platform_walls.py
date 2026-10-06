@@ -12,7 +12,7 @@ DAY = 86400
 BACKUP_LATE = 26 * HOUR
 BACKUP_CRONJOBS = 'cronjob=~".*(backup|snapshot).*"'
 VIKUNJA = {"type": "grafana-postgresql-datasource", "uid": "vikunja-db"}
-BOARD_PROJECTS = {3: "Homelab Roadmap", 6: "Vellum", 9: "CI/CD", 10: "Glide"}
+BOARD_PROJECTS = {3: "Homelab Roadmap", 6: "Vellum", 9: "CI/CD", 10: "Unfold"}
 
 
 def place(placed):
