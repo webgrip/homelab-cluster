@@ -37,10 +37,9 @@ set -e
 # live PolicyReports showed 81 Pod results and ZERO for any controller. Controller
 # assertions added to catch it ALSO passed — as Excluded — until this gate existed.
 #
-# `Excluded` is legitimate for exactly one thing: an assertion that expects `skip`
-# (image-verify-audit / image-attestations-audit on a third-party image). Those pairs are
-# collected from the test YAML and allowed; every other Excluded row is a vacuous
-# assertion and fails the build.
+# `Excluded` is legitimate for exactly one thing: an assertion that expects `skip`.
+# Those pairs are collected from the test YAML and allowed; every other Excluded row is a
+# vacuous assertion and fails the build.
 allowed_skips="${workspace}/allowed-skips.txt"
 # python3, not yq: yq is not a declared dependency of this script and silently produced
 # an EMPTY allow-list when first written, which made the gate reject the two legitimate

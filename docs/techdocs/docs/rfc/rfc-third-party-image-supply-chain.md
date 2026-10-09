@@ -96,7 +96,9 @@ are and why.
    in [verify-policy gating](rfc-verify-policy-gating.md).
 2. **Extend `image-verify-audit` per verified publisher.** It already does exactly this for
    `ghcr.io/kyverno/*` (keyless). Each publisher confirmed signed in step 1 becomes one more rule
-   with its own Fulcio identity/issuer, Audit first, promoted individually.
+   with its own Fulcio identity/issuer, Audit first, promoted individually. *(2026-10-09:
+   `image-verify-audit` and its keyless rule were deleted, so this step starts a new policy;
+   see [why](../general/supply-chain-pipeline.md#retired-the-ghcr-verification-policies).)*
 3. **Close the digest hole.** Narrow the 17-namespace exclusion on `require-image-digest`
    namespace by namespace as each is routed and pinned. Renovate already keeps digests fresh, so
    the maintenance cost is near zero — the exclusion exists for historical reasons, not current ones.

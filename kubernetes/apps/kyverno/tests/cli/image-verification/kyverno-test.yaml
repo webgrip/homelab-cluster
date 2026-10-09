@@ -4,25 +4,12 @@ kind: Test
 metadata:
   name: image-verification
 policies:
-  - ../../policies/image-verify-audit.yaml
-  - ../../policies/image-attestations-audit.yaml
+  - ../../policies/image-verify-harbor-audit.yaml
 resources:
   - resources.yaml
 results:
-  - policy: image-verify-audit
-    rule: verify-webgrip-images
-    resources:
-      - app/third-party-digest
-    kind: Pod
-    result: skip
-  # Repointed 2026-08-05. These named `verify-github-slsa-provenance` and
-  # `verify-cyclonedx-sbom`, which have not existed since the policy was consolidated into
-  # the single `verify-webgrip-ghcr-images` rule. The CLI reports an assertion against a
-  # non-existent rule as Pass/Excluded, so both were green while proving nothing — and the
-  # rule that DOES exist had no assertion at all, leaving image-attestations-audit with
-  # zero real coverage from either the test suite or PolicyReports.
-  - policy: image-attestations-audit
-    rule: verify-webgrip-ghcr-images
+  - policy: image-verify-harbor-audit
+    rule: verify-webgrip-harbor-images
     resources:
       - app/third-party-digest
     kind: Pod

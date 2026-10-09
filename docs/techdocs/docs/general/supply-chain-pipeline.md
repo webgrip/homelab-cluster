@@ -58,9 +58,10 @@ Both registries are signed the **same way**: key-based by digest, not keyless.
 > 400 the login. Source: `kubernetes/apps/security/openbao/bootstrap/config.sh`.
 
 **As of commit `fc5fdf1` (2026-06-26), webgrip GHCR is signed with the SAME Transit key as
-Harbor.** GHCR is no longer keyless / Fulcio / Rekor. The keyless+Rekor language survives in
-exactly one place: **third-party `ghcr.io/kyverno/*` images**, which still verify via GitHub
-Actions OIDC against the public Rekor (`rekor.url: https://rekor.sigstore.dev`). Do not use
+Harbor.** GHCR is no longer keyless / Fulcio / Rekor. No Kyverno policy verifies keyless any
+more: the last keyless rule, for third-party `ghcr.io/kyverno/*` images, was retired with
+`image-verify-audit` on 2026-10-09 (see
+[Retired: the GHCR verification policies](#retired-the-ghcr-verification-policies)). Do not use
 "keyless" to describe any `webgrip/*` image.
 
 ### One key signs both registries
@@ -77,20 +78,36 @@ newest first) — no human ever pastes a PEM. See the
 
 ## What the cluster trusts — Kyverno is the single admission gate
 
-Kyverno `verifyImages` is the **one** admission gate. Three **Audit** ClusterPolicies cover
-first-party images, all **key-based** against the `cosign-webgrip-pub` ConfigMap:
+Kyverno `verifyImages` is the **one** admission gate. One **Audit** ClusterPolicy verifies
+first-party images, **key-based** against the `cosign-webgrip-pub` ConfigMap:
 
 | Policy file | Rule | Verifies |
 |---|---|---|
-| `image-verify-audit.yaml` | `verify-webgrip-images` | `ghcr.io/webgrip/*` **signature** (key-based) |
-| `image-attestations-audit.yaml` | `verify-webgrip-ghcr-images` | `ghcr.io/webgrip/*` **CycloneDX SBOM attestation** (key-based) |
 | `image-verify-harbor-audit.yaml` | `verify-webgrip-harbor-images` | `harbor.${SECRET_DOMAIN}/webgrip/*` **signature + CycloneDX SBOM** (key-based) |
 
-All three read the public key from the `cosign-webgrip-pub` ConfigMap in `security`. The Harbor
-policy additionally supplies the `harbor-pull` robot credential (Harbor is private + LAN-only,
-so Kyverno needs it to fetch the manifest/signature/attestation). `image-verify-audit` also
-carries the separate `verify-kyverno-images-keyless` rule for `ghcr.io/kyverno/*` — that is
-the **only** keyless rule, and it is the only place `rekor.url` legitimately appears.
+It reads the public key from the `cosign-webgrip-pub` ConfigMap in `security` and supplies the
+`harbor-pull` robot credential (Harbor is private + LAN-only, so Kyverno needs it to fetch the
+manifest/signature/attestation). No policy verifies keyless, so `rekor.url` appears nowhere.
+
+### Retired: the GHCR verification policies
+
+`image-verify-audit` and `image-attestations-audit` were deleted on 2026-10-09. They verified
+`ghcr.io/webgrip/*` by the same Transit key (signature and CycloneDX SBOM attestation), but no
+workload in the cluster's desired state runs a `ghcr.io/webgrip/*` image: first-party workloads
+pull from Harbor, and the one manifest that still names GHCR (`observability/twitch-exporter`)
+is not wired into Flux. Both were Audit with `failurePolicy: Ignore` and matched nothing that
+runs.
+
+`image-verify-audit` also held `verify-kyverno-images-keyless` for `ghcr.io/kyverno/*` in
+`security`. Its only match was policy-reporter (`ghcr.io/kyverno/policy-reporter`), and it
+required the `kyverno/kyverno` workflow identity, which an image built in
+`kyverno/policy-reporter` cannot carry, so it could never pass. Verifying third-party images is
+the subject of [Third-party images](../rfc/rfc-third-party-image-supply-chain.md).
+
+What replaced them: the `image-verification` CLI test asserts that `image-verify-harbor-audit`
+skips a third-party image, and the Grafana supply-chain panels select on
+`image-verify-harbor-audit`. Bring GHCR verification back only together with a workload that
+runs from GHCR.
 
 ### The Rekor gate — `rekor.ignoreTlog: true` (CRITICAL)
 
@@ -119,7 +136,7 @@ to Enforce would reject **every** (correctly) signed image cluster-wide.
 1. **The policies carry `rekor.ignoreTlog: true`** on every key-based attestor. ✅ *Done
    (`f26106d`).*
 2. **A real signed release verifies green with zero false positives** — confirm via Policy
-   Reports / the Kyverno dashboards that an actual signed Harbor+GHCR image admits cleanly
+   Reports / the Kyverno dashboards that an actual signed Harbor image admits cleanly
    before promoting. *Not yet exercised end-to-end.*
 
 When you do promote the Harbor rule, also flip its `failurePolicy: Ignore` → `Fail` (it is
@@ -130,15 +147,7 @@ unrelated pod admissions during Audit).
 > subject `https://github.com/webgrip/infrastructure/.github/workflows/...@refs/tags/*` issued
 > by `https://token.actions.githubusercontent.com`. **That is no longer what the cluster
 > trusts.** The cluster trusts the **`cosign-webgrip` Transit public key**. The GitHub-OIDC
-> subject pattern applies to nothing in scope; the only keyless trust is the
-> `kyverno/kyverno` subject in `verify-kyverno-images-keyless`.
->
-> **Stale CLI-test rule names.** The CLI test
-> `kubernetes/apps/kyverno/tests/cli/image-verification/kyverno-test.yaml` still references
-> rule names `verify-github-slsa-provenance` and `verify-cyclonedx-sbom`, which **no longer
-> match** any rule. The live rules are `verify-webgrip-images` (signature) in
-> `image-verify-audit` and `verify-webgrip-ghcr-images` (SBOM attestation) in
-> `image-attestations-audit`. The test needs updating to the current rule names.
+> subject pattern applies to nothing in scope, and no keyless trust remains.
 
 ---
 
@@ -219,7 +228,7 @@ flowchart TD
     end
 
     subgraph Admit ["Kyverno verifyImages — single admission gate (Audit)"]
-        PUB[cosign-webgrip-pub ConfigMap] --> KV[3 key-based policies\nrekor.ignoreTlog:true]
+        PUB[cosign-webgrip-pub ConfigMap] --> KV[image-verify-harbor-audit\nrekor.ignoreTlog:true]
         SH --> KV
     end
 
@@ -289,13 +298,8 @@ says *this image isn't signed*, Trivy Operator says *this running pod has the CV
 
 - **Promote Kyverno Audit → Enforce.** Gated on a real signed release verifying green with
   zero false positives (the `rekor.ignoreTlog` half is done). See the promotion gate above.
-- **Fix the CLI test rule names.** `tests/cli/image-verification/kyverno-test.yaml` still
-  names `verify-github-slsa-provenance` / `verify-cyclonedx-sbom`; update to
-  `verify-webgrip-images` / `verify-webgrip-ghcr-images`.
 - **First real Harbor SBOM column populate.** `sbom:create` is granted (`9938e09`); the next
   release should turn the `::warning:: HTTP 403` into a populated SBOM column — confirm live.
-- **GHCR package visibility.** If `ghcr.io/webgrip/*` packages are private, add a `ghcr-pull`
-  read-scoped credential to the GHCR policies so Kyverno can fetch manifests/attestations.
 - **Leave Harbor's own Deployment-security / cosign gate OFF.** Harbor's signature check only
   verifies *a* signature exists (not against your key) and would block pulls of unsigned
   artifacts including the buildx `:cache` tag. Enforce only at Kyverno admission.

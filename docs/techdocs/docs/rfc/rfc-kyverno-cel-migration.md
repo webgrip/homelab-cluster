@@ -165,9 +165,10 @@ backstop, not a flag day.
    - **Wave C — the eight `namespaceSelector` Pod policies**, converting each `NotIn` list into
      namespaced policies as part of the move. This is where the win is, and where the risk is:
      a mis-scoped conversion changes *which workloads are governed*, silently.
-   - **Wave D — `verifyImages` → `ImageValidatingPolicy`** (the three image-verify policies plus
-     `image-cve-budget-audit`). Sequence **after** [verify-policy gating](rfc-verify-policy-gating.md)
-     lands, so these convert once against a working gate rather than twice.
+   - **Wave D — `verifyImages` → `ImageValidatingPolicy`** (`image-verify-harbor-audit` and
+     `image-cve-budget-audit`; the two ghcr image-verify policies were deleted on 2026-10-09).
+     Sequence **after** [verify-policy gating](rfc-verify-policy-gating.md) lands, so these
+     convert once against a working gate rather than twice.
    - **Wave E — `stateful-delete-protection-enforce` → `DeletingPolicy`**, last, because it is the
      one with no prior test coverage to regress against.
 4. **Migrate exceptions with their policies, not separately.** A `PolicyException` is keyed by

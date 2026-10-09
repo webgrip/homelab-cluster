@@ -85,7 +85,7 @@ ServiceMonitors/PodMonitors/PrometheusRules, ConfigMaps, HTTPRoutes).
 
 Two rule shapes **cannot be swept offline**. Report them UNSWEPT, never clean:
 
-- `verifyImages` rules (`image-verify*`, `image-attestations*`) need registry access; the
+- `verifyImages` rules (`image-verify-harbor-audit`, `image-cve-budget-audit`) need registry access; the
   CLI evaluates nothing for them.
 - Rules with an `apiCall` **context** (e.g. `require-resourcequota`, `require-networkpolicy`,
   which query for existing objects in the namespace) cannot resolve the call offline. They

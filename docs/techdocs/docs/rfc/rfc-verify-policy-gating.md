@@ -2,6 +2,10 @@
 
 > Status: **Proposed** · Date: 2026-08-04 · Spawned by the [Kyverno estate audit](rfc-kyverno-audit-enforce-hardening.md#audit-2026-08-04)
 
+> **2026-10-09:** `image-verify-audit` and `image-attestations-audit` were deleted, so waves 6,
+> 13 and 14 no longer exist ([why](../general/supply-chain-pipeline.md#retired-the-ghcr-verification-policies)).
+> What this RFC still governs is `image-verify-harbor-audit` and `image-cve-budget-audit`.
+
 > **TL;DR.** [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md) gates every
 > Audit→Enforce promotion on two pieces of evidence: a clean PolicyReport, and (since 2026-08-03)
 > an offline `kyverno apply` sweep. **Neither works for a `verifyImages` policy.** They set

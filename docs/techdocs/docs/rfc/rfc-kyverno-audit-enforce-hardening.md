@@ -41,9 +41,9 @@ workload at admission.** Two structural facts shape everything:
 | `workload-advanced-hardening` | SA-token / readonly-rootfs broad | SPLIT — 5 low-risk rules now; invasive rules stay Audit |
 | `namespace-tenancy` | netpol/quota/labels | SPLIT — netpol-shape rules now; require-* after roadmap #13 |
 | `secrets-observability-ops` | `require-prometheusrule-labels` ~49 (actual: 19 across all three monitor kinds) | DONE — wave 7 enforced after remediating all 19 |
-| `image-verify` | unsigned webgrip | SPLIT — kyverno-images rule now; webgrip-images after signing proof |
+| `image-verify` | unsigned webgrip | RETIRED 2026-10-09 — deleted, nothing it matched runs |
 | `image-verify-harbor` | — | **Stays Audit** (failurePolicy: Fail → Harbor/OpenBao SPOF) |
-| `image-attestations` | — | Promote LAST, after image-verify |
+| `image-attestations` | — | RETIRED 2026-10-09 — deleted with image-verify |
 
 ### Gated wave sequence
 
@@ -122,15 +122,15 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 | 3 | `rbac-least-privilege` — 4 clean rules | split→Enforce | **SHIPPED 2026-08-04** — `rbac-least-privilege-enforce`; swept 371 RBAC objects |
 | 4 | `image-supply-chain` — latest-tag + fully-qualified | split→Enforce | **SHIPPED 2026-08-03** — `image-supply-chain-enforce`; prereq was NOT "none" (see the gate note above) |
 | 5 | `namespace-tenancy` — netpol-shape rules | split→Enforce | **SHIPPED 2026-08-04** — `namespace-tenancy-enforce` |
-| 6 | `image-verify` — `verify-kyverno-images-keyless` | split→Enforce | **UNSWEPT** — `verifyImages`; needs registry access, CLI evaluates nothing offline |
+| 6 | `image-verify` — `verify-kyverno-images-keyless` | split→Enforce | **RETIRED 2026-10-09** — policy deleted; it matched only policy-reporter and could never pass ([why](../general/supply-chain-pipeline.md#retired-the-ghcr-verification-policies)) |
 | 7 | `secrets-observability-ops` — monitor-label rules | split→Enforce | **SHIPPED 2026-08-04** — all 19 remediated (11 repo manifests + guac via chart values + renovate-operator via postRenderer), then flipped; 85/85 clean |
 | 8 | `workload-advanced-hardening` — 5 low-risk rules | split→Enforce | **NOT clean** — 62 fails (re-swept 2026-08-04): non-default-SA 22, SA-token opt-out 17, risky-volumes 7, non-baseline-caps 7, drop-ALL 5, explicit-root 4 |
 | 9 | `workload-hardening` (4 rules) | overrides, ns-by-ns | **NOT clean** — 40 fails (re-swept 2026-08-04): run-as-non-root 14, seccomp 14, validate-resources 7, privilege-escalation 5 |
 | 10 | `rbac-least-privilege` — wildcards | merge→Enforce | **SHIPPED 2026-08-04** — the "55 failing Roles" were a RULE BUG, not a backlog (see below); fixed, 55/55 pass, `-audit` policy retired |
 | 11 | `image-supply-chain` — `require-image-digest` | merge→Enforce | **SHIPPED 2026-08-04** — erfbeeld ×3 + minecraft genuinely pinned; only CNPG operator images waived; audit policy now holds require-approved-registries alone |
 | 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | **1 fail left.** labels: clean (drawio namespace deleted). quota: clean (`security` got components/resource-quota 2026-08-05 — count-only 60/25 against 47 pods; the Kyverno-generated one caps at 40 and would have rejected pods). netpol: `security` still has none, and it is NOT a drive-by — NetworkPolicy is additive-deny, so needs the staged treatment litellm got in db5b9e91 |
-| 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | **UNSWEPT** — `verifyImages` rules need registry access; the CLI cannot evaluate them offline |
-| 14 | `image-attestations` | Enforce | **UNSWEPT** — same `verifyImages` limitation as wave 13 |
+| 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | **RETIRED 2026-10-09** — policy deleted; nothing in desired state runs `ghcr.io/webgrip/*` ([why](../general/supply-chain-pipeline.md#retired-the-ghcr-verification-policies)) |
+| 14 | `image-attestations` | Enforce | **RETIRED 2026-10-09** — policy deleted with wave 13's |
 | — | approved-registries, image-verify-harbor, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0033 |
 
 <a name="audit-2026-08-04"></a>

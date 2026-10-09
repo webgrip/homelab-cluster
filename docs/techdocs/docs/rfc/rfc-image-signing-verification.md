@@ -23,7 +23,8 @@ The pipeline as built (verified in-tree 2026-07-02):
 - **Verification** (all **Audit**, `failurePolicy: Ignore`): `image-verify-harbor-audit`
   (signature + CycloneDX attestation on `harbor.${SECRET_DOMAIN}/webgrip/*`),
   `image-verify-audit` (ghcr `webgrip/*` by key; `kyverno/*` keyless), and
-  `image-attestations-audit` (SBOM attestations).
+  `image-attestations-audit` (SBOM attestations). *(2026-10-09: the two ghcr policies were
+  deleted; see [why](../general/supply-chain-pipeline.md#retired-the-ghcr-verification-policies).)*
 - **SBOM analysis, twice**: `trivy-sbom-uploader` (weekly) scans running images → CycloneDX →
   Dependency-Track *and* drops the same SBOMs in Garage where the `guac-s3-collector` (weekly,
   +3h) ingests them into GUAC (ent/Postgres/NATS + its own collectors and certifiers).

@@ -41,7 +41,7 @@ Kyverno now covers several control families:
 - **Exception governance**
 - **Flux governance**
 - **cert-manager and storage governance**
-- **Key-based image verification for `webgrip/*` images** (keyless only for third-party `ghcr.io/kyverno/*`)
+- **Key-based image verification for `webgrip/*` images in Harbor** (`image-verify-harbor-audit`)
 - **Attestation audit rules for SBOM evidence**
 - **New RBAC least-privilege audit rules**
 
@@ -83,8 +83,8 @@ the signing call against OpenBao's `auth/forgejo` JWT role — a fork PR gets no
 sign. Kyverno verifies signatures **and CycloneDX SBOM attestations** against the public key in
 the `cosign-webgrip-pub` ConfigMap (published by the `cosign-pubkey` CronJob).
 
-**Keyless verification survives in exactly one place: third-party `ghcr.io/kyverno/*` images**,
-which still verify via GitHub Actions OIDC against the public Rekor. Do not describe any
+**No policy verifies keyless.** The last keyless rule, for third-party `ghcr.io/kyverno/*`
+images, was retired with the GHCR verification policies on 2026-10-09. Do not describe any
 `webgrip/*` image as keyless.
 
 Full contract, the `rekor.ignoreTlog: true` gotcha, and the Audit→Enforce promotion gate:
