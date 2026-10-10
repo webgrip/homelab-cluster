@@ -840,7 +840,7 @@
         "kubernetes/apps/ploeg/**/helmrelease.yaml"
       ],
       matchDepNames: [
-        "harbor.webgrip.dev/webgrip/ploegd",
+        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd",
         "harbor.webgrip.dev/webgrip/unfold",
         "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
@@ -849,7 +849,7 @@
       ignoreUnstable: false,
     },
     {
-      description: "Unfold pins are read by exactly one manager each: the Unfold image by the repo-local repository/tag/digest manager, the workspace image by helm-values, ploegd by the annotation. The flux and helm-values readings that duplicate them are dropped, so an Unfold release is exactly five upgrades in one branch and never a tag bump that leaves the digest behind.",
+      description: "Unfold and Ploeg pins are read by exactly one manager each: the Unfold image by the repo-local repository/tag/digest manager, the workspace image by helm-values, ploegd by the annotation. The flux and helm-values readings that duplicate them are dropped, so an Unfold release is exactly three upgrades in one branch, a Ploeg release exactly two, and never a tag bump that leaves the digest behind.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/helmrelease.yaml"
       ],
@@ -857,7 +857,7 @@
         "flux"
       ],
       matchDepNames: [
-        "harbor.webgrip.dev/webgrip/ploegd",
+        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd",
         "harbor.webgrip.dev/webgrip/unfold",
         "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
@@ -877,19 +877,37 @@
       enabled: false,
     },
     {
-      description: "One Unfold release is one PR: Unfold releases its application and Ploeg together as unfold-v<version> (glide-v before the rename; Unfold ADR-0004), so both charts and all three images move in a single reviewed branch. Merge only when every row in the PR table shows the same version; a partial publication shows up as a shorter table.",
+      description: "One Unfold release is one PR: Unfold releases its application as unfold-v<version> (glide-v before the rename), so its chart, image and workspace image move in a single reviewed branch. Ploeg releases on its own since Unfold ADR-0019 and has its own group below. Merge only when every row in the PR table shows the same version; a partial publication shows up as a shorter table.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**"
       ],
       matchDepNames: [
-        "harbor.webgrip.dev/webgrip/charts/ploeg",
         "harbor.webgrip.dev/webgrip/charts/unfold",
-        "harbor.webgrip.dev/webgrip/ploegd",
         "harbor.webgrip.dev/webgrip/unfold",
         "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
       groupName: "Unfold release",
       groupSlug: "glide-release",
+      group: {
+        commitMessageTopic: "{{{groupName}}}",
+      },
+      separateMajorMinor: false,
+      separateMinorPatch: false,
+      separateMultipleMajor: false,
+      commitBodyTable: true,
+      automerge: false,
+    },
+    {
+      description: "One Ploeg release is one PR: ploeg-hq/ploeg publishes its chart and the ploegd image at the same version (Unfold ADR-0019), and the two pins must move together or the Helm upgrade reports success against a binary that never changed. Merge only when both rows in the PR table show the same version.",
+      matchFileNames: [
+        "kubernetes/apps/ploeg/**"
+      ],
+      matchDepNames: [
+        "harbor.webgrip.dev/ghcr/ploeg-hq/charts/ploeg",
+        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd"
+      ],
+      groupName: "Ploeg release",
+      groupSlug: "ploeg-release",
       group: {
         commitMessageTopic: "{{{groupName}}}",
       },
