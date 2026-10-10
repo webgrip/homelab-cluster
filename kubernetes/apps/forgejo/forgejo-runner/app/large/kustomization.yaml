@@ -1,0 +1,71 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../base
+nameSuffix: -large
+patches:
+  - target:
+      kind: ScaledJob
+    patch: |-
+      - op: replace
+        path: /spec/minReplicaCount
+        value: 0
+      - op: replace
+        path: /spec/maxReplicaCount
+        value: 2
+      - op: test
+        path: /spec/triggers/0/metadata/labels
+        value: docker
+      - op: replace
+        path: /spec/triggers/0/metadata/labels
+        value: docker-large
+      - op: replace
+        path: /spec/triggers/0/metadata/name
+        value: forgejo-runner-large-k8s
+      - op: test
+        path: /spec/jobTargetRef/template/spec/containers/0/name
+        value: runner
+      - op: replace
+        path: /spec/jobTargetRef/template/spec/containers/0/resources/requests/memory
+        value: 3Gi
+      - op: test
+        path: /spec/jobTargetRef/template/spec/volumes/0/name
+        value: config
+      - op: replace
+        path: /spec/jobTargetRef/template/spec/volumes/0/configMap/name
+        value: forgejo-runner-config-large
+      - op: test
+        path: /spec/jobTargetRef/template/spec/volumes/1/name
+        value: registration
+      - op: replace
+        path: /spec/jobTargetRef/template/spec/volumes/1
+        value:
+          name: registration
+          projected:
+            sources:
+              - secret:
+                  name: forgejo-runner-large-secret
+                  items:
+                    - {key: uuid, path: uuid}
+                    - {key: token, path: token}
+              - secret:
+                  name: forgejo-runner-secret
+                  items:
+                    - {key: cache-secret, path: cache-secret}
+  - target:
+      kind: Job
+    patch: |-
+      - op: test
+        path: /spec/template/spec/containers/0/env/3/name
+        value: SECRET_NAME
+      - op: replace
+        path: /spec/template/spec/containers/0/env/3/value
+        value: forgejo-runner-large-secret
+      - op: test
+        path: /spec/template/spec/containers/0/env/4/name
+        value: RUNNER_NAME
+      - op: replace
+        path: /spec/template/spec/containers/0/env/4/value
+        value: keda-global-docker-large
