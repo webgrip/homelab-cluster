@@ -194,6 +194,17 @@
       depNameTemplate: "{{{registry}}}/{{{repository}}}",
       datasourceTemplate: "docker",
     },
+    {
+      customType: "regex",
+      description: "The ploegd image is pinned as one \"<version>@sha256:<digest>\" tag string. The shared `# renovate:` annotation manager reads that whole string as the version, finds no such version and offers nothing, so this manager splits version and digest and moves both.",
+      managerFilePatterns: [
+        "/(^|/)kubernetes/apps/ploeg/ploeg/app/helmrelease\\.ya?ml$/",
+      ],
+      matchStrings: [
+        "repository:\\s*(?<depName>harbor\\.webgrip\\.dev/ghcr/ploeg-hq/ploegd)\\s*\\n\\s*tag:\\s*[\"']?(?<currentValue>[^@\"'\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})[\"']?",
+      ],
+      datasourceTemplate: "docker",
+    },
   ],
   packageRules: [
     {
@@ -811,19 +822,12 @@
       // property ploeg does not share with any of them is the prerelease
       // version, and no prerelease dep anywhere in this repo is offered an
       // update.
-      //
-      // No automerge rule pairs with this one, deliberately. The pin's own
-      // comment records that tag and values move together, and every bump so
-      // far has reasoned about values compatibility by hand; a PR keeps that
-      // gate, where automerging a first-party chart would remove it. (Renovate
-      // forbids combining matchUpdateTypes with ignoreUnstable anyway, so an
-      // automerge policy would have to be a second rule — there is none.)
-      description: "Ploeg and Unfold charts remain on reviewed 0.x prereleases",
+      description: "Ploeg and Unfold charts follow 0.x prereleases. Docker versioning treats everything after '-' as a variant suffix and offers only tags with the SAME suffix, so 0.4.0-rc.58 was never an update of 0.4.0-rc.57; semver versioning orders the rc numbers.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/ocirepository.yaml"
       ],
       allowedVersions: "/^0\\./",
-      automerge: false,
+      versioning: "semver",
       ignoreUnstable: false,
     },
     {
@@ -843,11 +847,7 @@
       // helmrelease.yaml also pins agent-runner and docker-dind, and those track
       // stable channels. A file-level ignoreUnstable would start offering THEM
       // prereleases — a docker:*-rc on the dind sidecar of every agent run.
-      //
-      // No automerge here either, for the same reason recorded above: tag and
-      // values move together and every bump so far has reasoned about values
-      // compatibility by hand. A PR keeps that gate.
-      description: "Ploeg and Unfold images remain on reviewed 0.x prereleases",
+      description: "Ploeg and Unfold images follow 0.x prereleases, with semver versioning for the same reason as their charts.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/helmrelease.yaml"
       ],
@@ -857,11 +857,11 @@
         "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
       allowedVersions: "/^0\\./",
-      automerge: false,
+      versioning: "semver",
       ignoreUnstable: false,
     },
     {
-      description: "Unfold and Ploeg pins are read by exactly one manager each: the Unfold image by the repo-local repository/tag/digest manager, the workspace image by helm-values, ploegd by the annotation. The flux and helm-values readings that duplicate them are dropped, so an Unfold release is exactly three upgrades in one branch, a Ploeg release exactly two, and never a tag bump that leaves the digest behind.",
+      description: "Unfold and Ploeg pins are read by exactly one manager each: the Unfold image by the repo-local repository/tag/digest manager, the workspace image by helm-values, ploegd by the repo-local repository/tag@digest manager. The flux and helm-values readings that duplicate them are dropped, so an Unfold release is exactly three upgrades in one branch, a Ploeg release exactly two, and never a tag bump that leaves the digest behind.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/helmrelease.yaml"
       ],
@@ -896,20 +896,22 @@
       allowedVersions: "/^15\\./",
     },
     {
-      description: "The helm-values reading of the Unfold image ignores its digest field; the repo-local manager owns that pin.",
+      description: "The helm-values readings of the Unfold and ploegd images ignore how their digests are pinned; the repo-local managers own those pins.",
       matchFileNames: [
-        "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml"
+        "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml",
+        "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml"
       ],
       matchManagers: [
         "helm-values"
       ],
       matchDepNames: [
-        "harbor.webgrip.dev/webgrip/unfold"
+        "harbor.webgrip.dev/webgrip/unfold",
+        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd"
       ],
       enabled: false,
     },
     {
-      description: "One Unfold release is one PR: Unfold releases its application as unfold-v<version> (glide-v before the rename), so its chart, image and workspace image move in a single reviewed branch. Ploeg releases on its own since Unfold ADR-0019 and has its own group below. Merge only when every row in the PR table shows the same version; a partial publication shows up as a shorter table.",
+      description: "One Unfold release is one PR that merges itself: Unfold releases its application as unfold-v<version> (glide-v before the rename), so its chart, image and workspace image move in a single branch, and homelab runs the newest release on its own. Ploeg releases on its own since Unfold ADR-0019 and has its own group below. A partial publication (chart before images, or images held by the CVE gate) leaves the pins on different versions, which scripts/check_release_lockstep.py fails in e2e, so that PR stays open until the rest lands.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**"
       ],
@@ -927,10 +929,16 @@
       separateMinorPatch: false,
       separateMultipleMajor: false,
       commitBodyTable: true,
-      automerge: false,
+      dependencyDashboardApproval: false,
+      minimumReleaseAge: "0 days",
+      schedule: [
+        "at any time"
+      ],
+      automerge: true,
+      automergeType: "pr",
     },
     {
-      description: "One Ploeg release is one PR: ploeg-hq/ploeg publishes its chart and the ploegd image at the same version (Unfold ADR-0019), and the two pins must move together or the Helm upgrade reports success against a binary that never changed. Merge only when both rows in the PR table show the same version.",
+      description: "One Ploeg release is one PR that merges itself: ploeg-hq/ploeg publishes its chart and the ploegd image at the same version (Unfold ADR-0019), and the two pins must move together or the Helm upgrade reports success against a binary that never changed. scripts/check_release_lockstep.py fails e2e while they differ, so a partial publication never merges.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**"
       ],
@@ -947,7 +955,13 @@
       separateMinorPatch: false,
       separateMultipleMajor: false,
       commitBodyTable: true,
-      automerge: false,
+      dependencyDashboardApproval: false,
+      minimumReleaseAge: "0 days",
+      schedule: [
+        "at any time"
+      ],
+      automerge: true,
+      automergeType: "pr",
     },
     {
       description: "Group Grafana.com dashboard revision updates into one reviewable PR",

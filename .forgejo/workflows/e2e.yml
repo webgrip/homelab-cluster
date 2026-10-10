@@ -97,6 +97,11 @@ jobs:
           HARBOR_ROBOT_TOKEN: ${{ secrets.HARBOR_ROBOT_TOKEN }}
         run: ./scripts/verify-oci-digests.sh "$GITHUB_WORKSPACE"
 
+      - name: Unfold and Ploeg chart and image pins name one release each
+        run: |
+          python3 scripts/check_release_lockstep.py "$GITHUB_WORKSPACE"
+          bash scripts/test-release-lockstep.sh "$GITHUB_WORKSPACE"
+
       - name: Lint YAML (yamllint, relaxed)
         run: |
           # Base image pulled through Harbor (LAN, rate-limit-free) instead of docker.io, which
