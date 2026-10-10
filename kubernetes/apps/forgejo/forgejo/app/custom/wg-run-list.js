@@ -1,10 +1,10 @@
 (function () {
   'use strict';
 
-  var WG_RUN_LIST_VERSION = '1.0.0';
+  var WG_RUN_LIST_VERSION = '2.0.0';
   var REQUEST_CONCURRENCY = 3;
   var CONFIRM_WINDOW_MS = 4000;
-  var TOAST_MS = 6000;
+  var SUCCESS_TOAST_MS = 4000;
   var CANCELLABLE = { running: 1, waiting: 1, blocked: 1 };
   var RERUNNABLE = { success: 1, failure: 1, cancelled: 1, skipped: 1 };
   var ICON_STATUS = [
@@ -16,12 +16,19 @@
     ['octicon-blocked', 'blocked'],
     ['octicon-meter', 'running'],
   ];
-  var ICON_STOP = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M5.75 4h4.5c.966 0 1.75.784 1.75 1.75v4.5A1.75 1.75 0 0 1 10.25 12h-4.5A1.75 1.75 0 0 1 4 10.25v-4.5C4 4.784 4.784 4 5.75 4Z"/></svg>';
-  var ICON_RERUN = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/></svg>';
+  var ICON_STOP = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M5.75 4h4.5c.966 0 1.75.784 1.75 1.75v4.5A1.75 1.75 0 0 1 10.25 12h-4.5A1.75 1.75 0 0 1 4 10.25v-4.5C4 4.784 4.784 4 5.75 4Z"/></svg>';
+  var ICON_RERUN = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/></svg>';
+  var ICON_CLOSE = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>';
   var ACTIONS = {
-    cancel: { endpoint: 'cancel', label: 'Stop', icon: ICON_STOP, eligible: CANCELLABLE, pastTense: 'Stopped' },
-    rerun: { endpoint: 'rerun', label: 'Re-run', icon: ICON_RERUN, eligible: RERUNNABLE, pastTense: 'Re-ran' },
+    cancel: { endpoint: 'cancel', verb: 'Stop', icon: ICON_STOP, eligible: CANCELLABLE, pastTense: 'Stopped' },
+    rerun: { endpoint: 'rerun', verb: 'Re-run', icon: ICON_RERUN, eligible: RERUNNABLE, pastTense: 'Re-running' },
   };
+  var QUICK = [
+    { key: 'active', label: 'Running', test: function (r) { return !!CANCELLABLE[r.status]; } },
+    { key: 'failure', label: 'Failed', test: function (r) { return r.status === 'failure'; } },
+    { key: 'cancelled', label: 'Cancelled', test: function (r) { return r.status === 'cancelled'; } },
+  ];
+  var OWN_NODES = '.wg-run-check, .wg-run-slot, .wg-run-tools';
 
   var selected = new Set();
   var busy = new Set();
@@ -29,7 +36,7 @@
   var pendingConfirm = null;
   var focusKeyBeforeSwap = null;
   var bar = null;
-  var liveRegion = null;
+  var toast = null;
   var toastTimer = null;
   var decorateQueued = false;
 
@@ -46,11 +53,11 @@
 
   function statusOf(row) {
     var leading = row.querySelector('.flex-item-leading');
-    if (!leading) return 'unknown';
+    if (!leading) return 'failure';
     for (var i = 0; i < ICON_STATUS.length; i++) {
       if (leading.querySelector('.' + ICON_STATUS[i][0])) return ICON_STATUS[i][1];
     }
-    return 'unknown';
+    return 'failure';
   }
 
   function actionFor(status) {
@@ -61,10 +68,12 @@
 
   function readRows() {
     return Array.prototype.slice.call(document.querySelectorAll('.run-list > .flex-item')).map(function (row) {
-      var path = runPathOf(row);
-      var status = statusOf(row);
-      return { el: row, path: path, status: status === 'unknown' ? 'failure' : status };
+      return { el: row, path: runPathOf(row), status: statusOf(row) };
     }).filter(function (r) { return r.path; });
+  }
+
+  function plural(n, word) {
+    return n + ' ' + word + (n === 1 ? '' : 's');
   }
 
   function setIfChanged(el, prop, value) {
@@ -79,14 +88,19 @@
     }
   }
 
+  function el(tag, className, html) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (html) node.innerHTML = html;
+    return node;
+  }
+
   function ensureRowCheckbox(row) {
-    var box = row.el.querySelector(':scope > .wg-run-select-cell input');
+    var box = row.el.querySelector(':scope > .wg-run-check input');
     if (!box) {
-      var cell = document.createElement('label');
-      cell.className = 'wg-run-select-cell';
-      box = document.createElement('input');
+      var cell = el('label', 'wg-run-check');
+      box = el('input', 'wg-checkbox');
       box.type = 'checkbox';
-      box.className = 'wg-run-select';
       box.setAttribute('data-wg-focus', 'select:' + row.path);
       box.setAttribute('aria-label', 'Select run #' + runNumberOf(row.path));
       cell.appendChild(box);
@@ -96,63 +110,70 @@
     setIfChanged(box, 'checked', selected.has(row.path));
   }
 
-  function ensureRowButton(row) {
-    var trailing = row.el.querySelector(':scope > .flex-item-trailing');
-    if (!trailing) return;
+  function ensureRowAction(row) {
+    var slot = row.el.querySelector(':scope > .wg-run-slot');
+    if (!slot) {
+      slot = el('div', 'wg-run-slot');
+      row.el.appendChild(slot);
+    }
     var kind = actionFor(row.status);
-    var button = trailing.querySelector(':scope > .wg-run-action');
+    var button = slot.querySelector('button');
     if (!kind) {
       if (button) button.remove();
       return;
     }
     if (!button) {
-      button = document.createElement('button');
+      button = el('button', 'wg-icon-button');
       button.type = 'button';
-      button.className = 'wg-run-action';
-      trailing.insertBefore(button, trailing.firstChild);
+      slot.appendChild(button);
     }
-    var action = ACTIONS[kind];
     if (button.dataset.wgAction !== kind) {
+      var label = ACTIONS[kind].verb + ' run #' + runNumberOf(row.path);
       button.dataset.wgAction = kind;
-      button.innerHTML = action.icon + '<span>' + action.label + '</span>';
+      button.innerHTML = ACTIONS[kind].icon;
+      button.setAttribute('aria-label', label);
+      button.setAttribute('data-tooltip-content', label);
       button.setAttribute('data-wg-focus', 'action:' + row.path);
-      button.setAttribute('aria-label', action.label + ' run #' + runNumberOf(row.path));
     }
     button.dataset.wgPath = row.path;
-    setIfChanged(button, 'disabled', busy.has(row.path));
+    setAttrIfChanged(button, 'aria-busy', busy.has(row.path) ? 'true' : null);
   }
 
-  function ensureHead(rows) {
-    var list = document.querySelector('.run-list');
-    if (!list) return;
-    var head = list.previousElementSibling;
-    if (!head || !head.classList.contains('wg-run-list-head')) {
-      head = document.createElement('div');
-      head.className = 'wg-run-list-head';
-      head.innerHTML =
-        '<label class="wg-run-select-cell"><input type="checkbox" class="wg-run-select-all" data-wg-focus="select-all" aria-label="Select all runs on this page"></label>' +
-        '<span class="wg-run-head-label">Select</span>' +
-        '<button type="button" class="wg-run-quick" data-wg-quick="all" data-wg-focus="quick:all">All</button>' +
-        '<button type="button" class="wg-run-quick" data-wg-quick="active" data-wg-focus="quick:active">Active</button>' +
-        '<button type="button" class="wg-run-quick" data-wg-quick="failure" data-wg-focus="quick:failure">Failed</button>' +
-        '<button type="button" class="wg-run-quick" data-wg-quick="cancelled" data-wg-focus="quick:cancelled">Cancelled</button>';
-      list.parentNode.insertBefore(head, list);
+  function ensureTools(rows) {
+    var menu = document.querySelector('.ui.secondary.filter.menu');
+    if (!menu) return;
+    var tools = menu.querySelector(':scope > .wg-run-tools');
+    if (!tools) {
+      tools = el('div', 'wg-run-tools');
+      var allLabel = el('label', 'wg-run-check wg-run-check-all');
+      var all = el('input', 'wg-checkbox wg-select-all');
+      all.type = 'checkbox';
+      all.setAttribute('data-wg-focus', 'select-all');
+      all.setAttribute('aria-label', 'Select all runs on this page');
+      allLabel.appendChild(all);
+      tools.appendChild(allLabel);
+      QUICK.forEach(function (q) {
+        var chip = el('button', 'wg-chip');
+        chip.type = 'button';
+        chip.dataset.wgQuick = q.key;
+        chip.setAttribute('data-wg-focus', 'quick:' + q.key);
+        chip.innerHTML = '<span>' + q.label + '</span><span class="wg-chip-count"></span>';
+        tools.appendChild(chip);
+      });
+      menu.insertBefore(tools, menu.firstChild);
     }
-    var all = head.querySelector('.wg-run-select-all');
+    var all2 = tools.querySelector('.wg-select-all');
     var picked = rows.filter(function (r) { return selected.has(r.path); }).length;
-    setIfChanged(all, 'checked', rows.length > 0 && picked === rows.length);
-    setIfChanged(all, 'indeterminate', picked > 0 && picked < rows.length);
-    setIfChanged(all, 'disabled', rows.length === 0);
-    var counts = { all: rows.length, active: 0, failure: 0, cancelled: 0 };
-    rows.forEach(function (r) {
-      if (CANCELLABLE[r.status]) counts.active++;
-      if (r.status === 'failure') counts.failure++;
-      if (r.status === 'cancelled') counts.cancelled++;
-    });
-    Array.prototype.forEach.call(head.querySelectorAll('.wg-run-quick'), function (b) {
-      var n = counts[b.dataset.wgQuick];
-      setAttrIfChanged(b, 'data-wg-count', String(n));
-      setIfChanged(b, 'disabled', n === 0);
+    setIfChanged(all2, 'checked', rows.length > 0 && picked === rows.length);
+    setIfChanged(all2, 'indeterminate', picked > 0 && picked < rows.length);
+    QUICK.forEach(function (q) {
+      var chip = tools.querySelector('[data-wg-quick="' + q.key + '"]');
+      var matching = rows.filter(q.test);
+      var active = matching.length > 0 && matching.length === picked && matching.every(function (r) { return selected.has(r.path); });
+      chip.querySelector('.wg-chip-count').textContent = String(matching.length);
+      setIfChanged(chip, 'hidden', matching.length === 0);
+      setAttrIfChanged(chip, 'aria-pressed', active ? 'true' : 'false');
+      setAttrIfChanged(chip, 'aria-label', 'Select ' + plural(matching.length, q.label.toLowerCase() + ' run'));
     });
   }
 
@@ -167,11 +188,12 @@
     pruneSelection(rows);
     rows.forEach(function (row) {
       ensureRowCheckbox(row);
-      ensureRowButton(row);
+      ensureRowAction(row);
       setAttrIfChanged(row.el, 'data-wg-selected', selected.has(row.path) ? '1' : null);
       setAttrIfChanged(row.el, 'data-wg-busy', busy.has(row.path) ? '1' : null);
     });
-    ensureHead(rows);
+    setAttrIfChanged(document.documentElement, 'data-wg-selecting', selected.size ? '1' : null);
+    ensureTools(rows);
     renderBar(rows);
   }
 
@@ -189,16 +211,17 @@
 
   function ensureBar() {
     if (bar) return bar;
-    bar = document.createElement('div');
-    bar.className = 'wg-run-bar';
-    bar.setAttribute('role', 'region');
-    bar.setAttribute('aria-label', 'Bulk run actions');
+    bar = el('div', 'wg-bulk-bar');
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', 'Selected runs');
     bar.hidden = true;
     bar.innerHTML =
-      '<span class="wg-run-bar-count"></span>' +
-      '<button type="button" class="wg-run-bar-action" data-wg-bulk="cancel">' + ICON_STOP + '<span></span></button>' +
-      '<button type="button" class="wg-run-bar-action" data-wg-bulk="rerun">' + ICON_RERUN + '<span></span></button>' +
-      '<button type="button" class="wg-run-bar-clear">Clear</button>';
+      '<button type="button" class="wg-icon-button wg-bulk-clear" aria-label="Clear selection" data-tooltip-content="Clear selection (Esc)">' + ICON_CLOSE + '</button>' +
+      '<span class="wg-bulk-count"></span>' +
+      '<span class="wg-bulk-divider" aria-hidden="true"></span>' +
+      '<button type="button" class="wg-bulk-action" data-wg-bulk="cancel">' + ICON_STOP + '<span></span></button>' +
+      '<button type="button" class="wg-bulk-action" data-wg-bulk="rerun">' + ICON_RERUN + '<span></span></button>' +
+      '<span class="wg-bulk-none">Nothing here can be stopped or re-run</span>';
     document.body.appendChild(bar);
     bar.addEventListener('click', onBarClick);
     return bar;
@@ -207,38 +230,46 @@
   function renderBar(rows) {
     ensureBar();
     var count = selected.size;
-    bar.hidden = count === 0;
+    setIfChanged(bar, 'hidden', count === 0);
     if (count === 0) return;
-    bar.querySelector('.wg-run-bar-count').textContent = count + ' selected';
+    bar.querySelector('.wg-bulk-count').textContent = count + ' selected';
+    var anyEligible = false;
     Object.keys(ACTIONS).forEach(function (kind) {
       var button = bar.querySelector('[data-wg-bulk="' + kind + '"]');
       var n = eligibleSelection(rows, kind).length;
-      var confirming = pendingConfirm && pendingConfirm.kind === kind;
+      var confirming = !!(pendingConfirm && pendingConfirm.kind === kind);
+      anyEligible = anyEligible || n > 0;
       button.querySelector('span').textContent = confirming
-        ? 'Confirm ' + ACTIONS[kind].label.toLowerCase() + ' ' + n
-        : ACTIONS[kind].label + ' ' + n;
+        ? ACTIONS[kind].verb + ' ' + plural(n, 'run') + '?'
+        : ACTIONS[kind].verb + ' ' + n;
+      setIfChanged(button, 'hidden', n === 0);
       setAttrIfChanged(button, 'data-wg-confirming', confirming ? '1' : null);
-      setIfChanged(button, 'disabled', n === 0);
     });
+    setIfChanged(bar.querySelector('.wg-bulk-none'), 'hidden', anyEligible);
   }
 
-  function ensureLiveRegion() {
-    if (liveRegion) return liveRegion;
-    liveRegion = document.createElement('div');
-    liveRegion.className = 'wg-run-toast';
-    liveRegion.setAttribute('role', 'status');
-    liveRegion.setAttribute('aria-live', 'polite');
-    document.body.appendChild(liveRegion);
-    return liveRegion;
+  function ensureToast() {
+    if (toast) return toast;
+    toast = el('div', 'wg-toast');
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    toast.innerHTML = '<span class="wg-toast-text"></span><button type="button" class="wg-icon-button wg-toast-close" aria-label="Dismiss">' + ICON_CLOSE + '</button>';
+    toast.querySelector('.wg-toast-close').addEventListener('click', hideToast);
+    document.body.appendChild(toast);
+    return toast;
+  }
+
+  function hideToast() {
+    if (toast) toast.removeAttribute('data-wg-visible');
   }
 
   function announce(message, isError) {
-    ensureLiveRegion();
-    liveRegion.textContent = message;
-    liveRegion.setAttribute('data-wg-error', isError ? '1' : '0');
-    liveRegion.setAttribute('data-wg-visible', '1');
+    ensureToast();
+    toast.querySelector('.wg-toast-text').textContent = message;
+    setAttrIfChanged(toast, 'data-wg-error', isError ? '1' : null);
+    toast.setAttribute('data-wg-visible', '1');
     window.clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(function () { liveRegion.setAttribute('data-wg-visible', '0'); }, TOAST_MS);
+    if (!isError) toastTimer = window.setTimeout(hideToast, SUCCESS_TOAST_MS);
   }
 
   function errorMessageFrom(response) {
@@ -246,7 +277,7 @@
       var message = null;
       try { message = JSON.parse(text).errorMessage; } catch (e) { }
       if (message) return message;
-      if (response.status === 403 || response.status === 404) return 'no permission to change runs here';
+      if (response.status === 403 || response.status === 404) return 'you lack write access to Actions here';
       return 'HTTP ' + response.status;
     });
   }
@@ -286,13 +317,13 @@
     var ok = results.filter(function (r) { return r.ok; });
     var failed = results.filter(function (r) { return !r.ok; });
     var parts = [];
-    if (ok.length) parts.push(ACTIONS[kind].pastTense + ' ' + ok.length + (ok.length === 1 ? ' run' : ' runs'));
-    if (failed.length) {
-      var reasons = {};
-      failed.forEach(function (r) { reasons[r.message] = (reasons[r.message] || []).concat('#' + runNumberOf(r.path)); });
-      Object.keys(reasons).forEach(function (m) { parts.push(reasons[m].join(', ') + ' failed: ' + m); });
-    }
-    announce(parts.join(' · '), failed.length > 0);
+    if (ok.length) parts.push(ACTIONS[kind].pastTense + ' ' + (ok.length === 1 ? '#' + runNumberOf(ok[0].path) : plural(ok.length, 'run')));
+    var reasons = {};
+    failed.forEach(function (r) { reasons[r.message] = (reasons[r.message] || []).concat('#' + runNumberOf(r.path)); });
+    Object.keys(reasons).forEach(function (m) {
+      parts.push('Could not ' + ACTIONS[kind].verb.toLowerCase() + ' ' + reasons[m].join(', ') + ': ' + m);
+    });
+    announce(parts.join('. '), failed.length > 0);
   }
 
   function perform(kind, paths) {
@@ -316,21 +347,24 @@
     pendingConfirm = null;
   }
 
+  function clearSelection() {
+    clearConfirm();
+    selected.clear();
+    queueDecorate();
+  }
+
   function onBarClick(e) {
-    var clear = e.target.closest('.wg-run-bar-clear');
-    if (clear) {
-      clearConfirm();
-      selected.clear();
-      queueDecorate();
-      return;
-    }
+    if (e.target.closest('.wg-bulk-clear')) { clearSelection(); return; }
     var button = e.target.closest('[data-wg-bulk]');
-    if (!button || button.disabled) return;
+    if (!button) return;
     var kind = button.dataset.wgBulk;
     var targets = eligibleSelection(readRows(), kind).map(function (r) { return r.path; });
     if (targets.length > 1 && !(pendingConfirm && pendingConfirm.kind === kind)) {
       clearConfirm();
-      pendingConfirm = { kind: kind, timer: window.setTimeout(function () { pendingConfirm = null; queueDecorate(); }, CONFIRM_WINDOW_MS) };
+      pendingConfirm = {
+        kind: kind,
+        timer: window.setTimeout(function () { pendingConfirm = null; queueDecorate(); }, CONFIRM_WINDOW_MS),
+      };
       queueDecorate();
       return;
     }
@@ -349,7 +383,7 @@
     return true;
   }
 
-  function onRowSelectClick(box, shiftKey) {
+  function onRowCheckboxClick(box, shiftKey) {
     var path = box.dataset.wgPath;
     clearConfirm();
     if (!(shiftKey && lastToggledPath && toggleRange(readRows(), lastToggledPath, path, box.checked))) {
@@ -366,46 +400,42 @@
     queueDecorate();
   }
 
-  var QUICK = {
-    all: function () { return true; },
-    active: function (r) { return CANCELLABLE[r.status]; },
-    failure: function (r) { return r.status === 'failure'; },
-    cancelled: function (r) { return r.status === 'cancelled'; },
-  };
-
   function onDocumentClick(e) {
-    var box = e.target.closest('.run-list .wg-run-select');
-    if (box) { onRowSelectClick(box, e.shiftKey); return; }
-    var all = e.target.closest('.wg-run-select-all');
-    if (all) { selectWhere(all.checked ? QUICK.all : function () { return false; }); return; }
-    var quick = e.target.closest('.wg-run-quick');
-    if (quick) { selectWhere(QUICK[quick.dataset.wgQuick]); return; }
-    var action = e.target.closest('.run-list .wg-run-action');
-    if (action && !action.disabled) {
+    var box = e.target.closest('.run-list .wg-checkbox');
+    if (box) { onRowCheckboxClick(box, e.shiftKey); return; }
+    var all = e.target.closest('.wg-select-all');
+    if (all) { selectWhere(function () { return all.checked; }); return; }
+    var chip = e.target.closest('.wg-chip');
+    if (chip) {
+      var quick = QUICK.filter(function (q) { return q.key === chip.dataset.wgQuick; })[0];
+      if (chip.getAttribute('aria-pressed') === 'true') clearSelection(); else selectWhere(quick.test);
+      return;
+    }
+    var action = e.target.closest('.run-list .wg-run-slot button');
+    if (action && action.getAttribute('aria-busy') !== 'true') {
       e.preventDefault();
       perform(action.dataset.wgAction, [action.dataset.wgPath]);
     }
   }
 
   function onKeydown(e) {
-    if (e.key !== 'Escape' || selected.size === 0) return;
+    if (e.key !== 'Escape') return;
     if (e.target.closest && e.target.closest('input[type="text"], textarea, [contenteditable="true"]')) return;
-    clearConfirm();
-    selected.clear();
-    queueDecorate();
+    if (pendingConfirm) { clearConfirm(); queueDecorate(); return; }
+    if (selected.size) clearSelection();
   }
 
   function rememberFocus() {
-    var el = document.activeElement;
-    focusKeyBeforeSwap = el && el.getAttribute ? el.getAttribute('data-wg-focus') : null;
+    var active = document.activeElement;
+    focusKeyBeforeSwap = active && active.getAttribute ? active.getAttribute('data-wg-focus') : null;
   }
 
   function restoreFocus() {
     if (!focusKeyBeforeSwap) return;
     var key = focusKeyBeforeSwap;
     focusKeyBeforeSwap = null;
-    var target = Array.prototype.find.call(document.querySelectorAll('[data-wg-focus]'), function (el) {
-      return el.getAttribute('data-wg-focus') === key;
+    var target = Array.prototype.find.call(document.querySelectorAll('[data-wg-focus]'), function (node) {
+      return node.getAttribute('data-wg-focus') === key;
     });
     if (target && document.activeElement !== target) target.focus({ preventScroll: true });
   }
@@ -433,7 +463,7 @@
     var container = document.querySelector('.page-content.actions') || document.body;
     new MutationObserver(function (mutations) {
       var foreign = mutations.some(function (m) {
-        return !(m.target.closest && m.target.closest('.wg-run-select-cell, .wg-run-action, .wg-run-list-head'));
+        return !(m.target.closest && m.target.closest(OWN_NODES));
       });
       if (foreign) queueDecorate();
     }).observe(container, { childList: true, subtree: true });
