@@ -29,6 +29,187 @@ spec:
             "x": 0,
             "y": 0
           },
+          "id": 102,
+          "panels": [],
+          "title": "Screens and link-outs (events level)",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "$${logsDatasource}"
+          },
+          "description": "How often each screen was opened, by how many people, in how many browser tabs. Screens with fewer than $${min_people} people are left out.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              },
+              "noValue": "No data yet, or too few people"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 1
+          },
+          "id": 9,
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "$${logsDatasource}"
+              },
+              "editorMode": "code",
+              "expr": "$${sink:raw} | filter event_domain:=\"unfold.insight\" | filter event_name:=\"screen.viewed\" | stats by (screen) count() as views, count_uniq(actor) as people, count_uniq(session.id) as sessions | filter people:>=$${min_people} | fields screen, views, people, sessions | sort by (views desc)",
+              "queryType": "stats",
+              "refId": "A"
+            }
+          ],
+          "title": "Screen views",
+          "transformations": [
+            {
+              "id": "labelsToFields",
+              "options": {
+                "mode": "columns",
+                "valueLabel": "__name__"
+              }
+            },
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "screen": 0,
+                  "views": 1,
+                  "people": 2,
+                  "sessions": 3
+                },
+                "renameByName": {}
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "views",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "type": "table"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "$${logsDatasource}"
+          },
+          "description": "Links followed out of Unfold, by target (pr, tracker, forge, docs) and the screen they were followed from. Groups with fewer than $${min_people} people are left out.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              },
+              "noValue": "No data yet, or too few people"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 1
+          },
+          "id": 10,
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "$${logsDatasource}"
+              },
+              "editorMode": "code",
+              "expr": "$${sink:raw} | filter event_domain:=\"unfold.insight\" | filter event_name:=\"link_out.opened\" | stats by (target, screen) count() as opened, count_uniq(actor) as people | filter people:>=$${min_people} | fields target, screen, opened, people | sort by (opened desc)",
+              "queryType": "stats",
+              "refId": "A"
+            }
+          ],
+          "title": "Link-outs",
+          "transformations": [
+            {
+              "id": "labelsToFields",
+              "options": {
+                "mode": "columns",
+                "valueLabel": "__name__"
+              }
+            },
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "target": 0,
+                  "screen": 1,
+                  "opened": 2,
+                  "people": 3
+                },
+                "renameByName": {}
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "opened",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "type": "table"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 9
+          },
           "id": 100,
           "panels": [],
           "title": "Needs you (events level)",
@@ -51,7 +232,7 @@ spec:
             "h": 6,
             "w": 6,
             "x": 0,
-            "y": 1
+            "y": 10
           },
           "id": 1,
           "options": {
@@ -101,7 +282,7 @@ spec:
             "h": 6,
             "w": 6,
             "x": 6,
-            "y": 1
+            "y": 10
           },
           "id": 2,
           "options": {
@@ -151,7 +332,7 @@ spec:
             "h": 6,
             "w": 6,
             "x": 12,
-            "y": 1
+            "y": 10
           },
           "id": 3,
           "options": {
@@ -201,7 +382,7 @@ spec:
             "h": 6,
             "w": 6,
             "x": 18,
-            "y": 1
+            "y": 10
           },
           "id": 4,
           "options": {
@@ -273,7 +454,7 @@ spec:
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 7
+            "y": 16
           },
           "id": 5,
           "options": {
@@ -377,7 +558,7 @@ spec:
             "h": 8,
             "w": 12,
             "x": 12,
-            "y": 7
+            "y": 16
           },
           "id": 6,
           "options": {
@@ -444,7 +625,7 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 15
+            "y": 24
           },
           "id": 101,
           "panels": [],
@@ -491,7 +672,7 @@ spec:
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 16
+            "y": 25
           },
           "id": 7,
           "options": {
@@ -558,7 +739,7 @@ spec:
             "h": 4,
             "w": 24,
             "x": 0,
-            "y": 24
+            "y": 33
           },
           "id": 8,
           "options": {
@@ -645,6 +826,6 @@ spec:
       "timezone": "utc",
       "title": "Unfold · Needs-you insight",
       "uid": "unfold-insight",
-      "version": 2,
+      "version": 3,
       "weekStart": ""
     }
