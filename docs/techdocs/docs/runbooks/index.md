@@ -70,6 +70,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 
 - [Forgejo Actions runner (KEDA ScaledJob, warm pool)](forgejo-runner.md)
 - [Forgejo branch protection rollout (ADR-0050 delivery contract)](forgejo-branch-protection-rollout.md)
+- [Forgejo upgrades (tag + digest pin, LTS line, backup, fix-forward)](forgejo-upgrade.md)
 
 ## Incidents / postmortems
 

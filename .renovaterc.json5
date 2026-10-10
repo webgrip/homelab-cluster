@@ -182,6 +182,18 @@
       ],
       datasourceTemplate: "docker",
     },
+    {
+      customType: "regex",
+      description: "The Forgejo image is pinned as registry + repository + tag + digest, and the chart renders registry/repository:tag@digest. helm-values reads only registry + repository + tag and skips the image when tag is missing, which froze Forgejo on 15.0.2 for three months behind a digest-only pin. This manager reads all four so tag and digest move together; the -rootless suffix keeps candidates on the rootless line.",
+      managerFilePatterns: [
+        "/(^|/)kubernetes/apps/forgejo/forgejo/app/helmrelease\\.ya?ml$/",
+      ],
+      matchStrings: [
+        "registry:\\s*(?<registry>code\\.forgejo\\.org)\\s*\\n\\s*repository:\\s*(?<repository>forgejo/forgejo)\\s*\\n\\s*rootless:\\s*true\\s*\\n\\s*tag:\\s*[\"']?(?<currentValue>[^@\"'\\s]+)[\"']?\\s*\\n\\s*digest:\\s*[\"']?(?<currentDigest>sha256:[a-f0-9]{64})",
+      ],
+      depNameTemplate: "{{{registry}}}/{{{repository}}}",
+      datasourceTemplate: "docker",
+    },
   ],
   packageRules: [
     {
@@ -862,6 +874,26 @@
         "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
       enabled: false,
+    },
+    {
+      description: "The helm-values reading of the Forgejo image ignores its digest field; the repo-local manager owns that pin.",
+      matchFileNames: [
+        "kubernetes/apps/forgejo/forgejo/app/helmrelease.yaml"
+      ],
+      matchManagers: [
+        "helm-values"
+      ],
+      matchDepNames: [
+        "code.forgejo.org/forgejo/forgejo"
+      ],
+      enabled: false,
+    },
+    {
+      description: "Forgejo stays on its LTS line: 15.x is supported until 2027-07-15, while 16.x reaches end of life on 2026-10-29 and the forgejo-helm chart tracks 15. Moving to the next major is a planned upgrade with its own ticket, not a Renovate bump.",
+      matchDepNames: [
+        "code.forgejo.org/forgejo/forgejo"
+      ],
+      allowedVersions: "/^15\\./",
     },
     {
       description: "The helm-values reading of the Unfold image ignores its digest field; the repo-local manager owns that pin.",

@@ -4,6 +4,8 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: forgejo
+  labels:
+    helm.webgrip.io/fix-forward: "true"
 spec:
   chartRef:
     kind: OCIRepository
@@ -17,9 +19,9 @@ spec:
     remediation:
       retries: 3
   upgrade:
-    remediation:
-      retries: 3
-      strategy: uninstall
+    strategy:
+      name: RetryOnFailure
+      retryInterval: 10m
   postRenderers:
     - kustomize:
         patches:
@@ -82,7 +84,8 @@ spec:
       registry: code.forgejo.org
       repository: forgejo/forgejo
       rootless: true
-      digest: sha256:cc2d74fb4c30385a8ee34de8c8f83344f7316cec70bd2cc7eb82b2802fa28e0b
+      tag: 15.0.9-rootless
+      digest: sha256:caf1bca332f95cdcf124227a4bfa3b49bbbfbbc8a5e4a97406921cb581165413
 
     podSecurityContext:
       runAsNonRoot: true

@@ -149,8 +149,12 @@ HTTP.
 - **Backups / restore:** standard CNPG flow — see [CNPG backups & restore](../runbooks/cnpg-backups.md). `forgejo-db` has a dedicated 5Gi
   `walStorage`; the daily `ScheduledBackup` runs at 02:30. The restore-drill CronJob is
   shipped but `suspend: true` by default.
-- **Upgrades:** Renovate bumps the chart tag/digest in `app/ocirepository.yaml`; the
-  Forgejo app version tracks the chart `appVersion`.
+- **Upgrades:** Renovate bumps the chart tag/digest in `app/ocirepository.yaml`, but the chart's
+  `appVersion` does **not** decide what runs: the HelmRelease pins `image.tag` + `image.digest`, and
+  the digest wins. A repo-local Renovate manager moves tag and digest together and keeps them on
+  the 15 LTS line; a major upgrade is planned work. Procedure:
+  [Forgejo upgrades](../runbooks/forgejo-upgrade.md). Until 2026-10-10 the image carried a digest
+  and no tag, Renovate skipped it, and Forgejo ran 15.0.2 while the manifest read 15.0.7.
 - **Stale-branch / zombie-PR cleanup is automated:** the weekly `scheduled-maintenance`
   workflow (`.forgejo/workflows/scheduled-maintenance.yml`, Mondays 06:00 UTC) closes PRs
   whose head is already contained in the base and prunes fully-merged branches (never
