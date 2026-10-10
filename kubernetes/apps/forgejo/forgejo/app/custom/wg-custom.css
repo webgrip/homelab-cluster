@@ -141,6 +141,180 @@
   font-variant-numeric: tabular-nums;
 }
 
+.wg-run-select-cell {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px 4px 0;
+  cursor: pointer;
+}
+.wg-run-select-cell input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+.run-list > .flex-item[data-wg-selected] {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent);
+}
+.run-list > .flex-item[data-wg-busy] {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.run-list > .flex-item > .flex-item-trailing {
+  align-items: center;
+}
+.wg-run-action,
+.wg-run-quick,
+.wg-run-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 9px;
+  border: 1px solid var(--color-secondary);
+  border-radius: var(--border-radius);
+  background: var(--color-box-body);
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wg-run-action:hover:not(:disabled),
+.wg-run-quick:hover:not(:disabled),
+.wg-run-bar button:hover:not(:disabled) {
+  background: var(--color-hover);
+  border-color: var(--color-secondary-dark-2);
+}
+.wg-run-action:focus-visible,
+.wg-run-quick:focus-visible,
+.wg-run-bar button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+.wg-run-action:disabled,
+.wg-run-quick:disabled,
+.wg-run-bar button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.wg-run-action[data-wg-action="cancel"]:hover:not(:disabled) {
+  color: var(--color-red);
+  border-color: var(--color-red);
+}
+.wg-run-action {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.run-list > .flex-item:hover .wg-run-action,
+.run-list > .flex-item:focus-within .wg-run-action,
+.run-list > .flex-item[data-wg-selected] .wg-run-action,
+.run-list > .flex-item:has(> .flex-item-leading .octicon-meter) .wg-run-action[data-wg-action="cancel"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .wg-run-action {
+    opacity: 1;
+  }
+}
+.wg-run-list-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 4px 8px 11px;
+  font-size: 12px;
+  color: var(--color-text-light-2);
+}
+.wg-run-head-label {
+  margin-right: 2px;
+}
+.wg-run-quick {
+  padding: 4px 8px;
+}
+.wg-run-quick[data-wg-count]::after {
+  content: attr(data-wg-count);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-light-2);
+}
+.wg-run-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--color-secondary);
+  border-radius: calc(var(--border-radius) * 2);
+  background: var(--color-box-body);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+.wg-run-bar[hidden] {
+  display: none;
+}
+.wg-run-bar-count {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+.wg-run-bar [data-wg-bulk="cancel"]:not(:disabled) {
+  color: var(--color-red);
+}
+.wg-run-bar [data-wg-confirming] {
+  background: var(--color-red) !important;
+  border-color: var(--color-red) !important;
+  color: var(--color-white) !important;
+}
+.wg-run-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 20px;
+  z-index: 1001;
+  max-width: min(480px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border: 1px solid var(--color-secondary);
+  border-left: 3px solid var(--color-green);
+  border-radius: var(--border-radius);
+  background: var(--color-box-body);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.wg-run-toast[data-wg-error="1"] {
+  border-left-color: var(--color-red);
+}
+.wg-run-toast[data-wg-visible="1"] {
+  opacity: 1;
+  transform: none;
+}
+@media (max-width: 767px) {
+  .wg-run-bar {
+    bottom: 12px;
+  }
+  .wg-run-toast {
+    left: 16px;
+    right: 16px;
+    bottom: 76px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wg-run-action,
+  .wg-run-toast {
+    transition: none;
+  }
+}
+
 /* ====================== Actions: pipeline graph ====================== */
 
 .wg-pipeline {

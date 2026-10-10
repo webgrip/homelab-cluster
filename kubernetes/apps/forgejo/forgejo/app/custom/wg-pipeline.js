@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.5.4';
+  var WG_VERSION = '3.6.0';
   try {
     window.__wgPipeline = {
       version: WG_VERSION,
@@ -1103,10 +1103,18 @@
     });
   }
 
+  function loadRunListControls() {
+    if (!document.querySelector('.run-list')) return;
+    var s = document.createElement('script');
+    s.defer = true;
+    s.src = '/assets/wg/wg-run-list.js';
+    document.head.appendChild(s);
+  }
+
   function init() {
     try {
       var host = document.getElementById('repo-action-view');
-      if (!host) { initPR(); return; }
+      if (!host) { initPR(); loadRunListControls(); return; }
       var data = JSON.parse(host.getAttribute('data-initial-post-response') || 'null');
       var run = data && data.state && data.state.run;
       if (!run || !run.jobs || run.jobs.length < 2) return;

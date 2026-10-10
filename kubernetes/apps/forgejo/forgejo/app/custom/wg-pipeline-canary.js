@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.7.0';
+  var WG_VERSION = '3.8.0';
   try {
     window.__wgPipeline = {
       version: WG_VERSION,
@@ -1192,10 +1192,18 @@
     });
   }
 
+  function loadRunListControls() {
+    if (!document.querySelector('.run-list')) return;
+    var s = document.createElement('script');
+    s.defer = true;
+    s.src = '/assets/wg/wg-run-list.js';
+    document.head.appendChild(s);
+  }
+
   function init() {
     try {
       var host = document.getElementById('repo-action-view');
-      if (!host) { initPR(); return; }
+      if (!host) { initPR(); loadRunListControls(); return; }
       try { window.__wgPipeline.poll = installPollGovernor(host); } catch (e) { console.debug('[wg-pipeline]', e); }
       var data = JSON.parse(host.getAttribute('data-initial-post-response') || 'null');
       var run = data && data.state && data.state.run;
