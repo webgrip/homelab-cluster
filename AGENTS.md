@@ -61,9 +61,10 @@ roadmap file in git — see
   the Unfold application, repo `webgrip/unfold`, formerly `webgrip/glide`) and everything around it: LiteLLM inference plane, MCP gateway,
   agent identity/budgets, classifiers, factory observability. Merged into it: `De Vloer` (id 14,
   2026-09-29), `Dark Factory` (id 5), `Ploeg Test` and `Ploeg Bench` tickets (2026-09-30). Each
-  ticket's `repo/*` label names the repo its work lands in; ploegd routes by that label once Unfold
-  ADR-0038 ships, and until then routes the whole board to `webgrip/unfold`, so never assign an
-  Unfold team to a ticket whose `repo/*` is not `repo/unfold`
+  ticket's `repo/*` label names the repo its work lands in; ploegd routes by that label (ADR-0038,
+  live since 2026-10-10, f06c40cb): no label → `webgrip/unfold`, `repo/homelab-cluster` →
+  homelab-cluster; any other `repo/*` is refused with a comment, never misrouted. Registered
+  targets live under `config.targets` in `kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml`
 - Fixture boards, never backlogs: `Ploeg Test` (id 11, Unfold's test task source and the `unfold`
   team's route) and `Ploeg Bench` (id 49, benchmark trials, one fresh ticket per trial; id 48 is
   an archived empty duplicate). Pinned by id in the ploegd routing config
