@@ -1,9 +1,10 @@
 (function () {
   'use strict';
 
-  var WG_RUN_LIST_VERSION = '2.0.0';
+  var WG_RUN_LIST_VERSION = '4.0.0';
   var REQUEST_CONCURRENCY = 3;
   var CONFIRM_WINDOW_MS = 4000;
+  var CONFIRM_ARM_GUARD_MS = 400;
   var SUCCESS_TOAST_MS = 4000;
   var CANCELLABLE = { running: 1, waiting: 1, blocked: 1 };
   var RERUNNABLE = { success: 1, failure: 1, cancelled: 1, skipped: 1 };
@@ -20,18 +21,23 @@
   var ICON_RERUN = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/></svg>';
   var ICON_CLOSE = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>';
   var ACTIONS = {
-    cancel: { endpoint: 'cancel', verb: 'Stop', icon: ICON_STOP, eligible: CANCELLABLE, pastTense: 'Stopped' },
-    rerun: { endpoint: 'rerun', verb: 'Re-run', icon: ICON_RERUN, eligible: RERUNNABLE, pastTense: 'Re-running' },
+    cancel: { endpoint: 'cancel', verb: 'Stop', icon: ICON_STOP, eligible: CANCELLABLE, pastTense: 'Stopped', confirmsBulk: true },
+    rerun: { endpoint: 'rerun', verb: 'Re-run', icon: ICON_RERUN, eligible: RERUNNABLE, pastTense: 'Re-running', confirmsBulk: false },
   };
+  var ICON_CARET = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="m4.427 7.427 3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427Z"/></svg>';
   var QUICK = [
+    { key: 'all', label: 'All on this page', test: function () { return true; } },
     { key: 'active', label: 'Running', test: function (r) { return !!CANCELLABLE[r.status]; } },
     { key: 'failure', label: 'Failed', test: function (r) { return r.status === 'failure'; } },
     { key: 'cancelled', label: 'Cancelled', test: function (r) { return r.status === 'cancelled'; } },
+    { key: 'finished', label: 'All finished', test: function (r) { return !!RERUNNABLE[r.status]; } },
   ];
-  var OWN_NODES = '.wg-run-check, .wg-run-slot, .wg-run-tools';
+  var OWN_NODES = '.wg-run-check, .wg-run-slot, .wg-run-tools, .wg-row-error';
 
   var selected = new Set();
   var busy = new Set();
+  var failures = new Map();
+  var menuOpen = false;
   var lastToggledPath = null;
   var pendingConfirm = null;
   var focusKeyBeforeSwap = null;
@@ -102,11 +108,11 @@
       box = el('input', 'wg-checkbox');
       box.type = 'checkbox';
       box.setAttribute('data-wg-focus', 'select:' + row.path);
-      box.setAttribute('aria-label', 'Select run #' + runNumberOf(row.path));
       cell.appendChild(box);
       row.el.insertBefore(cell, row.el.firstChild);
     }
     box.dataset.wgPath = row.path;
+    setAttrIfChanged(box, 'aria-label', 'Select run #' + runNumberOf(row.path) + ', ' + row.status);
     setIfChanged(box, 'checked', selected.has(row.path));
   }
 
@@ -123,16 +129,15 @@
       return;
     }
     if (!button) {
-      button = el('button', 'wg-icon-button');
+      button = el('button', 'wg-row-action');
       button.type = 'button';
       slot.appendChild(button);
     }
     if (button.dataset.wgAction !== kind) {
       var label = ACTIONS[kind].verb + ' run #' + runNumberOf(row.path);
       button.dataset.wgAction = kind;
-      button.innerHTML = ACTIONS[kind].icon;
+      button.innerHTML = ACTIONS[kind].icon + '<span class="wg-row-action-label">' + ACTIONS[kind].verb + '</span>';
       button.setAttribute('aria-label', label);
-      button.setAttribute('data-tooltip-content', label);
       button.setAttribute('data-wg-focus', 'action:' + row.path);
     }
     button.dataset.wgPath = row.path;
@@ -145,36 +150,80 @@
     var tools = menu.querySelector(':scope > .wg-run-tools');
     if (!tools) {
       tools = el('div', 'wg-run-tools');
-      var allLabel = el('label', 'wg-run-check wg-run-check-all');
+      var allLabel = el('label', 'wg-run-check-all');
       var all = el('input', 'wg-checkbox wg-select-all');
       all.type = 'checkbox';
       all.setAttribute('data-wg-focus', 'select-all');
       all.setAttribute('aria-label', 'Select all runs on this page');
       allLabel.appendChild(all);
       tools.appendChild(allLabel);
+      var toggle = el('button', 'wg-select-menu-toggle', ICON_CARET);
+      toggle.type = 'button';
+      toggle.setAttribute('aria-haspopup', 'menu');
+      toggle.setAttribute('aria-label', 'Select by status');
+      toggle.setAttribute('data-wg-focus', 'select-menu');
+      tools.appendChild(toggle);
+      var popup = el('div', 'wg-select-menu');
+      popup.setAttribute('role', 'menu');
       QUICK.forEach(function (q) {
-        var chip = el('button', 'wg-chip');
-        chip.type = 'button';
-        chip.dataset.wgQuick = q.key;
-        chip.setAttribute('data-wg-focus', 'quick:' + q.key);
-        chip.innerHTML = '<span>' + q.label + '</span><span class="wg-chip-count"></span>';
-        tools.appendChild(chip);
+        var item = el('button', 'wg-select-menu-item', '<span>' + q.label + '</span><span class="wg-select-menu-count"></span>');
+        item.type = 'button';
+        item.setAttribute('role', 'menuitem');
+        item.dataset.wgQuick = q.key;
+        item.setAttribute('data-wg-focus', 'quick:' + q.key);
+        popup.appendChild(item);
       });
+      tools.appendChild(popup);
+      tools.appendChild(el('span', 'wg-run-tools-label'));
       menu.insertBefore(tools, menu.firstChild);
     }
     var all2 = tools.querySelector('.wg-select-all');
     var picked = rows.filter(function (r) { return selected.has(r.path); }).length;
     setIfChanged(all2, 'checked', rows.length > 0 && picked === rows.length);
     setIfChanged(all2, 'indeterminate', picked > 0 && picked < rows.length);
+    setAttrIfChanged(tools.querySelector('.wg-select-menu-toggle'), 'aria-expanded', menuOpen ? 'true' : 'false');
+    setIfChanged(tools.querySelector('.wg-select-menu'), 'hidden', !menuOpen);
     QUICK.forEach(function (q) {
-      var chip = tools.querySelector('[data-wg-quick="' + q.key + '"]');
-      var matching = rows.filter(q.test);
-      var active = matching.length > 0 && matching.length === picked && matching.every(function (r) { return selected.has(r.path); });
-      chip.querySelector('.wg-chip-count').textContent = String(matching.length);
-      setIfChanged(chip, 'hidden', matching.length === 0);
-      setAttrIfChanged(chip, 'aria-pressed', active ? 'true' : 'false');
-      setAttrIfChanged(chip, 'aria-label', 'Select ' + plural(matching.length, q.label.toLowerCase() + ' run'));
+      var item = tools.querySelector('[data-wg-quick="' + q.key + '"]');
+      var n = rows.filter(q.test).length;
+      var count = item.querySelector('.wg-select-menu-count');
+      if (count.textContent !== String(n)) count.textContent = String(n);
+      setIfChanged(item, 'disabled', n === 0);
     });
+    var label = tools.querySelector('.wg-run-tools-label');
+    var text = picked ? picked + ' of ' + plural(rows.length, 'run') + ' selected' : plural(rows.length, 'run');
+    if (label.textContent !== text) label.textContent = text;
+  }
+
+  function setMenuOpen(open) {
+    menuOpen = open;
+    decorate();
+    if (open) {
+      var first = document.querySelector('.wg-select-menu-item:not(:disabled)');
+      if (first) first.focus();
+    }
+  }
+
+  function ensureRowError(row) {
+    var main = row.el.querySelector(':scope > .flex-item-main');
+    if (!main) return;
+    var failure = failures.get(row.path);
+    if (failure && failure.status !== row.status) {
+      failures.delete(row.path);
+      failure = null;
+    }
+    var badge = main.querySelector(':scope > .wg-row-error');
+    if (!failure) {
+      if (badge) badge.remove();
+      return;
+    }
+    if (!badge) {
+      badge = el('div', 'wg-row-error');
+      badge.setAttribute('role', 'note');
+      main.appendChild(badge);
+    }
+    var text = 'Could not ' + ACTIONS[failure.kind].verb.toLowerCase() + ': ' + failure.message;
+    if (badge.textContent !== text) badge.textContent = text;
   }
 
   function pruneSelection(rows) {
@@ -189,6 +238,8 @@
     rows.forEach(function (row) {
       ensureRowCheckbox(row);
       ensureRowAction(row);
+      ensureRowError(row);
+      setAttrIfChanged(row.el, 'data-wg-failed', failures.has(row.path) ? '1' : null);
       setAttrIfChanged(row.el, 'data-wg-selected', selected.has(row.path) ? '1' : null);
       setAttrIfChanged(row.el, 'data-wg-busy', busy.has(row.path) ? '1' : null);
     });
@@ -316,24 +367,38 @@
   function summarize(kind, results) {
     var ok = results.filter(function (r) { return r.ok; });
     var failed = results.filter(function (r) { return !r.ok; });
-    var parts = [];
-    if (ok.length) parts.push(ACTIONS[kind].pastTense + ' ' + (ok.length === 1 ? '#' + runNumberOf(ok[0].path) : plural(ok.length, 'run')));
-    var reasons = {};
-    failed.forEach(function (r) { reasons[r.message] = (reasons[r.message] || []).concat('#' + runNumberOf(r.path)); });
-    Object.keys(reasons).forEach(function (m) {
-      parts.push('Could not ' + ACTIONS[kind].verb.toLowerCase() + ' ' + reasons[m].join(', ') + ': ' + m);
-    });
-    announce(parts.join('. '), failed.length > 0);
+    var verb = ACTIONS[kind].verb.toLowerCase();
+    if (!failed.length) {
+      announce(ACTIONS[kind].pastTense + ' ' + (ok.length === 1 ? 'run #' + runNumberOf(ok[0].path) : plural(ok.length, 'run')), false);
+      return;
+    }
+    if (results.length === 1) {
+      announce('Could not ' + verb + ' run #' + runNumberOf(failed[0].path) + ': ' + failed[0].message, true);
+      return;
+    }
+    var lead = ok.length ? ACTIONS[kind].pastTense + ' ' + ok.length + ' of ' + results.length + '. ' : '';
+    var who = failed.length === 1
+      ? 'Run #' + runNumberOf(failed[0].path) + ' could not ' + verb + "; it is marked below and still selected."
+      : plural(failed.length, 'run') + ' could not ' + verb + '; they are marked below and still selected.';
+    announce(lead + who, true);
   }
 
   function perform(kind, paths) {
     if (!paths.length) return Promise.resolve([]);
+    hideToast();
     paths.forEach(function (p) { busy.add(p); });
     queueDecorate();
     return inPool(paths, function (p) { return postRunAction(p, kind); }, REQUEST_CONCURRENCY).then(function (results) {
+      var statusByPath = {};
+      readRows().forEach(function (row) { statusByPath[row.path] = row.status; });
       results.forEach(function (r) {
         busy.delete(r.path);
-        if (r.ok) selected.delete(r.path);
+        if (r.ok) {
+          selected.delete(r.path);
+          failures.delete(r.path);
+        } else {
+          failures.set(r.path, { kind: kind, message: r.message, status: statusByPath[r.path] });
+        }
       });
       summarize(kind, results);
       queueDecorate();
@@ -359,10 +424,12 @@
     if (!button) return;
     var kind = button.dataset.wgBulk;
     var targets = eligibleSelection(readRows(), kind).map(function (r) { return r.path; });
-    if (targets.length > 1 && !(pendingConfirm && pendingConfirm.kind === kind)) {
+    if (pendingConfirm && pendingConfirm.kind === kind && Date.now() - pendingConfirm.armedAt < CONFIRM_ARM_GUARD_MS) return;
+    if (ACTIONS[kind].confirmsBulk && targets.length > 1 && !(pendingConfirm && pendingConfirm.kind === kind)) {
       clearConfirm();
       pendingConfirm = {
         kind: kind,
+        armedAt: Date.now(),
         timer: window.setTimeout(function () { pendingConfirm = null; queueDecorate(); }, CONFIRM_WINDOW_MS),
       };
       queueDecorate();
@@ -405,12 +472,17 @@
     if (box) { onRowCheckboxClick(box, e.shiftKey); return; }
     var all = e.target.closest('.wg-select-all');
     if (all) { selectWhere(function () { return all.checked; }); return; }
-    var chip = e.target.closest('.wg-chip');
-    if (chip) {
-      var quick = QUICK.filter(function (q) { return q.key === chip.dataset.wgQuick; })[0];
-      if (chip.getAttribute('aria-pressed') === 'true') clearSelection(); else selectWhere(quick.test);
+    if (e.target.closest('.wg-select-menu-toggle')) { setMenuOpen(!menuOpen); return; }
+    var item = e.target.closest('.wg-select-menu-item');
+    if (item) {
+      var quick = QUICK.filter(function (q) { return q.key === item.dataset.wgQuick; })[0];
+      menuOpen = false;
+      selectWhere(quick.test);
+      var toggle = document.querySelector('.wg-select-menu-toggle');
+      if (toggle) toggle.focus();
       return;
     }
+    if (menuOpen && !e.target.closest('.wg-select-menu')) { menuOpen = false; queueDecorate(); }
     var action = e.target.closest('.run-list .wg-run-slot button');
     if (action && action.getAttribute('aria-busy') !== 'true') {
       e.preventDefault();
@@ -419,8 +491,22 @@
   }
 
   function onKeydown(e) {
+    if (menuOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      var items = Array.prototype.slice.call(document.querySelectorAll('.wg-select-menu-item:not(:disabled)'));
+      var at = items.indexOf(document.activeElement);
+      var next = items[(at + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length];
+      if (next) { e.preventDefault(); next.focus(); }
+      return;
+    }
     if (e.key !== 'Escape') return;
     if (e.target.closest && e.target.closest('input[type="text"], textarea, [contenteditable="true"]')) return;
+    if (menuOpen) {
+      menuOpen = false;
+      decorate();
+      var toggle = document.querySelector('.wg-select-menu-toggle');
+      if (toggle) toggle.focus();
+      return;
+    }
     if (pendingConfirm) { clearConfirm(); queueDecorate(); return; }
     if (selected.size) clearSelection();
   }
