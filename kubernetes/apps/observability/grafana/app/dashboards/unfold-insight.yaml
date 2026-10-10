@@ -1,0 +1,650 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: unfold-insight
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: boards
+  json: |-
+    {
+      "annotations": {
+        "list": []
+      },
+      "description": "Needs-you insight from Unfold's product events (RFC-0001).",
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 100,
+          "panels": [],
+          "title": "Needs you (events level)",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "$${logsDatasource}"
+          },
+          "description": "Median seconds from the first needs_you.verdict_shown to the first needs_you.command_sent, per person and Work Item. Shown only when at least $${min_people} distinct people contributed; otherwise the panel is empty.",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "noValue": "Fewer than $${min_people} people"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 0,
+            "y": 1
+          },
+          "id": 1,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "$${logsDatasource}"
+              },
+              "editorMode": "code",
+              "expr": "$${sink:raw} | filter event_domain:=\"unfold.insight\" | filter event_name:in(\"needs_you.verdict_shown\",\"needs_you.command_sent\") | stats by (work_item.id, actor) min(at_ms) if (event_name:=\"needs_you.verdict_shown\") as shown, min(at_ms) if (event_name:=\"needs_you.command_sent\") as decided | filter shown:>0 decided:>0 | math (decided - shown) / 1000 as seconds | filter seconds:>=0 | stats median(seconds) as median_seconds, count_uniq(actor) as people | filter people:>=$${min_people} | fields median_seconds",
+              "queryType": "stats",
+              "refId": "A"
+            }
+          ],
+          "title": "Median time to resolve",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "$${logsDatasource}"
+          },
+          "description": "Links followed to the tracker, forge or pull request (link_out.opened) per Needs-you command sent. Shown only when at least $${min_people} distinct people contributed; otherwise the panel is empty.",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "noValue": "Fewer than $${min_people} people",
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 6,
+            "y": 1
+          },
+          "id": 2,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "$${logsDatasource}"
+              },
+              "editorMode": "code",
+              "expr": "$${sink:raw} | filter event_domain:=\"unfold.insight\" | filter event_name:in(\"link_out.opened\",\"needs_you.command_sent\") | stats count() if (event_name:=\"link_out.opened\") as tabs, count() if (event_name:=\"needs_you.command_sent\") as decisions, count_uniq(actor) as people | filter people:>=$${min_people} decisions:>0 | math tabs / decisions as tabs_per_decision | fields tabs_per_decision",
+              "queryType": "stats",
+              "refId": "A"
+            }
+          ],
+          "title": "Tabs per decision",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "$${logsDatasource}"
+          },
+          "description": "needs_you.undone as a share of needs_you.command_sent. Shown only when at least $${min_people} distinct people contributed; otherwise the panel is empty.",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "noValue": "Fewer than $${min_people} people",
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 12,
+            "y": 1
+          },
+          "id": 3,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "$${logsDatasource}"
+              },
+              "editorMode": "code",
+              "expr": "$${sink:raw} | filter event_domain:=\"unfold.insight\" | filter event_name:in(\"needs_you.undone\",\"needs_you.command_sent\") | stats count() if (event_name:=\"needs_you.undone\") as undone, count() if (event_name:=\"needs_you.command_sent\") as sent, count_uniq(actor) as people | filter people:>=$${min_people} sent:>0 | math undone / sent as undo_rate | fields undo_rate",
+              "queryType": "stats",
+              "refId": "A"
+            }
+          ],
+          "title": "Undo rate",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "$${logsDatasource}"
+          },
+          "description": "work_item.back_in_needs_you (a resolved item back within 7 days) as a share of needs_you.command_sent. Shown only when at least $${min_people} distinct people contributed; otherwise the panel is empty.",
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "noValue": "Fewer than $${min_people} people",
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 18,
+            "y": 1
+          },
+          "id": 4,
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value"
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "$${logsDatasource}"
+              },
+              "editorMode": "code",
+              "expr": "$${sink:raw} | filter event_domain:=\"unfold.insight\" | filter event_name:in(\"work_item.back_in_needs_you\",\"needs_you.command_sent\") | stats count() if (event_name:=\"work_item.back_in_needs_you\") as returned, count() if (event_name:=\"needs_you.command_sent\") as sent, count_uniq(actor) as people | filter people:>=$${min_people} sent:>0 | math returned / sent as regret_rate | fields regret_rate",
+              "queryType": "stats",
+              "refId": "A"
+            }
+          ],
+          "title": "Regret rate",
+          "type": "stat"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "$${logsDatasource}"
+          },
+          "description": "Every Needs-you path (A–F) with its verdicts, commands, how often the suggestion was taken, and undo and regret rates. Undo and return events carry no path, so they take the path of the verdict shown on their Work Item. Paths with fewer than $${min_people} people are left out.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              },
+              "noValue": "No group has $${min_people} or more people yet"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": ".*_rate$"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 7
+          },
+          "id": 5,
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "$${logsDatasource}"
+              },
+              "editorMode": "code",
+              "expr": "$${sink:raw} | filter event_domain:=\"unfold.insight\" | filter event_name:in(\"needs_you.verdict_shown\",\"needs_you.command_sent\",\"needs_you.undone\",\"work_item.back_in_needs_you\") | join by (work_item.id) ($${sink:raw} | filter event_domain:=\"unfold.insight\" | filter event_name:=\"needs_you.verdict_shown\" | stats by (work_item.id) max(path) as verdict_path) | stats by (verdict_path) count() if (event_name:=\"needs_you.verdict_shown\") as verdicts, count() if (event_name:=\"needs_you.command_sent\") as sent, count() if (event_name:=\"needs_you.command_sent\" suggested:=\"true\") as took_suggestion, count() if (event_name:=\"needs_you.undone\") as undone, count() if (event_name:=\"work_item.back_in_needs_you\") as returned, count_uniq(actor) as people | filter people:>=$${min_people} sent:>0 | math took_suggestion / sent as suggestion_rate, undone / sent as undo_rate, returned / sent as regret_rate | rename verdict_path as path | fields path, people, verdicts, sent, suggestion_rate, undo_rate, regret_rate | sort by (path)",
+              "queryType": "stats",
+              "refId": "A"
+            }
+          ],
+          "title": "Per path",
+          "transformations": [
+            {
+              "id": "labelsToFields",
+              "options": {
+                "mode": "columns",
+                "valueLabel": "__name__"
+              }
+            },
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "path": 0,
+                  "people": 1,
+                  "verdicts": 2,
+                  "sent": 3,
+                  "suggestion_rate": 4,
+                  "undo_rate": 5,
+                  "regret_rate": 6
+                },
+                "renameByName": {}
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "path",
+                    "desc": false
+                  }
+                ]
+              }
+            }
+          ],
+          "type": "table"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "$${logsDatasource}"
+          },
+          "description": "Rage clicks, dead clicks, U-turns and link-out bursts per screen. Groups with fewer than $${min_people} people are left out.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              },
+              "noValue": "No group has $${min_people} or more people yet"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": ".*_rate$"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 7
+          },
+          "id": 6,
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "$${logsDatasource}"
+              },
+              "editorMode": "code",
+              "expr": "$${sink:raw} | filter event_domain:=\"unfold.insight\" | filter event_name:in(\"ui.rage_click\",\"ui.dead_click\",\"ui.u_turn\",\"ui.link_out_burst\") | stats by (screen, event_name) count() as events, count_uniq(actor) as people | filter people:>=$${min_people} | fields screen, event_name, events, people | sort by (events desc)",
+              "queryType": "stats",
+              "refId": "A"
+            }
+          ],
+          "title": "Confusion signals per screen",
+          "transformations": [
+            {
+              "id": "labelsToFields",
+              "options": {
+                "mode": "columns",
+                "valueLabel": "__name__"
+              }
+            },
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "screen": 0,
+                  "event_name": 1,
+                  "events": 2,
+                  "people": 3
+                },
+                "renameByName": {}
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "events",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "type": "table"
+        },
+        {
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 15
+          },
+          "id": 101,
+          "panels": [],
+          "title": "Daily rollup (aggregate level)",
+          "type": "row"
+        },
+        {
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "$${logsDatasource}"
+          },
+          "description": "The product_event_daily rows the aggregate level sends once per finished UTC day: events per name and screen, and the most distinct people on any one day. Rows whose busiest day had fewer than $${min_people} people are left out.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "inspect": false
+              },
+              "noValue": "No group has $${min_people} or more people yet"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": ".*_rate$"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 16
+          },
+          "id": 7,
+          "options": {
+            "cellHeight": "sm",
+            "showHeader": true
+          },
+          "targets": [
+            {
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "$${logsDatasource}"
+              },
+              "editorMode": "code",
+              "expr": "$${sink:raw} | filter event_domain:=\"unfold.insight.daily\" | stats by (event_name, screen) sum(count) as events, count_uniq(day) as days, max(actors) as busiest_day_people | filter busiest_day_people:>=$${min_people} | fields event_name, screen, events, days, busiest_day_people | sort by (events desc)",
+              "queryType": "stats",
+              "refId": "A"
+            }
+          ],
+          "title": "Events per day",
+          "transformations": [
+            {
+              "id": "labelsToFields",
+              "options": {
+                "mode": "columns",
+                "valueLabel": "__name__"
+              }
+            },
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "indexByName": {
+                  "event_name": 0,
+                  "screen": 1,
+                  "events": 2,
+                  "days": 3,
+                  "busiest_day_people": 4
+                },
+                "renameByName": {}
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "events",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "type": "table"
+        },
+        {
+          "gridPos": {
+            "h": 4,
+            "w": 24,
+            "x": 0,
+            "y": 24
+          },
+          "id": 8,
+          "options": {
+            "content": "Queries are LogsQL against the VictoriaLogs datasource `logsDatasource` selects. `sink` normalises the fields Unfold's insight export writes: Alloy's `faro.receiver` stores them as `event_data_*` in a logfmt message, an OTLP collector as `attributes.*`. Stat panels and tables, not time series: each question has one current value. A cell is empty unless at least `min_people` distinct people contributed. VictoriaLogs keeps 30 days on the homelab, so the window is the last 30 days.",
+            "mode": "markdown"
+          },
+          "title": "About this dashboard",
+          "type": "text"
+        }
+      ],
+      "refresh": "1h",
+      "schemaVersion": 39,
+      "tags": [
+        "unfold",
+        "insight",
+        "needs-you"
+      ],
+      "templating": {
+        "list": [
+          {
+            "current": {
+              "selected": true,
+              "text": "VictoriaLogs",
+              "value": "victorialogs"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "label": "Logs datasource",
+            "multi": false,
+            "name": "logsDatasource",
+            "options": [],
+            "query": "victoriametrics-logs-datasource",
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "type": "datasource"
+          },
+          {
+            "current": {
+              "selected": true,
+              "text": "Faro (Alloy faro.receiver)",
+              "value": "\"app_name=unfold\" | unpack_logfmt | rename event_data_* as *"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "label": "Sink",
+            "multi": false,
+            "name": "sink",
+            "options": [
+              {
+                "selected": true,
+                "text": "Faro (Alloy faro.receiver)",
+                "value": "\"app_name=unfold\" | unpack_logfmt | rename event_data_* as *"
+              },
+              {
+                "selected": false,
+                "text": "OTLP",
+                "value": "service_name:=\"unfold\" | rename attributes.* as *"
+              }
+            ],
+            "query": "Faro (Alloy faro.receiver) : \"app_name=unfold\" | unpack_logfmt | rename event_data_* as *, OTLP : service_name:=\"unfold\" | rename attributes.* as *",
+            "skipUrlSync": false,
+            "type": "custom"
+          },
+          {
+            "current": {
+              "text": "1",
+              "value": "1"
+            },
+            "description": "The fewest distinct people a cell needs before it is shown. 1 on the owner's single-user instance; the Unfold template ships 5.",
+            "hide": 2,
+            "name": "min_people",
+            "query": "1",
+            "skipUrlSync": false,
+            "type": "constant"
+          }
+        ]
+      },
+      "time": {
+        "from": "now-30d",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "utc",
+      "title": "Unfold · Needs-you insight",
+      "uid": "unfold-insight",
+      "version": 2,
+      "weekStart": ""
+    }
