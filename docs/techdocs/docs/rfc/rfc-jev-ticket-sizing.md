@@ -352,8 +352,9 @@ Tracked in [VIK-1411](https://vikunja.webgrip.dev/tasks/1411).
 and the owner wants no new vendor accounts, so classifier work runs on in-cluster Laya
 ([spike](spike-laya-classifier.md)). D4: the gates below stand, including the kappa clause.
 Owner exception to R1 for `theme/*` only: the theme suggester may apply the label above a
-threshold tuned in shadow mode ([runbook](../runbooks/theme-suggester.md)). Sizing stays
-parked until Laya is fine-tuned on enough labels or Jev is revisited.
+threshold tuned in shadow mode. Sizing stays parked until Laya is fine-tuned on enough labels or
+Jev is revisited. **2026-10-10:** Laya and the theme suggester were removed from the cluster to
+free worker capacity for agent workspaces; restoring them is a revert of that commit.
 
 1. **D1 Access path.** Direct TypeSafe account (signups paused, wait), OpenRouter, or the Vercel
    AI Gateway. All three are US SaaS; the resellers add a second processor. Recommendation: wait
