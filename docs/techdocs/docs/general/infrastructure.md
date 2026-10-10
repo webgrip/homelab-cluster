@@ -16,7 +16,7 @@ Last verified: **2026-08-02**.
 | `soyo-1` | `10.0.0.20` | Intel N150 · 4C/4T | 12 GB | 512 GB WUXIN G15 SSD | `soyo` / `standard` / `low` | no |
 | `soyo-2` | `10.0.0.21` | Intel N150 · 4C/4T | 12 GB | 512 GB WUXIN G15 SSD | `soyo` / `standard` / `low` | no |
 | `soyo-3` | `10.0.0.22` | Intel N150 · 4C/4T | 12 GB | 512 GB WUXIN G15 SSD | `soyo` / `standard` / `low` | no |
-| `fringe-workstation` | `10.0.0.30` | i7-4770 · 4C/8T · 3.4 GHz | 16 GB | 256 GB Micron SSD + 1 TB Seagate HDD | `worker` / `high` / `standard` | yes |
+| `fringe-workstation` | `10.0.0.30` | i7-4770 · 4C/8T · 3.4 GHz | 16 GB | 256 GB Micron SSD + 1 TB Seagate HDD | `worker` / `high` / `standard` | no |
 | `worker-1` | `10.0.0.31` | i5-4670K · 4C · 3.4 GHz | 24 GB | 1 TB Samsung 870 SSD | `worker` / `standard` / `high` | yes |
 | `worker-2` | `10.0.0.32` | i7-6700K · 4C/8T · 4.0 GHz | 16 GB | **2 TB Samsung 990 EVO Plus NVMe** + 250 GB 850 + 1 TB 860 SSD + 1 TB Seagate HDD + 2 TB Samsung HDD | `worker` / `high` / `standard` | yes |
 
@@ -62,7 +62,7 @@ Placement is label-driven, never hostname-pinned ([ADR-0001](../adr/adr-0001-nod
 
 | Tier | Where | Holds |
 |---|---|---|
-| **Longhorn** (in-cluster block) | worker-1, worker-2, fringe | All PVCs. Replicas need ≥2 schedulable storage nodes. |
+| **Longhorn** (in-cluster block) | worker-1, worker-2 (fringe left storage on 2026-10-04, ADR-0008) | All PVCs. Replicas need ≥2 schedulable storage nodes. |
 | **Garage S3 — in-cluster** (ns `garage`) | `garage-s3.garage.svc:3900` | Harbor registry blobs **only** ([ADR-0018](../adr/adr-0018-registry-blob-storage-garage-s3.md)) |
 | **Garage S3 — off-site** | `https://s3-offsite.webgrip.dev` | CNPG WAL + base backups, Longhorn backups, OpenBao snapshots, invoiceninja dumps. Forgejo's objects moved to `forgejo-data` ([ADR-0065](../adr/adr-0065-forgejo-objects-on-its-own-volume.md)) |
 

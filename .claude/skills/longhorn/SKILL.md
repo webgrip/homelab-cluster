@@ -10,7 +10,7 @@ allowed-tools: Bash(mise exec -- kubectl get volumes.longhorn.io*), Bash(mise ex
 Longhorn 1.11.x, Helm-managed at `kubernetes/apps/longhorn-system/longhorn/`. The soyo control-planes are
 RAM-tight and share one SSD with etcd, so Longhorn churn there has repeatedly destabilised the cluster —
 the strategic direction ([ADR-0008](docs/techdocs/docs/adr/adr-0008-confine-longhorn-to-workers.md))
-is **replicas only on the workers (worker-1 + fringe); soyos hold zero**.
+is **replicas only on worker-1 + worker-2; fringe and the soyos hold zero**.
 
 ## StorageClasses (ADR-0010 consolidated set — canonical)
 

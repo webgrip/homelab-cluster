@@ -66,7 +66,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
-| [0001](adr-0001-node-taxonomy.md) | Capability-based node taxonomy; retire fringe/nodegroup | accepted | 2026-10-04 |
+| [0001](adr-0001-node-taxonomy.md) | Capability-based node taxonomy; retire fringe/nodegroup | accepted | 2026-10-11 |
 | [0002](adr-0002-application-workload-placement.md) | Pin application workloads to the worker pool (hard) | accepted | 2026-10-04 |
 | [0003](adr-0003-bootstrap-task-pattern.md) | Bootstrap / one-shot tasks — pick the lowest trigger tier | accepted | 2026-06-14 |
 | [0062](adr-0062-talos-configs-from-plain-talosctl.md) | Talos machine configs come from plain talosctl gen config, driven by a node inventory | accepted | 2026-10-04 |
