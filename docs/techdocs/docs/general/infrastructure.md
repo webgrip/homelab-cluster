@@ -23,6 +23,8 @@ Last verified: **2026-08-02**.
 **Totals:** 6 nodes · 24 cores · 96 GB RAM · Talos v1.13.4 (worker-2: v1.13.7) · Kubernetes v1.36.1
 
 The three `soyo` boxes are the control plane and also schedule workloads.
+
+The workers have pet names, carried as `node.webgrip.io/pet` and shown in the Cluster Operations Overview dashboard: `worker-1` is **hamster** (small CPU, big cheeks full of databases), `worker-2` is **magpie** (hosts the metrics and logs stack, so it remembers everyone's business) and `fringe-workstation` is **bandit** (lives at the edge and keeps Authentik's secrets). The label is for people only; never select on it. Placement uses the capability labels of [ADR-0001](../adr/adr-0001-node-taxonomy.md).
 `worker-2` is the reclaimed Proxmox host, wiped and rejoined 2026-08-02.
 
 ### Off-site
