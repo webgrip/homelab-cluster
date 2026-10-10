@@ -60,7 +60,7 @@ spec:
       # stability-days forever.
       repository: harbor.webgrip.dev/ghcr/ploeg-hq/ploegd
       # renovate: datasource=docker depName=harbor.webgrip.dev/ghcr/ploeg-hq/ploegd
-      tag: "0.2.0-rc.13@sha256:57d836f5716d0e985f5641429714846b568032188d906018ac13d2ae0d025e9a"
+      tag: "0.2.0-rc.14@sha256:205edfdcd360add772da7fff64867d02f08cec911dc3a8c5a8aaab7d289395b1"
     nodeSelector:
       node.webgrip.io/pool: worker
     database:
@@ -295,6 +295,35 @@ spec:
             models:
               - fireworks-deepseek-v4p1-flash
             ttl: 10m
+          # Unfold ADR-0031 / Ploeg ADR-0082: an Ask is one read-only call about
+          # a Work Item, paid from the Team's monthly Ask Allowance (default
+          # US$2.00, US$0.02 per Ask). GLM 5.3 Flash is the cheapest model the
+          # Teams already use (about US$0.001 per Ask). A Team without an ask
+          # policy cannot ask.
+          - team: unfold
+            role: ask
+            budgetUsd: 0.02
+            models:
+              - fireworks-glm-5p3-flash
+            ttl: 2m
+          - team: bronze
+            role: ask
+            budgetUsd: 0.02
+            models:
+              - fireworks-glm-5p3-flash
+            ttl: 2m
+          - team: silver
+            role: ask
+            budgetUsd: 0.02
+            models:
+              - fireworks-glm-5p3-flash
+            ttl: 2m
+          - team: copper
+            role: ask
+            budgetUsd: 0.02
+            models:
+              - fireworks-glm-5p3-flash
+            ttl: 2m
       # ADR-0053: the agent plane is daemonless — dind:false is the ESTATE
       # default here, overriding the chart's own dind:true. This line is
       # load-bearing: bronze's builder role and silver carry no harness block
