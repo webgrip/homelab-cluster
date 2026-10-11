@@ -35,6 +35,11 @@ spec:
                         env:
                           - name: PLOEG_FORGEJO_URL
                             value: https://forgejo.${SECRET_DOMAIN}
+                          # Ploeg ADR-0084: team pewter's runner exchanges its
+                          # session token for the Run's push credential and
+                          # reports the session's end on these routes.
+                          - name: PLOEG_CLAUDE_ENVIRONMENTS
+                            value: "true"
   values:
     imagePullSecrets:
       - name: harbor-pull
@@ -48,7 +53,7 @@ spec:
     # both amd64 and arm64 nodes still resolve their own manifest.
     image:
       repository: harbor.webgrip.dev/ghcr/ploeg-hq/ploegd
-      tag: "0.2.0-rc.16@sha256:6e386426bfba99b211ee32ab5394fb8cba246b3ef3f725cca6ec54f5f765e4e2"
+      tag: "0.2.0-rc.17@sha256:97fbc29e9ca58c361606787619dfa6ab541430cc27ad04ae39c1f8f4bfdcf33b"
     nodeSelector:
       node.webgrip.io/pool: worker
     database:
@@ -74,6 +79,7 @@ spec:
             - bronze
             - silver
             - copper
+            - pewter
           execute: true
           maxBudgetUsd: 0.25
           tokenSecret:
@@ -243,6 +249,11 @@ spec:
         copper:
           assignees:
             - copper
+        # pewter: Ploeg ADR-0084. Runs execute as Claude Code sessions on the
+        # self-hosted runner (claude-runner/), paid by the WebGrip Team plan.
+        pewter:
+          assignees:
+            - pewter
         unfold:
           assignees: []
     # Tracker write-backs: how a closed Shift reaches a person with the pull
@@ -577,3 +588,25 @@ spec:
               - "/bin/cat"
               - "{taskspec}"
             dind: false
+        # pewter: Ploeg ADR-0084. The worker only logs in as a WebGrip Team
+        # member, dispatches the Run to the self-hosted environment
+        # `unfold-spike` and waits; the session runs on claude-runner and is
+        # paid by the Team plan. The model and budget only scope the gateway
+        # key every Run still mints (spend stays 0) until the plan-paid cost
+        # status exists. No plan: one writer per Work Item.
+        - name: pewter
+          model: litellm_proxy/fireworks-deepseek-v4p1-flash
+          budget: "0.10"
+          repoOwner: webgrip
+          repoName: erfbeeld
+          baseBranch: main
+          maxReplicaCount: 1
+          harness:
+            name: claude-environment
+            # renovate: datasource=docker depName=harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner
+            image: harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner:0.2.0-rc.17@sha256:a0941b905cadf4eba88a363f1152106f94d80f81be28cbcdeb365c6b6ade61b3
+            dind: false
+            timeout: 100m
+            claudeEnvironment:
+              environmentId: ccpool_017SvGpGv1jLfduyvyWMRh3F
+              loginVolume: pewter-claude-login
