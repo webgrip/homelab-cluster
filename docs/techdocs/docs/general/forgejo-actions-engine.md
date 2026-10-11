@@ -9,11 +9,12 @@ GitHub→Forgejo repo cutover is the `forgejo-leading` skill.)
 The runner label is **`docker`** (the only label reaching the LAN-only Harbor). Jobs with direct
 steps must pin `runs-on: docker`; orchestrator jobs that only `uses:` a reusable omit it (see below).
 
-There are two runner sizes. `docker` reserves 3 GiB and keeps one warm runner. `docker-large` also
+There are two runner sizes. `docker` reserves 2 GiB and keeps one warm runner. `docker-large` also
 reserves 3 GiB, starts from zero and runs at most two at once. It exists for the release signing and
 CVE-scan jobs, whose syft and grype runs spike to 4–6 GiB and were killed by node memory pressure in
-August while runners packed tightly; every other job peaked below 1.6 GiB over 30 days (measured
-2026-10-10). Once those jobs run on `docker-large`, `docker` can reserve less. Both register through
+August while runners packed tightly at 2 GiB each; every other job peaked below 1.6 GiB over 30
+days (measured 2026-10-10), so `docker` went back to 2 GiB once those two jobs moved
+(webgrip/infrastructure#146). Both register through
 the same provisioner and ScaledJob in `kubernetes/apps/forgejo/forgejo-runner/app/base/`; `large/`
 renames and resizes them.
 
