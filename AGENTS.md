@@ -29,7 +29,7 @@ all agents, not just Claude; `CLAUDE.md` is a symlink to this file.
 
 - **Task recipes → skills** (auto-load when relevant; full set in `.claude/skills/`): `add-app`, `external-secrets`, `cnpg-database`, `talos`, `longhorn`, `victoriametrics`, `workload-placement`, `network-policy`, and more — trust the skill descriptions over this list.
 - **Debug/health → `cluster-health` subagent**; trigger Renovate → `renovate-trigger` subagent.
-- **Live cluster (read-only) → MCP** (in-cluster, Flux-managed, connect over HTTP; committed `.mcp.json`): `grafana` (PromQL→VictoriaMetrics; its Loki tools only reach grace-period history; traces are VictoriaTraces via the Jaeger datasource, not the MCP Tempo tools) + `victorialogs` (LogsQL log queries) + `kubernetes` (read-only `view` role) + `opencost` (cost/efficiency) + `vikunja` (task CRUD — the one **write-capable** MCP; **the roadmap board lives there**, ADR-0043; `vikunja-product-owner` skill). LAN-only; see `.claude/README.md`.
+- **Live cluster (read-only) → MCP** (in-cluster, Flux-managed, connect over HTTP; committed `.mcp.json`): `grafana` (PromQL→VictoriaMetrics; its Loki tools only reach grace-period history; traces are VictoriaTraces via the Jaeger datasource, not the MCP Tempo tools) + `victorialogs` (LogsQL log queries) + `kubernetes` (read-only `view` role) + `opencost` (cost/efficiency) + `vikunja` (task CRUD — the one **write-capable** MCP; **the roadmap board lives there**, ADR-0043; `product-owner` skill). LAN-only; see `.claude/README.md`.
 - **Safety is enforced** by hooks + permissions in `.claude/` (block SOPS edits, plaintext secrets, destructive cluster commands; validate manifests on edit).
 - **Deep docs → `docs/techdocs/docs/`** (+ `runbooks/`). Endpoints: API VIP `10.0.0.25`, envoy-internal `10.0.0.27` (LAN), envoy-external `10.0.0.28` (public), k8s-gateway `10.0.0.26`, Garage S3 `10.0.0.110:3900`. Hostnames template as `<app>.${SECRET_DOMAIN}` (literal is SOPS-encrypted; docs disagree — don't hardcode it).
 
@@ -44,13 +44,13 @@ roadmap file in git — see
   `ready` label = meets the Definition of Ready (actionable as-is); `needs-refinement` = do not
   start, refine first.
 - **Everything board-related** — conventions, Definition-of-Ready refinement, prioritization/top-up,
-  and the agent claim/completion protocols — is the `vikunja-product-owner` skill (from
+  and the agent claim/completion protocols — is the `product-owner` skill (from
   [`webgrip/ai-skills`](https://forgejo.webgrip.dev/webgrip/ai-skills), installed user-level via
   `npx skills add`). It reads the contract below.
 - **Completing**: `task_complete` + a closing comment citing the commit/evidence — never claim
   done without the verification the ticket's own Verification section names.
 
-## Board contract (vikunja-product-owner)
+## Board contract (product-owner)
 
 - MCP server: `vikunja` · project: `Homelab Roadmap` (id 3) · instance list cap
   (maxitemsperpage): 250
@@ -119,7 +119,7 @@ roadmap file in git — see
   `Pick-up queue` — an ordered list (`VIK-<id> — title`), **top = picked up first**, covering
   every `do-next` holder plus a next-up tail. Agents take the topmost eligible entry; the PO
   inserts new tickets where they fit and drops entries on close. The MCP has no position API
-  (skill's reference.md), so raw Vikunja drag-order alone is NOT the queue — but the **Vellum
+  (the product-owner skill's adapters/vikunja.md), so raw Vikunja drag-order alone is NOT the queue — but the **Vellum
   board's Stages view keeps them in sync**: dragging in its To Do column rewrites the
   description queue (marker: `refreshed <date> (board)`), so PO ordering happens there or via
   the MCP round-trip, never in the stock Vikunja UI
