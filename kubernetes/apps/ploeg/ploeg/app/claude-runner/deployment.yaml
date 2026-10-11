@@ -1,0 +1,96 @@
+---
+# Ploeg ADR-0084: the self-hosted Claude runner that executes team pewter's
+# Runs as Claude Code sessions, paid by the WebGrip Team plan. Anthropic
+# queues the sessions; this pod claims them, clones through the public
+# Forgejo host, and its post-session hook pushes to the Run's Shift branch
+# with a credential ploegd mints for that Run alone, opens the pull request
+# and reports back to ploegd.
+#
+# --capacity 1: one session per pod, so nothing a session leaves behind is
+# seen by the next. --drain-grace-sec keeps the pod polling for its locked
+# owner for ten minutes after a session instead of exiting into a restart
+# back-off. --git-host-rewrite: the worker's clone names the in-cluster
+# Forgejo Service, which serves no HTTPS; the runner clones through the
+# public host instead.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-runner
+  labels:
+    app.kubernetes.io/name: claude-runner
+    app.kubernetes.io/part-of: ploeg
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: claude-runner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: claude-runner
+        app.kubernetes.io/part-of: ploeg
+    spec:
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      automountServiceAccountToken: false
+      imagePullSecrets:
+        - name: harbor-pull
+      terminationGracePeriodSeconds: 90
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: runner
+          # renovate: datasource=docker depName=harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner
+          image: harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner:PLOEG_RELEASE_WITH_PR_109
+          args:
+            - self-hosted-runner
+            - --base-dir=/home/runner/work
+            - --hooks-dir=/opt/ploeg/claude-runner/hooks
+            - --capacity=1
+            - --release-idle-session-min=1
+            - --kill-session-after-min=90
+            - --drain-grace-sec=600
+            - --remove-session-state
+            - --git-host-rewrite=forgejo-http.forgejo.svc.cluster.local:3000=forgejo.${SECRET_DOMAIN}
+          env:
+            - name: PLOEG_URL
+              value: http://ploeg.ploeg.svc.cluster.local:8080
+            - name: DISABLE_ERROR_REPORTING
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: claude-runner-environment
+          ports:
+            - name: health
+              containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /healthz, port: health}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: health}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              memory: 4Gi
+          volumeMounts:
+            - name: work
+              mountPath: /home/runner/work
+      volumes:
+        - name: work
+          emptyDir:
+            sizeLimit: 10Gi

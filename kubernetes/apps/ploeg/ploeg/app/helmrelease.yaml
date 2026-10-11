@@ -35,6 +35,11 @@ spec:
                         env:
                           - name: PLOEG_FORGEJO_URL
                             value: https://forgejo.${SECRET_DOMAIN}
+                          # Ploeg ADR-0084: team pewter's runner exchanges its
+                          # session token for the Run's push credential and
+                          # reports the session's end on these routes.
+                          - name: PLOEG_CLAUDE_ENVIRONMENTS
+                            value: "true"
   values:
     imagePullSecrets:
       - name: harbor-pull
@@ -74,6 +79,7 @@ spec:
             - bronze
             - silver
             - copper
+            - pewter
           execute: true
           maxBudgetUsd: 0.25
           tokenSecret:
@@ -243,6 +249,11 @@ spec:
         copper:
           assignees:
             - copper
+        # pewter: Ploeg ADR-0084. Runs execute as Claude Code sessions on the
+        # self-hosted runner (claude-runner/), paid by the WebGrip Team plan.
+        pewter:
+          assignees:
+            - pewter
         unfold:
           assignees: []
     # Tracker write-backs: how a closed Shift reaches a person with the pull
@@ -577,3 +588,25 @@ spec:
               - "/bin/cat"
               - "{taskspec}"
             dind: false
+        # pewter: Ploeg ADR-0084. The worker only logs in as a WebGrip Team
+        # member, dispatches the Run to the self-hosted environment
+        # `unfold-spike` and waits; the session runs on claude-runner and is
+        # paid by the Team plan. The model and budget only scope the gateway
+        # key every Run still mints (spend stays 0) until the plan-paid cost
+        # status exists. No plan: one writer per Work Item.
+        - name: pewter
+          model: litellm_proxy/fireworks-deepseek-v4p1-flash
+          budget: "0.10"
+          repoOwner: webgrip
+          repoName: erfbeeld
+          baseBranch: main
+          maxReplicaCount: 1
+          harness:
+            name: claude-environment
+            # renovate: datasource=docker depName=harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner
+            image: harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner:PLOEG_RELEASE_WITH_PR_109
+            dind: false
+            timeout: 100m
+            claudeEnvironment:
+              environmentId: ccpool_017SvGpGv1jLfduyvyWMRh3F
+              loginSecret: pewter-claude-login
