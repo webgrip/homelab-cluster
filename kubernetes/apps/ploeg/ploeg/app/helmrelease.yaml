@@ -90,6 +90,25 @@ spec:
           tokenSecret:
             name: ploeg-mcp-reader
             key: token
+        # Unfold's trusted verifier: records delivery candidates, receipts and
+        # publication status for the unfold Team, never executes or approves.
+        - name: unfold-verifier
+          teams:
+            - unfold
+          execute: false
+          verify: true
+          tokenSecret:
+            name: unfold-verifier
+            key: token
+      # One policy per delivery repository. policySha256 is Unfold's
+      # policyDigest of the matching delivery.policies entry as the unfold
+      # chart renders it (Helm sorts object keys); change both together.
+      deliveryPolicies:
+        - repositoryId: twente-dev
+          policySha256: a7d1422f1c3263b2e1712047c4a48b5a27cfc2e0f0eab5b2e52721d1ba4054cc
+          verifierId: unfold-kubernetes-v1
+          minTests: 3
+          publicationEnabled: true
     # Routing and roster as a FILE (mounted at /etc/ploeg/ploeg.yaml), not the
     # PLOEG_TARGET_MAP / PLOEG_TEAM_MAP / PLOEG_TEAM_PLANS env-var DSLs.
     #

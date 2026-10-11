@@ -37,6 +37,72 @@ spec:
           secretKeyRef:
             name: unfold-reports-token
             key: UNFOLD_REPORTS_FORGEJO_TOKEN
+      - name: UNFOLD_VERIFIER_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: unfold-verifier
+            key: token
+    # Governed delivery (ADR 0019/0040): a completed twente.dev session is
+    # canonicalized against the approved base, its checks run in kata pods in
+    # unfold-verifier, and Ploeg records the receipt under the policy whose
+    # digest ploeg's deliveryPolicies pins. The inputs image holds the approved
+    # base bundle and check.sh; a new base means a new image, policy and digest.
+    # Accept on a verified candidate pushes it to its own branch and opens one
+    # pull request as the Forgejo user unfold-publisher (write on twente.dev
+    # only); its token is the OpenBao entry ploeg/unfold-publisher.
+    delivery:
+      enabled: true
+      verifierTokenEnv: UNFOLD_VERIFIER_TOKEN
+      inputs:
+        volume:
+          image:
+            reference: harbor.webgrip.dev/webgrip/unfold-delivery-inputs:twente-bd84462@sha256:fd46a9406e389f33a028481a6e646002869f36d8514bd562f8aa415408263121
+            pullPolicy: IfNotPresent
+      policies:
+        - repositoryId: twente-dev
+          approvedBaseSha: bd84462dd82bb3144aa44b20d0108ea541ed9e63
+          approvedBaseBundle: /var/lib/unfold-delivery/twente/base.bundle
+          image: harbor.webgrip.dev/dockerhub/library/node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+          directory: /var/lib/unfold-delivery/twente/policy
+          files:
+            check.sh: 8f3eea62e6fa068e255aa959ae656e4bba16fd5c091f76a3c604cd835daf8fc7
+          protectedPaths:
+            - src/lib/ics.test.ts
+            - src/lib/tokens.test.ts
+            - src/lib/mail/sources.test.ts
+          checks:
+            - id: ics
+              argv:
+                - /bin/sh
+                - /policy/check.sh
+                - src/lib/ics.test.ts
+              stdout: "ok\n"
+              exitCode: 0
+            - id: tokens
+              argv:
+                - /bin/sh
+                - /policy/check.sh
+                - src/lib/tokens.test.ts
+              stdout: "ok\n"
+              exitCode: 0
+            - id: mail-sources
+              argv:
+                - /bin/sh
+                - /policy/check.sh
+                - src/lib/mail/sources.test.ts
+              stdout: "ok\n"
+              exitCode: 0
+          timeoutMs: 60000
+      publisher:
+        enabled: true
+        apiUrl: https://forgejo.${SECRET_DOMAIN}/api/v1
+        username: unfold-publisher
+        existingSecret: unfold-publisher
+        secretKey: token
+      verifier:
+        namespace: unfold-verifier
+        runtimeClassName: kata
+        image: harbor.webgrip.dev/dockerhub/library/busybox:1.37.0-musl@sha256:5cec3fc171c87218698e85a52af7087de727372aae264a787b8112901a5b0092
     storage:
       className: longhorn
       size: 4Gi
