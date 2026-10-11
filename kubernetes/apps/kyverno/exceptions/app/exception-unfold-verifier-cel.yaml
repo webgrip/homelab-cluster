@@ -1,0 +1,56 @@
+---
+# Unfold's Kubernetes delivery verifier (Unfold ADR 0019) runs each check of a
+# completed candidate in its own run-to-completion kata Pod in unfold-verifier.
+# The Pod has no endpoint to probe and no owner controller, so
+# require-pod-probes-audit would deny every verification. The verifier drives
+# the Pod through the API server: it attaches to the init container's stdin to
+# stream the candidate tree in, and execs the network probe and each check, so
+# its Role needs pods/attach and pods/exec. That is what keeps the Pod's network
+# fully closed: nothing reaches it over the pod network.
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-unfold-verifier-probes-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Unfold verifier check Pods are bare, run-to-completion kata Pods with
+      nothing to probe. Waived only for Pods in unfold-verifier labelled as the
+      verifier with its deny-all network label.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: require-pod-probes-audit
+  matchConditions:
+    - name: unfold-verifier-check-pods
+      expression: >-
+        object.kind == 'Pod' &&
+        object.metadata.namespace == 'unfold-verifier' &&
+        object.metadata.?labels[?'app.kubernetes.io/name'].orValue('') == 'unfold-verifier' &&
+        object.metadata.?labels[?'dev.webgrip.unfold/network'].orValue('') == 'none'
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-unfold-verifier-exec-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      The Unfold verifier Role attaches to its check Pods' init container to
+      stream inputs and execs each check, so it needs pods/attach and
+      pods/exec. Waives restrict-pod-exec-verbs for that one Role in
+      unfold-verifier, bound only to the unfold workbench ServiceAccount.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: restrict-pod-exec-verbs
+  matchConditions:
+    - name: unfold-verifier-role
+      expression: >-
+        object.kind == 'Role' &&
+        object.metadata.namespace == 'unfold-verifier' &&
+        object.metadata.name == 'unfold-verifier'
