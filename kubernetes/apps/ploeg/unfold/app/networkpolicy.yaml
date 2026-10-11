@@ -55,3 +55,26 @@ spec:
       ports:
         - protocol: TCP
           port: 12347
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: unfold-run-logs
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: unfold
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vlsingle
+              app.kubernetes.io/instance: victorialogs
+      ports:
+        - protocol: TCP
+          port: 9428
