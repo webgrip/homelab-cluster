@@ -32,6 +32,11 @@ spec:
         value: http://alloy-gateway.observability.svc.cluster.local:12347/collect
       - name: UNFOLD_INSIGHT_EXPORT_LEVEL
         value: events
+      - name: UNFOLD_REPORTS_FORGEJO_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: unfold-reports-token
+            key: UNFOLD_REPORTS_FORGEJO_TOKEN
     storage:
       className: longhorn
       size: 4Gi
@@ -172,7 +177,17 @@ spec:
             - git
             - diff
             - --check
+      reports:
+        source: unfold-reports
       taskSources:
+        - id: unfold-reports
+          name: Unfold problem reports
+          provider: forgejo
+          baseUrl: https://forgejo.${SECRET_DOMAIN}/api/v1
+          project: webgrip/unfold
+          repositoryId: ploeg
+          tokenEnv: UNFOLD_REPORTS_FORGEJO_TOKEN
+          executionOwner: interactive
         - id: ploeg-test
           name: Ploeg Test
           provider: vikunja
