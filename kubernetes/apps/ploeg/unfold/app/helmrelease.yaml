@@ -47,7 +47,9 @@ spec:
     # unfold-verifier, and Ploeg records the receipt under the policy whose
     # digest ploeg's deliveryPolicies pins. The inputs image holds the approved
     # base bundle and check.sh; a new base means a new image, policy and digest.
-    # The publisher stays off until the unfold-publisher token is in OpenBao.
+    # Accept on a verified candidate pushes it to its own branch and opens one
+    # pull request as the Forgejo user unfold-publisher (write on twente.dev
+    # only); its token is the OpenBao entry ploeg/unfold-publisher.
     delivery:
       enabled: true
       verifierTokenEnv: UNFOLD_VERIFIER_TOKEN
@@ -91,6 +93,12 @@ spec:
               stdout: "ok\n"
               exitCode: 0
           timeoutMs: 60000
+      publisher:
+        enabled: true
+        apiUrl: https://forgejo.${SECRET_DOMAIN}/api/v1
+        username: unfold-publisher
+        existingSecret: unfold-publisher
+        secretKey: token
       verifier:
         namespace: unfold-verifier
         runtimeClassName: kata
