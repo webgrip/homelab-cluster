@@ -1,0 +1,80 @@
+---
+version: 1
+protected_branches:
+  - main
+groups:
+  admins:
+    - act-admin
+    - act-ryan
+  ploeg-run:
+    - act-ploeg-run
+  ploeg-review:
+    - act-ploeg-review
+  explorers:
+    - act-explorer
+rules:
+  - id: admins-everything
+    allow:
+      actors: {group: admins}
+      actions:
+        - read
+        - export
+        - change
+      branch_scope: any
+  - id: admins-manage-and-merge-branches
+    allow:
+      actors: {group: admins}
+      actions:
+        - branch_create
+        - branch_delete
+        - branch_merge
+      target_branch_scope: any
+  - id: admins-invoke-queries
+    allow:
+      actors: {group: admins}
+      actions:
+        - invoke_query
+  - id: ploeg-run-reads
+    allow:
+      actors: {group: ploeg-run}
+      actions:
+        - read
+      branch_scope: any
+  - id: ploeg-run-writes-main
+    allow:
+      actors: {group: ploeg-run}
+      actions:
+        - change
+      branch_scope: protected
+  - id: ploeg-run-invokes-queries
+    allow:
+      actors: {group: ploeg-run}
+      actions:
+        - invoke_query
+  - id: ploeg-review-reads-and-writes-everywhere
+    allow:
+      actors: {group: ploeg-review}
+      actions:
+        - read
+        - change
+      branch_scope: any
+  - id: ploeg-review-manages-and-merges-branches
+    allow:
+      actors: {group: ploeg-review}
+      actions:
+        - branch_create
+        - branch_delete
+        - branch_merge
+      target_branch_scope: any
+  - id: ploeg-review-invokes-queries
+    allow:
+      actors: {group: ploeg-review}
+      actions:
+        - invoke_query
+  - id: explorers-read-and-export
+    allow:
+      actors: {group: explorers}
+      actions:
+        - read
+        - export
+      branch_scope: any

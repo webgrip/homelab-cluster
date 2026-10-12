@@ -38,6 +38,14 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: network
+        # ploegd only, never a Run's pod (Ploeg ADR-0087): the daemon label is
+        # on the ploegd Deployment alone, so worker and sandbox pods match nothing.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ploeg
+          podSelector:
+            matchLabels:
+              ploeg.webgrip.dev/component: daemon
       ports:
         - protocol: TCP
           port: 8080

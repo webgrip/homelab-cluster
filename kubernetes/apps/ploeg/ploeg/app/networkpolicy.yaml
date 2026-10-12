@@ -107,3 +107,31 @@ spec:
       ports:
         - protocol: TCP
           port: 3456
+---
+# ploegd -> Omnigraph (ai ns) for Work Item Notes and Tenant knowledge. A
+# separate policy selecting the daemon label, not a rule in ploeg-allow-egress,
+# whose podSelector {} would also open the graph to every Run's pod
+# (Ploeg ADR-0087: nothing in a Run's pod reaches the graph).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ploegd-allow-omnigraph-egress
+  labels:
+    app.kubernetes.io/part-of: ploeg
+spec:
+  podSelector:
+    matchLabels:
+      ploeg.webgrip.dev/component: daemon
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai
+          podSelector:
+            matchLabels:
+              app: omnigraph
+      ports:
+        - protocol: TCP
+          port: 8080

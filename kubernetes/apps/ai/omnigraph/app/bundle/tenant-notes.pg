@@ -1,0 +1,17 @@
+node Note @description("A Work Item Note: what one Run, or a person in a session, learned while working on a Work Item. Written without review and read only by later work under the same root Work Item") @instruction("Only ploegd writes notes, through the stored query add_note; scope is enforced by ploegd, not by this graph") {
+  key: String @key
+  root_work_item: String @index
+  work_item: String @index
+  repository: String @index
+  client: String? @index
+  type: String
+  title: String @index
+  description: String?
+  resource: String?
+  body: String @index
+  tags: [String]?
+  suggested_scope: enum(work-item, repository, client, tenant) @index
+  written_by: String
+  written_at: DateTime @index
+  embedding: Vector(384)? @embed("body", model="granite-embedding-97m-multilingual-r2")
+}
