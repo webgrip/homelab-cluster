@@ -133,81 +133,6 @@ jobs:
                 --cross-client-actor act-admin --cross-client-actor act-ryan --cross-client-actor act-ingest \
               && bash scripts/test-validate-omnigraph-policies.sh"
 
-      - name: Test Obsidian vault importer
-        run: |
-          ws="$(mktemp -d)"
-          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/app" "$ws/kubernetes/apps/ai/omnigraph/vault-import" "$ws/kubernetes/apps/ai/omnigraph/embed-step"
-          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/app/bundle" "$ws/kubernetes/apps/ai/omnigraph/app/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/vault-import/app" "$ws/kubernetes/apps/ai/omnigraph/vault-import/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/embed-step/app" "$ws/kubernetes/apps/ai/omnigraph/embed-step/"
-          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
-            python3 scripts/test_omnigraph_vault_import.py
-
-      - name: Test Forgejo projects importer
-        run: |
-          ws="$(mktemp -d)"
-          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/app" "$ws/kubernetes/apps/ai/omnigraph/forge-import" "$ws/kubernetes/apps/ai/omnigraph/embed-step"
-          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/app/bundle" "$ws/kubernetes/apps/ai/omnigraph/app/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/forge-import/app" "$ws/kubernetes/apps/ai/omnigraph/forge-import/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/embed-step/app" "$ws/kubernetes/apps/ai/omnigraph/embed-step/"
-          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
-            python3 scripts/test_omnigraph_forge_import.py
-
-      - name: Test the Omnigraph writers' embed step and mutation-test the writers
-        run: |
-          ws="$(mktemp -d)"
-          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/app"
-          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/app/bundle" "$ws/kubernetes/apps/ai/omnigraph/app/"
-          for part in embed-step forge-import vault-import; do
-            mkdir -p "$ws/kubernetes/apps/ai/omnigraph/$part"
-            rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/$part/app" "$ws/kubernetes/apps/ai/omnigraph/$part/"
-          done
-          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
-            sh -ec "python3 scripts/test_omnigraph_embed_step.py && bash scripts/test-omnigraph-writers-mutation.sh"
-
-      - name: Test Omnigraph distiller
-        run: |
-          ws="$(mktemp -d)"
-          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/app" "$ws/kubernetes/apps/ai/omnigraph/distill"
-          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/app/bundle" "$ws/kubernetes/apps/ai/omnigraph/app/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/distill/app" "$ws/kubernetes/apps/ai/omnigraph/distill/"
-          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
-            sh -ec "python3 scripts/test_omnigraph_distill.py && bash scripts/test-omnigraph-distill-mutation.sh"
-
-      - name: Test that the Omnigraph writers survive the nightly restart
-        run: |
-          ws="$(mktemp -d)"
-          mkdir -p "$ws/kubernetes/apps/ai"
-          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph" "$ws/kubernetes/apps/ai/"
-          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
-            python3 scripts/test_omnigraph_writer_restart.py
-
-      - name: Test the brain eval harness
-        run: |
-          ws="$(mktemp -d)"
-          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/embed-step" "$ws/kubernetes/apps/ai/litellm/app" "$ws/kubernetes/apps/ai/litellm/keys/app"
-          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/brain-eval" "$ws/kubernetes/apps/ai/omnigraph/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/embed-step/app" "$ws/kubernetes/apps/ai/omnigraph/embed-step/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml" "$ws/kubernetes/apps/ai/litellm/app/"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/litellm/keys/app/omnigraph-eval-key-register.job.yaml" "$ws/kubernetes/apps/ai/litellm/keys/app/"
-          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
-            sh -ec "python3 scripts/test_omnigraph_brain_eval.py && bash scripts/test-omnigraph-brain-eval-mutation.sh"
-
-      - name: Test brain-tools and mutation-test it
-        run: |
-          ws="$(mktemp -d)"
-          mkdir -p "$ws/kubernetes/apps/ai/brain-tools/app" "$ws/scripts"
-          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/brain-tools/app/server" "$ws/kubernetes/apps/ai/brain-tools/app/"
-          rsync -a "$GITHUB_WORKSPACE/scripts/brain-tools" "$GITHUB_WORKSPACE/scripts/test-brain-tools-mutation.sh" "$ws/scripts/"
-          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 \
-            sh -ec "node --test --test-reporter=dot scripts/brain-tools/brain_tools.test.ts && sh scripts/test-brain-tools-mutation.sh"
-
       - name: Test forgejo-sync leaves private repos alone
         run: bash scripts/test-forgejo-sync-skips-private.sh
 
@@ -255,6 +180,131 @@ jobs:
 
       - name: Run Kyverno CLI tests
         run: ./scripts/run-kyverno-cli-tests.sh "$GITHUB_WORKSPACE"
+
+  omnigraph-tests:
+    name: Omnigraph and brain tests
+    runs-on: docker
+    env:
+      TMPDIR: /mnt/ci-shared
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Does this change touch the Omnigraph writers, distiller or brain tools?
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags --quiet origin "${{ github.base_ref }}" || true
+            base="$(git merge-base HEAD FETCH_HEAD 2>/dev/null || true)"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "${base}" ] || ! git rev-parse --verify --quiet "${base}^{commit}" >/dev/null; then
+            run=true
+          elif git diff --name-only "${base}" -- \
+                 kubernetes/apps/ai/omnigraph \
+                 kubernetes/apps/ai/brain-tools \
+                 kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml \
+                 kubernetes/apps/ai/litellm/keys/app/omnigraph-eval-key-register.job.yaml \
+                 'scripts/test_omnigraph_*' \
+                 'scripts/test-omnigraph-*' \
+                 'scripts/omnigraph_*' \
+                 scripts/brain-tools \
+                 scripts/test-brain-tools-mutation.sh \
+                 .forgejo/workflows/e2e.yml | grep -q .; then
+            run=true
+          else
+            run=false
+          fi
+          echo "run=${run}" >> "$GITHUB_OUTPUT"
+
+      - name: Test Obsidian vault importer
+        if: steps.filter.outputs.run == 'true'
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/app" "$ws/kubernetes/apps/ai/omnigraph/vault-import" "$ws/kubernetes/apps/ai/omnigraph/embed-step"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/app/bundle" "$ws/kubernetes/apps/ai/omnigraph/app/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/vault-import/app" "$ws/kubernetes/apps/ai/omnigraph/vault-import/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/embed-step/app" "$ws/kubernetes/apps/ai/omnigraph/embed-step/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            python3 scripts/test_omnigraph_vault_import.py
+
+      - name: Test Forgejo projects importer
+        if: steps.filter.outputs.run == 'true'
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/app" "$ws/kubernetes/apps/ai/omnigraph/forge-import" "$ws/kubernetes/apps/ai/omnigraph/embed-step"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/app/bundle" "$ws/kubernetes/apps/ai/omnigraph/app/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/forge-import/app" "$ws/kubernetes/apps/ai/omnigraph/forge-import/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/embed-step/app" "$ws/kubernetes/apps/ai/omnigraph/embed-step/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            python3 scripts/test_omnigraph_forge_import.py
+
+      - name: Test the Omnigraph writers' embed step and mutation-test the writers
+        if: steps.filter.outputs.run == 'true'
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/app"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/app/bundle" "$ws/kubernetes/apps/ai/omnigraph/app/"
+          for part in embed-step forge-import vault-import; do
+            mkdir -p "$ws/kubernetes/apps/ai/omnigraph/$part"
+            rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/$part/app" "$ws/kubernetes/apps/ai/omnigraph/$part/"
+          done
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            sh -ec "python3 scripts/test_omnigraph_embed_step.py && bash scripts/test-omnigraph-writers-mutation.sh"
+
+      - name: Test Omnigraph distiller
+        if: steps.filter.outputs.run == 'true'
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/app" "$ws/kubernetes/apps/ai/omnigraph/distill"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/app/bundle" "$ws/kubernetes/apps/ai/omnigraph/app/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/distill/app" "$ws/kubernetes/apps/ai/omnigraph/distill/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            sh -ec "python3 scripts/test_omnigraph_distill.py && bash scripts/test-omnigraph-distill-mutation.sh"
+
+      - name: Test that the Omnigraph writers survive the nightly restart
+        if: steps.filter.outputs.run == 'true'
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph" "$ws/kubernetes/apps/ai/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            python3 scripts/test_omnigraph_writer_restart.py
+
+      - name: Test the brain eval harness
+        if: steps.filter.outputs.run == 'true'
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai/omnigraph/embed-step" "$ws/kubernetes/apps/ai/litellm/app" "$ws/kubernetes/apps/ai/litellm/keys/app"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/brain-eval" "$ws/kubernetes/apps/ai/omnigraph/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/omnigraph/embed-step/app" "$ws/kubernetes/apps/ai/omnigraph/embed-step/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml" "$ws/kubernetes/apps/ai/litellm/app/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/litellm/keys/app/omnigraph-eval-key-register.job.yaml" "$ws/kubernetes/apps/ai/litellm/keys/app/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            sh -ec "python3 scripts/test_omnigraph_brain_eval.py && bash scripts/test-omnigraph-brain-eval-mutation.sh"
+
+      - name: Test brain-tools and mutation-test it
+        if: steps.filter.outputs.run == 'true'
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/ai/brain-tools/app" "$ws/scripts"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/ai/brain-tools/app/server" "$ws/kubernetes/apps/ai/brain-tools/app/"
+          rsync -a "$GITHUB_WORKSPACE/scripts/brain-tools" "$GITHUB_WORKSPACE/scripts/test-brain-tools-mutation.sh" "$ws/scripts/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/node:24.21.0-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 \
+            sh -ec "node --test --test-reporter=dot scripts/brain-tools/brain_tools.test.ts && sh scripts/test-brain-tools-mutation.sh"
 
   omnigraph:
     name: Omnigraph bundle rehearsal
