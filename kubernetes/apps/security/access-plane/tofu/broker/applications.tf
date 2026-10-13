@@ -18,6 +18,15 @@ locals {
         return {"litellm_role": "internal_user"}
       EOT
     }
+    ploeg-read = {
+      scope_name  = "ploeg:read"
+      description = "Read Ploeg through ploeg-mcp; carries the groups that map a person to an operator consumer."
+      expression  = <<-EOT
+        return {
+            "groups": [group.name for group in request.user.ak_groups.all()],
+        }
+      EOT
+    }
   }
 
   oauth_applications = {
@@ -142,6 +151,27 @@ locals {
       extra_scopes  = ["groups"]
       adopt         = false
     }
+    ploeg-mcp = {
+      provider_name         = "ploeg-mcp-oauth"
+      app_name              = "Ploeg MCP"
+      description           = "Ploeg's read-only MCP tools for Claude Code, VS Code and Cursor."
+      launch_url            = null
+      client_id             = "ploeg-mcp"
+      client_secret         = null
+      client_type           = "public"
+      signing_key           = true
+      grant_types           = ["authorization_code", "refresh_token"]
+      access_token_validity = "minutes=10"
+      redirects = [
+        { matching_mode = "regex", url = "^http://(localhost|127\\.0\\.0\\.1):[0-9]+/callback$" },
+        { matching_mode = "strict", url = "http://127.0.0.1:33418" },
+        { matching_mode = "strict", url = "http://127.0.0.1:33418/" },
+        { matching_mode = "strict", url = "https://vscode.dev/redirect" },
+        { matching_mode = "strict", url = "http://localhost:8787/callback" },
+      ]
+      extra_scopes = ["ploeg-read", "groups"]
+      adopt        = false
+    }
     longhorn = {
       provider_name = "longhorn-oidc"
       app_name      = "Longhorn"
@@ -250,7 +280,7 @@ resource "authentik_provider_oauth2" "app" {
   client_secret         = each.value.client_secret
   client_type           = each.value.client_type
   grant_types           = each.value.grant_types
-  access_token_validity = "hours=1"
+  access_token_validity = lookup(each.value, "access_token_validity", "hours=1")
   authentication_flow   = var.google_login ? authentik_flow.webgrip_authentication[0].uuid : data.authentik_flow.authentication.id
   authorization_flow    = data.authentik_flow.authorization_implicit_consent.id
   invalidation_flow     = data.authentik_flow.invalidation.id

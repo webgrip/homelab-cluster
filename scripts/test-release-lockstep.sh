@@ -8,6 +8,7 @@ PINS=(
   kubernetes/apps/ploeg/unfold/app/helmrelease.yaml
   kubernetes/apps/ploeg/ploeg/app/ocirepository.yaml
   kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml
+  kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml
 )
 failures=0
 
@@ -58,6 +59,8 @@ expect fail "ploegd ahead of its chart" \
   kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml 's/(tag: ")[0-9][^@]*@/\19.9.9-rc.1@/'
 expect fail "ploegd without a digest" \
   kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml 's/(tag: "[0-9][^@]*)@sha256:[a-f0-9]{64}/\1/'
+expect fail "ploeg-mcp ahead of ploegd" \
+  kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml 's/(ploegd:)[0-9][^@]*@/\19.9.9-rc.1@/'
 
 if (( failures > 0 )); then
   echo "${failures} lockstep case(s) failed"

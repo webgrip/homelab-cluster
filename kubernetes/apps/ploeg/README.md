@@ -54,3 +54,14 @@ by changing its `PROBED_POLICY` value.
   URLs.
 
 Failure-mode drills and the full e2e runbook live in the executor PR description.
+
+## ploeg-mcp over HTTPS
+
+`ploeg-mcp` (`app/mcp/`) serves Ploeg's read-only MCP tools at `https://mcp-ploeg.<domain>/mcp` on
+envoy-internal, LAN and VPN only. Clients sign in through the Authentik application `ploeg-mcp`
+(public client, PKCE, 10-minute access tokens, scope `ploeg:read`), and only members of
+`ploeg-readers` (capability `ploeg-read`) get in. ploeg-mcp checks the token itself and calls ploegd
+with the `mcp-reader` operator consumer's token from `ploeg/mcp-reader`, never the person's token.
+Its image is the ploegd image and moves with the Ploeg release; `check_release_lockstep.py` fails
+while they differ. Client setup:
+[Serve Ploeg's MCP tools over HTTPS](https://github.com/ploeg-hq/ploeg/blob/development/docs/how-to/serve-ploeg-mcp-over-https.md).

@@ -65,6 +65,11 @@ RELEASES = (
                 "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml",
                 rf"repository:\s*harbor\.webgrip\.dev/ghcr/ploeg-hq/ploegd\s*\n\s*tag:\s*[\"']?{SEMVER}{DIGEST}[\"']?",
             ),
+            Pin(
+                "ploeg-mcp image",
+                "kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml",
+                rf"image:\s*harbor\.webgrip\.dev/ghcr/ploeg-hq/ploegd:{SEMVER}{DIGEST}",
+            ),
         ),
     ),
 )
