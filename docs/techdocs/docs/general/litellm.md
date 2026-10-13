@@ -76,6 +76,25 @@ does not know the key it deletes whatever still holds the alias before generatin
 Add a key with a new ExternalSecret, PushSecret and Job in that directory. Rotate one by
 deleting its Secret and its Job.
 
+### Teams from git
+
+LiteLLM teams are declared in the same directory. The `litellm-team-register-<name>` Job runs
+[`register-team.sh`](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/kubernetes/apps/ai/litellm/keys/app/register-team.sh)
+with the master key: it reads `/team/info`, creates the team with a fixed `team_id` when LiteLLM
+does not know it, and updates it when alias, models, limits or
+`object_permission.mcp_access_groups` drifted. `/team/new` fills an unset budget, rpm and tpm from
+`default_team_params` (25 USD / 30d, 500 rpm, 100k tpm), so the Job clears them with an explicit
+`/team/update` right after creating the team.
+
+| Team | Models | Budget and limits | MCP groups | Consumer |
+|---|---|---|---|---|
+| `ploeg-crews` | all (each key carries its own model list) | none: ploegd mints every Run key with its own budget and TTL | `observability` | Ploeg executor teams that set `litellmTeamId: ploeg-crews` ([Ploeg ADR-0078](https://github.com/ploeg-hq/ploeg/blob/main/docs/adrs/0078-runs-reach-read-only-mcp-tools-only-through-the-gateway-bounded-by-a-litellm-team.md)) |
+
+A key minted into a team may only request MCP groups that team allows; LiteLLM refuses the mint
+with HTTP 403 otherwise, so the team is the ceiling on what Ploeg's master key can grant a Run.
+Keys still see no tools unless their own mint names the groups (`require_key_mcp_access_defined`).
+Recreating a team under the same `team_id` keeps the chart value valid.
+
 ## Rules of the road
 
 - Every key mint **requires `key_alias`** (and ideally a team) — anonymous keys are rejected.
@@ -156,6 +175,7 @@ declares.
 | `omnigraph-explorer` | `omnigraph` :8080 | :8080 from `network` and the blackbox exporter | `omnigraph-explorer` |
 | `omnigraph-embed-key-register` Job | `litellm` :4000 | none | `omnigraph-embed-key-register-egress` |
 | `litellm-key-register-*` Jobs | `litellm` :4000 | none | `litellm-key-register-egress` |
+| `litellm-team-register-*` Jobs | `litellm` :4000 | none | `litellm-key-register-egress` |
 | `open-webui` | `litellm` :4000, namespace `network` (gateway hairpin: Authentik OIDC) | :8080 from `network` and the blackbox exporter | `open-webui`, `open-webui-allow-gateway-egress` |
 | `omnigraph-maintenance-restart` CronJob | kube-apiserver | none | `omnigraph-maintenance-restart-apiserver` |
 | `omnigraph-vault-import` CronJob | `omnigraph` :8080, Forgejo SSH :2222 (`forgejo` pods, admitted by `forgejo-allow-ingress`) | none | `omnigraph-vault-import-egress` |
