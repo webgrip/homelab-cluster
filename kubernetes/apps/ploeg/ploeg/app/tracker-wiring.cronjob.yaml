@@ -78,29 +78,49 @@ spec:
                       failed=1
                       continue
                     fi
-                    curl -fsS -H "$auth" "$VIKUNJA_URL/projects/$id/webhooks" > /tmp/hooks.raw
+                    if ! curl -fsS -H "$auth" "$VIKUNJA_URL/projects/$id/webhooks" > /tmp/hooks.raw; then
+                      log "board=\"$board\" project=$id webhooks could not be read"
+                      failed=1
+                      continue
+                    fi
                     jq '. // []' /tmp/hooks.raw > /tmp/hooks.json
                     hook="$(jq -r --arg u "$TARGET_URL" '[.[] | select(.target_url == $u)][0].id // empty' /tmp/hooks.json)"
                     if [ -z "$hook" ]; then
-                      jq -nc --arg u "$TARGET_URL" --arg s "$WEBHOOK_SECRET" --argjson e "$EVENTS" '{target_url: $u, secret: $s, events: $e}' \
-                        | curl -fsS -X PUT -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$id/webhooks" > /dev/null
-                      log "board=\"$board\" project=$id webhook created"
+                      if jq -nc --arg u "$TARGET_URL" --arg s "$WEBHOOK_SECRET" --argjson e "$EVENTS" '{target_url: $u, secret: $s, events: $e}' \
+                        | curl -fsS -X PUT -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$id/webhooks" > /dev/null; then
+                        log "board=\"$board\" project=$id webhook created"
+                      else
+                        log "board=\"$board\" project=$id webhook could not be created"
+                        failed=1
+                      fi
                     elif jq -e --arg h "$hook" --argjson e "$EVENTS" '[.[] | select((.id | tostring) == $h)][0].events | sort == ($e | sort)' /tmp/hooks.json > /dev/null; then
                       log "board=\"$board\" project=$id webhook=$hook present"
                     else
-                      jq -nc --argjson e "$EVENTS" '{events: $e}' \
-                        | curl -fsS -X POST -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$id/webhooks/$hook" > /dev/null
-                      log "board=\"$board\" project=$id webhook=$hook events converged"
+                      if jq -nc --argjson e "$EVENTS" '{events: $e}' \
+                        | curl -fsS -X POST -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$id/webhooks/$hook" > /dev/null; then
+                        log "board=\"$board\" project=$id webhook=$hook events converged"
+                      else
+                        log "board=\"$board\" project=$id webhook=$hook events could not be converged"
+                        failed=1
+                      fi
                     fi
-                    curl -fsS -H "$auth" "$VIKUNJA_URL/projects/$id/users?per_page=250" > /tmp/shared.raw
+                    if ! curl -fsS -H "$auth" "$VIKUNJA_URL/projects/$id/users?per_page=250" > /tmp/shared.raw; then
+                      log "board=\"$board\" project=$id shared users could not be read"
+                      failed=1
+                      continue
+                    fi
                     jq '. // []' /tmp/shared.raw > /tmp/shared.json
                     while IFS= read -r user; do
                       if jq -e --arg n "$user" 'any(.[]; .username == $n)' /tmp/shared.json > /dev/null; then
                         log "board=\"$board\" project=$id user=$user shared"
                       else
-                        jq -nc --arg n "$user" '{username: $n, permission: 0}' \
-                          | curl -fsS -X PUT -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$id/users" > /dev/null
-                        log "board=\"$board\" project=$id user=$user shared read-only"
+                        if jq -nc --arg n "$user" '{username: $n, permission: 0}' \
+                          | curl -fsS -X PUT -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$id/users" > /dev/null; then
+                          log "board=\"$board\" project=$id user=$user shared read-only"
+                        else
+                          log "board=\"$board\" project=$id user=$user could not be shared: does Vikunja have this user?"
+                          failed=1
+                        fi
                       fi
                     done < /tmp/users
                   done < /tmp/boards
