@@ -24,7 +24,7 @@
 #              repo, verify a real release cuts, then --all. Overrides per run, e.g. the homelab
 #              GitOps repo (owner trunk-pushes, no release bot — ADR-0050):
 #                PUSH_WHITELIST=ryangr0 MERGE_WHITELIST=ryangr0,renovate \
-#                STATUS_CHECK_CONTEXTS='e2e / Lint & static validation (pull_request),e2e / Flux-local render (pull_request),e2e / Kyverno Chainsaw (KinD) (pull_request),e2e / Validate Renovate config (pull_request)' \
+#                STATUS_CHECK_CONTEXTS='e2e / Lint & static validation (pull_request),e2e / Flux-local render (pull_request),e2e / Kyverno Chainsaw (KinD) (pull_request),e2e / Validate Renovate config (pull_request),e2e / Omnigraph and brain tests (pull_request)' \
 #                  scripts/forgejo-sync.sh --repo homelab-cluster --only protect --apply
 #              NOTE the `renovate` in MERGE_WHITELIST: this override previously read
 #              MERGE_WHITELIST=ryangr0, which would have revoked Renovate's ability to merge its

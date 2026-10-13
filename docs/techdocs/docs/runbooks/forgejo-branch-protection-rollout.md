@@ -59,7 +59,7 @@ done
 #    automerge does all the dependency work). The owner trunk-pushes; Renovate still merges.
 #    STATUS_CHECK_CONTEXTS is what actually makes e2e a merge gate — see "Why status checks".
 PUSH_WHITELIST=ryangr0 MERGE_WHITELIST=ryangr0,renovate \
-STATUS_CHECK_CONTEXTS='e2e / Lint & static validation (pull_request),e2e / Flux-local render (pull_request),e2e / Kyverno Chainsaw (KinD) (pull_request),e2e / Validate Renovate config (pull_request)' \
+STATUS_CHECK_CONTEXTS='e2e / Lint & static validation (pull_request),e2e / Flux-local render (pull_request),e2e / Kyverno Chainsaw (KinD) (pull_request),e2e / Validate Renovate config (pull_request),e2e / Omnigraph and brain tests (pull_request)' \
   ./scripts/forgejo-sync.sh --repo homelab-cluster --only protect --apply
 ```
 
