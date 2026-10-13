@@ -11,7 +11,7 @@ WALL_UID = "wall-ci"
 FOLDER = "boards"
 TAGS = ["board", "ci", "forgejo"]
 DOC = "docs/techdocs/docs/general/forgejo-ci-telemetry.md"
-SCALEDJOB = REPO / "kubernetes/apps/forgejo/forgejo-runner/app/scaledjob.yaml"
+SCALEDJOB = REPO / "kubernetes/apps/forgejo/forgejo-runner/app/base/scaledjob.yaml"
 
 KSM = 'job="kube-state-metrics", exported_namespace="forgejo"'
 RUNNER_POD = 'exported_pod=~"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}"'

@@ -121,7 +121,7 @@ kubectl -n forgejo get pods -l app.kubernetes.io/name=forgejo-runner
 kubectl -n keda logs deploy/keda-operator --tail=40 | grep -E 'Scaling Jobs|Created jobs|Failed to create'
 
 # Change the warm-pool size: edit minReplicaCount in
-#   kubernetes/apps/forgejo/forgejo-runner/app/scaledjob.yaml  (validate + commit; Flux reconciles)
+#   kubernetes/apps/forgejo/forgejo-runner/app/base/scaledjob.yaml  (validate + commit; Flux reconciles)
 
 # Force a re-registration (e.g. the runner was deleted in Forgejo): clear the stored uuid so the
 # provisioner re-mints on its next run, then nudge the app. GitOps-friendly — no imperative apply:
