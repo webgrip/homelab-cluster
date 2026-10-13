@@ -1,0 +1,23 @@
+node Concept @description("Reviewed knowledge in OKF: one concept a Tenant admin accepted, scoped to the whole Tenant, one Client or one repository") @instruction("Main only changes through an accepted Promotion that ploegd applies on a short-lived branch; scope is enforced by ploegd, not by this graph") {
+  slug: String @key
+  scope: enum(tenant, client, repository) @index
+  client: String? @index
+  repository: String? @index
+  type: String @index
+  title: String @index
+  description: String?
+  resource: String?
+  tags: [String]?
+  body: String @index
+  from_note: String?
+  accepted_by: String
+  accepted_at: DateTime
+  embedding: Vector(384)? @embed("body", model="granite-embedding-97m-multilingual-r2")
+}
+
+node Tag @description("A tag concepts share") {
+  name: String @key
+}
+
+edge Tagged: Concept -> Tag
+edge Relates: Concept -> Concept

@@ -1,6 +1,6 @@
 # Omnigraph
 
-Omnigraph v0.11 runs one server in namespace `ai` with three graphs: `memory` (shared agent memory), `brain` (Ryan's second brain) and `webgrip` (internal company meetings). Every graph, schema, stored query and permission rule is declared in the [bundle](../../../../kubernetes/apps/ai/omnigraph/app/bundle/). Push a change to the bundle and the pod applies it on its next start.
+Omnigraph v0.11 runs one server in namespace `ai` with five graphs: `memory` (shared agent memory), `brain` (Ryan's second brain), `webgrip` (internal company meetings), and Ploeg's Tenant graphs for Webgrip, `webgrip-knowledge` (reviewed knowledge scoped to the Tenant, a Client or a repository) and `webgrip-notes` (Work Item Notes Runs write without review). The two Tenant graphs share the `tenant-knowledge` and `tenant-notes` schemas, so a later Tenant gets its own pair from the same files (Ploeg ADR-0087, ADR-0088). Every graph, schema, stored query and permission rule is declared in the [bundle](../../../../kubernetes/apps/ai/omnigraph/app/bundle/). Push a change to the bundle and the pod applies it on its next start.
 
 ## How it runs
 
@@ -71,14 +71,14 @@ The rehearsal then opens no branch on `brain`. The variable is a statement that 
 | `act-brain-eval` | `brain`: read and export on any branch, run stored queries. No writes, no branch actions. The [brain eval](#brain-eval) jobs and the `omnigraph_brain_eval` bridge hold it |
 | `act-brain-reader` | `brain`: read on any branch, run stored queries. Nothing else. Only [brain-tools](#brain-tools) holds it |
 | `act-brain-scribe` | `brain`: read and write on `main` only. No branch actions, no stored queries, no export. For `brain-tools` `remember` (brain retrieval RFC, P6); it can delete any row on `main`, so the scribe audit is its guard |
-| `act-ploeg-run` | `webgrip-notes`: read on any branch, write `main`, run stored queries. `webgrip-knowledge`: read and run stored queries. No branch actions, no export. Only ploegd holds it, to write Work Item Notes and brief Runs (Ploeg ADR-0087, ADR-0088). Token only until the graphs land |
-| `act-ploeg-review` | `webgrip-knowledge` and `webgrip-notes`: read and write on any branch including `main`, create, delete and merge branches, run stored queries. No export. Only ploegd holds it, to apply an accepted Promotion. Token only until the graphs land |
+| `act-ploeg-run` | `webgrip-notes`: read on any branch, write `main`, run stored queries. `webgrip-knowledge`: read and run stored queries. No branch actions, no export. Only ploegd holds it, to write Work Item Notes and brief Runs (Ploeg ADR-0087, ADR-0088). |
+| `act-ploeg-review` | `webgrip-knowledge` and `webgrip-notes`: read and write on any branch including `main`, create, delete and merge branches, run stored queries. No export. Only ploegd holds it, to apply an accepted Promotion. |
 
 Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecret, pushed to OpenBao at `secret/omnigraph/<actor>` (field `token`), and assembled into the server's `tokens.json` by the `omnigraph-tokens` ExternalSecret.
 
 Add an actor by creating a new generator ExternalSecret and PushSecret pair, then adding one line to the aggregator. Do not add keys to `omnigraph-actor-tokens`. It is generate-once, so a new key only appears after its Secret is deleted, and deleting it rotates every existing token.
 
-Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only LiteLLM (the `omnigraph_memory`, `omnigraph_brain`, `omnigraph_brain_eval` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers, the distiller, the brain eval jobs, [brain-tools](#brain-tools) and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
+Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only ploegd (the pod labelled `ploeg.webgrip.dev/component: daemon` in `ploeg`, never a Run's pod), LiteLLM (the `omnigraph_memory`, `omnigraph_brain`, `omnigraph_brain_eval` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers, the distiller, the brain eval jobs, [brain-tools](#brain-tools) and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
 
 ## Explorer
 

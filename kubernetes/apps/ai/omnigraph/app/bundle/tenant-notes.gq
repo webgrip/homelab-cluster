@@ -1,0 +1,24 @@
+query root_notes($root: String) @description("The notes of one root Work Item, newest first") {
+  match {
+    $n: Note { root_work_item: $root }
+  }
+  return { $n.key as key, $n.work_item as work_item, $n.repository as repository, $n.type as type, $n.title as title, $n.description as description, $n.resource as resource, $n.body as body, $n.tags as tags, $n.suggested_scope as suggested_scope, $n.written_by as written_by, $n.written_at as written_at }
+  order { $n.written_at desc }
+  limit 200
+}
+
+query note_by_key($key: String) @description("One note by key; ploegd reads a write back with it") {
+  match {
+    $n: Note { key: $key }
+  }
+  return { $n.key as key, $n.root_work_item as root_work_item, $n.written_at as written_at }
+  limit 1
+}
+
+query add_note($key: String, $root: String, $work_item: String, $repository: String, $client: String?, $type: String, $title: String, $description: String?, $resource: String?, $body: String, $tags: [String]?, $suggested_scope: String, $written_by: String, $written_at: DateTime) @description("Write or rewrite one Work Item Note; the key makes a retry an upsert") {
+  insert Note { key: $key, root_work_item: $root, work_item: $work_item, repository: $repository, client: $client, type: $type, title: $title, description: $description, resource: $resource, body: $body, tags: $tags, suggested_scope: $suggested_scope, written_by: $written_by, written_at: $written_at }
+}
+
+query delete_root_notes($root: String) @description("Remove the notes of a closed root Work Item (retention)") {
+  delete Note where root_work_item = $root
+}
