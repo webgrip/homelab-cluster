@@ -71,6 +71,8 @@ The rehearsal then opens no branch on `brain`. The variable is a statement that 
 | `act-brain-eval` | `brain`: read and export on any branch, run stored queries. No writes, no branch actions. The [brain eval](#brain-eval) jobs and the `omnigraph_brain_eval` bridge hold it |
 | `act-brain-reader` | `brain`: read on any branch, run stored queries. Nothing else. Only [brain-tools](#brain-tools) holds it |
 | `act-brain-scribe` | `brain`: read and write on `main` only. No branch actions, no stored queries, no export. For `brain-tools` `remember` (brain retrieval RFC, P6); it can delete any row on `main`, so the scribe audit is its guard |
+| `act-ploeg-run` | `webgrip-notes`: read on any branch, write `main`, run stored queries. `webgrip-knowledge`: read and run stored queries. No branch actions, no export. Only ploegd holds it, to write Work Item Notes and brief Runs (Ploeg ADR-0087, ADR-0088). Token only until the graphs land |
+| `act-ploeg-review` | `webgrip-knowledge` and `webgrip-notes`: read and write on any branch including `main`, create, delete and merge branches, run stored queries. No export. Only ploegd holds it, to apply an accepted Promotion. Token only until the graphs land |
 
 Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecret, pushed to OpenBao at `secret/omnigraph/<actor>` (field `token`), and assembled into the server's `tokens.json` by the `omnigraph-tokens` ExternalSecret.
 
