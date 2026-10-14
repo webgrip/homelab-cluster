@@ -105,6 +105,34 @@ data:
               role: system
             - location: message
               index: -1
+      # Claude Haiku 5.5: Ploeg's shadow reviewer on team bronze (Ploeg
+      # ADR-0094, VIK-2033), a third model family beside DeepSeek (builder)
+      # and GLM (reviewer). LiteLLM's built-in list has no entry yet, so the
+      # price is pinned from Anthropic's list: US$0.10 in / 0.01 cache read /
+      # 0.125 cache write / 0.50 out per million tokens up to 100K-token
+      # prompts, five times that above. Haiku 5.5 rejects a non-default
+      # temperature or top_p, so both are dropped rather than failing a Run.
+      - model_name: claude-haiku-5-5
+        litellm_params:
+          model: anthropic/claude-haiku-5-5
+          api_key: os.environ/ANTHROPIC_API_KEY
+          additional_drop_params: ["temperature", "top_p"]
+          cache_control_injection_points:
+            - location: message
+              role: system
+            - location: message
+              index: -1
+        model_info:
+          mode: chat
+          input_cost_per_token: 0.0000001
+          output_cost_per_token: 0.0000005
+          cache_read_input_token_cost: 0.00000001
+          cache_creation_input_token_cost: 0.000000125
+          input_cost_per_token_above_100k_tokens: 0.0000005
+          output_cost_per_token_above_100k_tokens: 0.0000025
+          cache_read_input_token_cost_above_100k_tokens: 0.00000005
+          cache_creation_input_token_cost_above_100k_tokens: 0.000000625
+          supports_function_calling: true
       # Legacy tier (still served upstream; dated snapshots resolve via alias).
       # opus-4-1 is deprecated upstream (retires 2026-08-05) — drop it then.
       - model_name: claude-opus-4-5
