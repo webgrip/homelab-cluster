@@ -25,6 +25,13 @@ spec:
     imagePullSecrets:
       - name: harbor-pull
     credentialsSecret: unfold-operator
+    # Unfold ADR 0042: server errors and failed Asks go to Alloy as OTLP log
+    # records (exception.* attributes, event.name=unfold.error), and from there
+    # to VictoriaLogs. A dedicated tracker (GlitchTip) can be added later with
+    # errorReports.sentry.existingSecret.
+    errorReports:
+      otlpUrl: http://alloy-gateway.observability.svc.cluster.local:4318/v1/logs
+      environment: homelab
     extraEnv:
       - name: UNFOLD_INSIGHT_EXPORT
         value: faro
