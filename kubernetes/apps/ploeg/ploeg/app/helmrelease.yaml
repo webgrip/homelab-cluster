@@ -482,7 +482,10 @@ spec:
         # merges.
         - name: bronze
           model: litellm_proxy/fireworks-deepseek-v4p1-flash
-          budget: "8"
+          # 8 plus the shadow reviewer's worst case (0.40 x 3 review Rounds),
+          # so the shadow can never starve a fix Round or the reviewer
+          # (Ploeg ADR-0094).
+          budget: "9.20"
           repoOwner: webgrip
           repoName: erfbeeld
           # erfbeeld's real trunk; explicit so a default-branch change can
@@ -571,6 +574,19 @@ spec:
                   # Redundant with the executor-level default since ADR-0053,
                   # kept deliberately: a reader role must never regain a
                   # docker daemon by someone editing the global default.
+                  harness: {name: acp, dind: false, acp: {profile: openhands, idleTimeout: 10m, promptTimeout: 90m}}
+                  workerResources:
+                    requests: {cpu: 100m, memory: 768Mi}
+                    limits: {cpu: 500m, memory: 768Mi}
+                # Shadow reviewer (Ploeg ADR-0094, VIK-2033): reviews the same pull
+                # request beside the reviewer and only records its verdict and
+                # findings; nothing acts on them. Claude Haiku 5.5 is a third
+                # model family, to measure how often two families agree.
+                - name: shadow-reviewer
+                  writes: false
+                  shadow: true
+                  cap: "0.40"
+                  model: litellm_proxy/claude-haiku-5-5
                   harness: {name: acp, dind: false, acp: {profile: openhands, idleTimeout: 10m, promptTimeout: 90m}}
                   workerResources:
                     requests: {cpu: 100m, memory: 768Mi}
