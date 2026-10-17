@@ -52,11 +52,12 @@ spec:
       value: /tmp
     - name: NODE_OPTIONS
       value: --max-old-space-size=3000
-    # debug matches the forgejo job; worker-pod logs are the only way to
-    # diagnose branch failures (pods live ~30min until the cleanup cron,
-    # and are not shipped to VictoriaLogs)
+    # info, not debug: at debug Renovate prints its resolved config, including
+    # customEnvVariables (HARBOR_ROBOT_TOKEN), in plain text into the pod log,
+    # which the log shipper stores. For a one-off "why didn't this update?",
+    # run a single job at debug and delete its pod afterwards.
     - name: LOG_LEVEL
-      value: debug
+      value: info
     # Harbor robot for the PRIVATE webgrip project: registry auth arrives via
     # RENOVATE_HOST_RULES (token-minter folds it in), but the update-oci-digests.sh
     # postUpgradeTask reads these envs directly (scripts/lib/oci.sh fetch_digest —
