@@ -1,0 +1,163 @@
+---
+# Owns the Forgejo `unfold-reports` bot end to end, so nobody mints or seeds its token by hand:
+# ensures the user, its write collaboration on webgrip/unfold, and a token with exactly the scopes
+# Unfold's Report a problem needs, written to Secret unfold-reports-token (PushSecret → OpenBao →
+# ploeg/unfold). Daily and idempotent: a token that still authenticates and can read releases is
+# kept; anything else is re-minted, and every other token on the bot is revoked.
+#
+# SCOPES: write:issue (file issues, upload screenshots, comment replies), read:repository (the
+# linked pull request and the release that ships the fix, for "Fixed in rc.N"), read:user (the
+# bot's own login, so Unfold tells its comments from the team's). No write:repository: the bot
+# can never push. Collaborator `write` is kept because labelling an issue at creation needs it.
+#
+# This app's Kustomization has NO postBuild.substituteFrom, so braced ${VARS} are left for the shell.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: unfold-reports-provisioner
+  namespace: forgejo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: unfold-reports-provisioner
+  namespace: forgejo
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "unfold-reports-token"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: unfold-reports-provisioner
+  namespace: forgejo
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: unfold-reports-provisioner}
+subjects:
+  - {kind: ServiceAccount, name: unfold-reports-provisioner, namespace: forgejo}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: unfold-reports-provisioner
+  namespace: forgejo
+spec:
+  schedule: "41 3 * * *"
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 172800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: unfold-reports-provisioner
+        spec:
+          serviceAccountName: unfold-reports-provisioner
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: provision
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4
+              imagePullPolicy: IfNotPresent
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+                - {name: NAMESPACE, value: forgejo}
+                - {name: REPO, value: webgrip/unfold}
+                - {name: TOKEN_SECRET, value: unfold-reports-token}
+                - {name: TOKEN_NAME, value: unfold-reports}
+                - {name: BOT_USERNAME, value: unfold-reports}
+                - {name: BOT_EMAIL, value: unfold-reports@webgrip.dev}
+                - name: ADMIN_USERNAME
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+                - name: ADMIN_PASSWORD
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+                - name: BOT_PASSWORD
+                  valueFrom: {secretKeyRef: {name: unfold-reports-password, key: password}}
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  api="${FORGEJO_URL}/api/v1"
+                  admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+                  bot="${BOT_USERNAME}:${BOT_PASSWORD}"
+                  scopes='["write:issue","read:repository","read:user"]'
+
+                  # 1) The bot user exists, and its password is the generated one.
+                  code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${BOT_USERNAME}")"
+                  if [ "$code" = "404" ]; then
+                    echo "creating bot user ${BOT_USERNAME}"
+                    curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/admin/users" \
+                      -d "{\"username\":\"${BOT_USERNAME}\",\"email\":\"${BOT_EMAIL}\",\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+                  elif [ "$code" != "200" ]; then
+                    echo "unexpected status probing bot user: $code" >&2; exit 1
+                  fi
+                  curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/${BOT_USERNAME}" \
+                    -d "{\"login_name\":\"${BOT_USERNAME}\",\"source_id\":0,\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+
+                  # 2) Write collaborator on the repository reports are filed into.
+                  curl -fsS -o /dev/null -u "$admin" -H 'Content-Type: application/json' -X PUT "$api/repos/${REPO}/collaborators/${BOT_USERNAME}" \
+                    -d '{"permission":"write"}'
+
+                  # 3) Keep the stored token while it authenticates and can read releases; else mint.
+                  tok="$(kubectl -n "$NAMESPACE" get secret "$TOKEN_SECRET" -o jsonpath='{.data.FORGEJO_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+                  if [ -n "$tok" ] \
+                    && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/user" \
+                    && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/repos/${REPO}/releases?limit=1"; then
+                    echo "existing token still valid with its scopes; no change"
+                  else
+                    echo "minting a fresh token"
+                    curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${TOKEN_NAME}" || true
+                    tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
+                      -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":${scopes}}" | jq -r '.sha1')"
+                    [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
+                    kubectl -n "$NAMESPACE" create secret generic "$TOKEN_SECRET" \
+                      --from-literal="FORGEJO_TOKEN=$tok" \
+                      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                    echo "wrote Secret $TOKEN_SECRET"
+                  fi
+
+                  # 4) The cluster owns this bot: revoke every token it did not mint, such as hand-made ones.
+                  curl -fsS -u "$bot" "$api/users/${BOT_USERNAME}/tokens?limit=50" \
+                    | jq -r --arg keep "$TOKEN_NAME" '.[] | select(.name != $keep) | .name' \
+                    | while read -r stale; do
+                        [ -n "$stale" ] || continue
+                        curl -fsS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/$(printf %s "$stale" | jq -sRr @uri)" \
+                          && echo "revoked token ${stale}"
+                      done
+                  echo "unfold-reports provisioner converged"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 64Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}
