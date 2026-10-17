@@ -25,7 +25,7 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   machine-readable Watch or a stated reason; a scheduled evaluator records Confirmed, Regressed or
   Inconclusive, Regressed also warns via ntfy; `watch/*` labels and capped `needs-refinement`
   created tickets from slice 2; epic VIK-1315).
-- **Proposed / open** — [CI isolation on Talos](rfc-ci-isolation-talos.md)
+- **Proposed / open** — [Unfold release train](rfc-unfold-release-train.md) (2026-10-17: one human step from a merged Ploeg PR to the homelab — CI-cut candidates, a bot pin PR in Unfold, one homelab PR per certified pair, post-deploy check with revert), [CI isolation on Talos](rfc-ci-isolation-talos.md)
   (2026-08-11 incident-driven: shared privileged dind is unsupported on Talos per Sidero;
   containment wrapper shipped, staged plan → Talos v1.13.8, cilium OOM-exemption, kata for
   KinD e2e, rootless end-state gated on moby#52268),
