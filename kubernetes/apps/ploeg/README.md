@@ -56,6 +56,8 @@ route to the public gateway, the LAN or the internet: `allow-gateway-egress` (fr
 and `ploeg` (ploegd). `worker-egress-probe` checks both halves as a worker-labelled Job; rerun it
 by changing its `PROBED_POLICY` value.
 
+The Claude runner (`app.kubernetes.io/name: claude-runner`, Kata) is left out of `ploeg-allow-egress`. It reaches only DNS, `api.anthropic.com:443`, ploegd on 8080 (the checkout and post-session hooks), the public gateway on 10443 (it clones `https://forgejo.<domain>`), and Alloy on 4318: no LiteLLM, no database, no other pod in `ploeg`.
+
 - Workers clone, push and call the PR API through `executor.forgejo.url`, the in-cluster
   service. ploegd keeps the public `https://forgejo.<domain>` through a post-render env patch,
   because it checks Unfold's https repository URL against its own forge URL. Glide VIK-1298
