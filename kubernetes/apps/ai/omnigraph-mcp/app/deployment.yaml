@@ -1,0 +1,384 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: omnigraph-mcp
+  labels:
+    app.kubernetes.io/name: omnigraph-mcp
+    app.kubernetes.io/part-of: omnigraph
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: omnigraph-mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: omnigraph-mcp
+        app.kubernetes.io/part-of: omnigraph
+        mcp.webgrip.io/access: litellm-gateway-only
+    spec:
+      serviceAccountName: omnigraph-mcp
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: install-omnigraph-mcp
+          image: harbor.webgrip.dev/dockerhub/supercorp/supergateway:4.0.0@sha256:407344de762a449f129c576fa1e3934b63c43fef417322687972ffc43ec675df
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -ceu
+            - >-
+              cp /etc/omnigraph-mcp/package.json /etc/omnigraph-mcp/package-lock.json /opt/omnigraph-mcp/
+              && cd /opt/omnigraph-mcp
+              && npm ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error
+              && test -f node_modules/@modernrelay/omnigraph-mcp/dist/bin.js
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: npm_config_cache, value: /tmp/npm-cache}
+            - {name: npm_config_update_notifier, value: "false"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          volumeMounts:
+            - {name: bridge, mountPath: /opt/omnigraph-mcp}
+            - {name: lockfile, mountPath: /etc/omnigraph-mcp, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      containers:
+        - name: memory
+          image: harbor.webgrip.dev/dockerhub/supercorp/supergateway:4.0.0@sha256:407344de762a449f129c576fa1e3934b63c43fef417322687972ffc43ec675df
+          imagePullPolicy: IfNotPresent
+          command:
+            - supergateway
+          args:
+            - --stdio
+            - node /opt/omnigraph-mcp/node_modules/@modernrelay/omnigraph-mcp/dist/bin.js
+            - --outputTransport
+            - streamableHttp
+            - --port
+            - "8001"
+            - --healthEndpoint
+            - /healthz
+            - --logLevel
+            - none
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: OMNIGRAPH_BASE_URL, value: "http://omnigraph.ai.svc.cluster.local:8080"}
+            - {name: OMNIGRAPH_GRAPH_ID, value: memory}
+          envFrom:
+            - secretRef:
+                name: omnigraph-mcp-memory
+          ports:
+            - name: memory
+              containerPort: 8001
+              protocol: TCP
+          startupProbe:
+            httpGet: {path: /healthz, port: memory}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /healthz, port: memory}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: memory}
+            periodSeconds: 30
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 384Mi}
+          volumeMounts:
+            - {name: bridge, mountPath: /opt/omnigraph-mcp, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+        - name: brain
+          image: harbor.webgrip.dev/dockerhub/supercorp/supergateway:4.0.0@sha256:407344de762a449f129c576fa1e3934b63c43fef417322687972ffc43ec675df
+          imagePullPolicy: IfNotPresent
+          command:
+            - supergateway
+          args:
+            - --stdio
+            - node /opt/omnigraph-mcp/node_modules/@modernrelay/omnigraph-mcp/dist/bin.js
+            - --outputTransport
+            - streamableHttp
+            - --port
+            - "8002"
+            - --healthEndpoint
+            - /healthz
+            - --logLevel
+            - none
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: OMNIGRAPH_BASE_URL, value: "http://omnigraph.ai.svc.cluster.local:8080"}
+            - {name: OMNIGRAPH_GRAPH_ID, value: brain}
+          envFrom:
+            - secretRef:
+                name: omnigraph-mcp-brain
+          ports:
+            - name: brain
+              containerPort: 8002
+              protocol: TCP
+          startupProbe:
+            httpGet: {path: /healthz, port: brain}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /healthz, port: brain}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: brain}
+            periodSeconds: 30
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 384Mi}
+          volumeMounts:
+            - {name: bridge, mountPath: /opt/omnigraph-mcp, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+        - name: brain-eval
+          image: harbor.webgrip.dev/dockerhub/supercorp/supergateway:4.0.0@sha256:407344de762a449f129c576fa1e3934b63c43fef417322687972ffc43ec675df
+          imagePullPolicy: IfNotPresent
+          command:
+            - supergateway
+          args:
+            - --stdio
+            - node /opt/omnigraph-mcp/node_modules/@modernrelay/omnigraph-mcp/dist/bin.js
+            - --outputTransport
+            - streamableHttp
+            - --port
+            - "8003"
+            - --healthEndpoint
+            - /healthz
+            - --logLevel
+            - none
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: OMNIGRAPH_BASE_URL, value: "http://omnigraph.ai.svc.cluster.local:8080"}
+            - {name: OMNIGRAPH_GRAPH_ID, value: brain}
+          envFrom:
+            - secretRef:
+                name: omnigraph-mcp-brain-eval
+          ports:
+            - name: brain-eval
+              containerPort: 8003
+              protocol: TCP
+          startupProbe:
+            httpGet: {path: /healthz, port: brain-eval}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /healthz, port: brain-eval}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: brain-eval}
+            periodSeconds: 30
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 384Mi}
+          volumeMounts:
+            - {name: bridge, mountPath: /opt/omnigraph-mcp, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+        - name: glide-memory
+          image: harbor.webgrip.dev/dockerhub/supercorp/supergateway:4.0.0@sha256:407344de762a449f129c576fa1e3934b63c43fef417322687972ffc43ec675df
+          imagePullPolicy: IfNotPresent
+          command:
+            - supergateway
+          args:
+            - --stdio
+            - node /opt/omnigraph-mcp/node_modules/@modernrelay/omnigraph-mcp/dist/bin.js
+            - --outputTransport
+            - streamableHttp
+            - --port
+            - "8004"
+            - --healthEndpoint
+            - /healthz
+            - --logLevel
+            - none
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: OMNIGRAPH_BASE_URL, value: "http://omnigraph.ai.svc.cluster.local:8080"}
+            - {name: OMNIGRAPH_GRAPH_ID, value: memory}
+          envFrom:
+            - secretRef:
+                name: omnigraph-mcp-glide
+          ports:
+            - name: glide-memory
+              containerPort: 8004
+              protocol: TCP
+          startupProbe:
+            httpGet: {path: /healthz, port: glide-memory}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /healthz, port: glide-memory}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: glide-memory}
+            periodSeconds: 30
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 384Mi}
+          volumeMounts:
+            - {name: bridge, mountPath: /opt/omnigraph-mcp, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+        - name: glide-brain
+          image: harbor.webgrip.dev/dockerhub/supercorp/supergateway:4.0.0@sha256:407344de762a449f129c576fa1e3934b63c43fef417322687972ffc43ec675df
+          imagePullPolicy: IfNotPresent
+          command:
+            - supergateway
+          args:
+            - --stdio
+            - node /opt/omnigraph-mcp/node_modules/@modernrelay/omnigraph-mcp/dist/bin.js
+            - --outputTransport
+            - streamableHttp
+            - --port
+            - "8005"
+            - --healthEndpoint
+            - /healthz
+            - --logLevel
+            - none
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: OMNIGRAPH_BASE_URL, value: "http://omnigraph.ai.svc.cluster.local:8080"}
+            - {name: OMNIGRAPH_GRAPH_ID, value: brain}
+          envFrom:
+            - secretRef:
+                name: omnigraph-mcp-glide
+          ports:
+            - name: glide-brain
+              containerPort: 8005
+              protocol: TCP
+          startupProbe:
+            httpGet: {path: /healthz, port: glide-brain}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /healthz, port: glide-brain}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: glide-brain}
+            periodSeconds: 30
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 384Mi}
+          volumeMounts:
+            - {name: bridge, mountPath: /opt/omnigraph-mcp, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+        - name: glide-webgrip
+          image: harbor.webgrip.dev/dockerhub/supercorp/supergateway:4.0.0@sha256:407344de762a449f129c576fa1e3934b63c43fef417322687972ffc43ec675df
+          imagePullPolicy: IfNotPresent
+          command:
+            - supergateway
+          args:
+            - --stdio
+            - node /opt/omnigraph-mcp/node_modules/@modernrelay/omnigraph-mcp/dist/bin.js
+            - --outputTransport
+            - streamableHttp
+            - --port
+            - "8006"
+            - --healthEndpoint
+            - /healthz
+            - --logLevel
+            - none
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: OMNIGRAPH_BASE_URL, value: "http://omnigraph.ai.svc.cluster.local:8080"}
+            - {name: OMNIGRAPH_GRAPH_ID, value: webgrip}
+          envFrom:
+            - secretRef:
+                name: omnigraph-mcp-glide
+          ports:
+            - name: glide-webgrip
+              containerPort: 8006
+              protocol: TCP
+          startupProbe:
+            httpGet: {path: /healthz, port: glide-webgrip}
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /healthz, port: glide-webgrip}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: {path: /healthz, port: glide-webgrip}
+            periodSeconds: 30
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 384Mi}
+          volumeMounts:
+            - {name: bridge, mountPath: /opt/omnigraph-mcp, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: bridge
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: lockfile
+          configMap:
+            name: omnigraph-mcp-lockfile
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi

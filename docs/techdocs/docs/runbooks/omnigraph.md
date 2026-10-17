@@ -115,15 +115,15 @@ The bridge exposes inline `query`/`mutate`, `load` and branch tools. It does not
 
 The server's built-in `/mcp` endpoint does not exist in v0.11.
 
-In-cluster agents reach `memory` through the LiteLLM MCP gateway instead: server `omnigraph_memory`, access group `memory`, running as `act-agent` (read everything, write only on its own unprotected branches, never merge). A LiteLLM key only sees these tools when its `object_permission.mcp_access_groups` contains `memory`. The bridge is installed by the `install-omnigraph-mcp` init container of the LiteLLM pod with `npm ci` from the lockfile in [omnigraph-mcp](../../../../kubernetes/apps/ai/litellm/app/omnigraph-mcp/). LiteLLM refuses to start when `OMNIGRAPH_MEMORY_TOKEN` is missing from its environment, so the `litellm-omnigraph-memory` Secret has to exist before the pod restarts.
+In-cluster agents reach `memory` through the LiteLLM MCP gateway instead: server `omnigraph_memory`, access group `memory`, running as `act-agent` (read everything, write only on its own unprotected branches, never merge). A LiteLLM key only sees these tools when its `object_permission.mcp_access_groups` contains `memory`. The bridge runs over HTTP in the `memory` container of the `omnigraph-mcp` Deployment, behind supergateway, with `OMNIGRAPH_TOKEN` from the `omnigraph-mcp-memory` Secret (`secret/omnigraph/agent`). Its `install-omnigraph-mcp` init container runs `npm ci` from the lockfile in [bridge/](../../../../kubernetes/apps/ai/omnigraph-mcp/app/bridge/). Only LiteLLM can reach the bridges; the design, ports and network policies are in [LiteLLM: Omnigraph bridges](../general/litellm.md#omnigraph-bridges). A missing Secret keeps that one container from starting; LiteLLM itself does not depend on it.
 
-`brain` has a second bridge in the same pod: server `omnigraph_brain`, access group `brain`, running as `act-brain-agent` with `OMNIGRAPH_BRAIN_TOKEN` from the `litellm-omnigraph-brain` Secret (`secret/omnigraph/brain-agent`). Its tools carry the prefix `omnigraph_brain-`. `act-brain-agent` reads and writes `main` directly, so a tool call works on `main` without creating a branch.
+`brain` has a second bridge in the same pod: server `omnigraph_brain`, access group `brain`, running as `act-brain-agent` with the token from the `omnigraph-mcp-brain` Secret (`secret/omnigraph/brain-agent`). Its tools carry the prefix `omnigraph_brain-`. `act-brain-agent` reads and writes `main` directly, so a tool call works on `main` without creating a branch.
 
 Two keys see both groups: `open-webui` for [Open WebUI](open-webui.md) and `claude-code` for Claude Code on Ryan's workstation (setup in [Open WebUI: Claude Code](open-webui.md#claude-code)).
 
 ## Glide agents
 
-Glide runs read and write `memory`, `brain` and `webgrip` through three MCP servers in the LiteLLM pod, all running as `act-glide`:
+Glide runs read and write `memory`, `brain` and `webgrip` through three MCP servers in the `omnigraph-mcp` pod, all running as `act-glide`:
 
 | Server | Graph | Tool prefix |
 |---|---|---|
@@ -131,7 +131,7 @@ Glide runs read and write `memory`, `brain` and `webgrip` through three MCP serv
 | `omnigraph_glide_brain` | `brain` | `omnigraph_glide_brain-` |
 | `omnigraph_glide_webgrip` | `webgrip` | `omnigraph_glide_webgrip-` |
 
-The servers sit in access group `glide`. Their token comes from `OMNIGRAPH_GLIDE_TOKEN` in the `litellm-omnigraph-glide` Secret (`secret/omnigraph/glide`).
+The servers sit in access group `glide`. Their token comes from the `omnigraph-mcp-glide` Secret (`secret/omnigraph/glide`).
 
 **How a run gets the tools.** The run holds a LiteLLM virtual key whose `object_permission.mcp_access_groups` contains `glide`. The harness connects to the MCP endpoint `http://litellm.ai.svc.cluster.local:4000/mcp/` over streamable HTTP with `Authorization: Bearer <run key>`. A key without the `glide` group sees none of these tools.
 
