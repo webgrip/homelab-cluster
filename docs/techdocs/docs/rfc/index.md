@@ -12,7 +12,7 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   so since; this index was still listing it as the open "big cutover" as late as 2026-08-05.
   Verified live: flux-system's GitRepository is
   `http://forgejo-http.forgejo.svc.cluster.local:3000/webgrip/homelab-cluster.git`).
-- **Accepted, executing** — [Renovate on Forgejo](rfc-renovate-forgejo.md) (GitHub retirement
+- **Accepted, executing** — [One delivery contract](rfc-unfold-release-train.md) (accepted 2026-10-17, ADR-0069: forges produce, registries carry, clusters consume; every project on semantic-release with a forge adapter, Renovate channel automerge, post-deploy verify; P1 in a separate work stream), [Renovate on Forgejo](rfc-renovate-forgejo.md) (GitHub retirement
   gated on the Flux cutover), [CI pipeline performance](rfc-ci-pipeline-performance.md) (lives in
   `webgrip/workflows`), [Codeberg Pages TechDocs](rfc-codeberg-pages-techdocs.md) (interim;
   publish path unproven), [security hardening](rfc-security-hardening.md) (program frame),
@@ -25,7 +25,7 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   machine-readable Watch or a stated reason; a scheduled evaluator records Confirmed, Regressed or
   Inconclusive, Regressed also warns via ntfy; `watch/*` labels and capped `needs-refinement`
   created tickets from slice 2; epic VIK-1315).
-- **Proposed / open** — [Unfold release train](rfc-unfold-release-train.md) (2026-10-17: one human step from a merged Ploeg PR to the homelab — CI-cut candidates, a bot pin PR in Unfold, one homelab PR per certified pair, post-deploy check with revert), [CI isolation on Talos](rfc-ci-isolation-talos.md)
+- **Proposed / open** — [CI isolation on Talos](rfc-ci-isolation-talos.md)
   (2026-08-11 incident-driven: shared privileged dind is unsupported on Talos per Sidero;
   containment wrapper shipped, staged plan → Talos v1.13.8, cilium OOM-exemption, kata for
   KinD e2e, rootless end-state gated on moby#52268),
