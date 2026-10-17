@@ -82,6 +82,22 @@ OpenBao, and token creation needs an Authentik login):
 
 Rotation = same steps; step 2's `bao kv put` overwrites version-safely.
 
+## Which token each consumer uses
+
+| OpenBao path | Vikunja identity | Consumers | Expires |
+| --- | --- | --- | --- |
+| `vikunja/mcp` | the owner (`ryangr0`) | mcp-vikunja, theme suggestion, the Forgejo agent pool, Unfold (`agent-vikunja-token`) | 2027-09-01 |
+| `vikunja/bot-ploeg` | bot user `bot-ploeg` (id 40) | ploegd write-backs, `ploeg-tracker-wiring` (`ploeg-vikunja-bot`) | 2027-10-17 |
+
+`bot-ploeg` is a native Vikunja bot user: no password, no interactive login. Its owner mints its
+token under **Settings → Bot users** (title `ploeg`), with exactly these permissions: projects read
+all and read one; tasks read one and update; task comments create and read all; project webhooks
+create, read all and update; project users create and read all. It is Admin on every board in
+`config.targets` of the ploeg HelmRelease; a new routed board needs that share too. Store it with
+`bao kv put secret/vikunja/bot-ploeg api_token=<token>`. An expired token shows as 401s in
+`ploeg-tracker-wiring` job logs and `vikunja write-backs` errors in ploegd. Rotate both tokens by
+2027-08-01.
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
