@@ -191,15 +191,18 @@ Recreating a team under the same `team_id` keeps the chart value valid.
 - Nobody can switch logging off per request (`global_disable_no_log_param`), and prompts stay out
   of the spend log even if someone flips the Admin UI toggle (`store_prompts_in_spend_logs: false`).
 
-## Settings that keep 1.104+ defaults off
+## LiteLLM 1.104+ defaults
 
-LiteLLM 1.104 and 1.105 changed defaults that homelab depends on. One setting puts the old
-behaviour back, with a condition for removing it. 1.104 also turned stdio MCP servers off; homelab
-keeps them off, because the [Omnigraph bridges](#omnigraph-bridges) run over HTTP.
+LiteLLM 1.104 and 1.105 changed two defaults homelab depended on; no setting puts the old
+behaviour back any more.
 
-| Setting | Where | Why | Remove when |
-| --- | --- | --- | --- |
-| `litellm_settings.budget_exceeded_status_code: 429` | `litellm-config.configmap.yaml` | From 1.104.0 a spent budget answers HTTP 422 instead of 429. Unfold's Ask (`gatewayFailure` in `apps/unfold/src/ask/service.ts`) reports a spent per-Ask budget only on 400 or 429 and would call a 422 a provider error. Ploeg's ACP adapter counts `429` in a session-start failure as `infra_llm`, while a 422 would count as `infra_node`. Both are infra failures and get retried the same way | Unfold accepts 422 and Ploeg's start-failure needles include it. Then drop the line, so harnesses stop retrying a spent budget as if it were a rate limit |
+- 1.104 turned stdio MCP servers off. Homelab keeps them off, because the
+  [Omnigraph bridges](#omnigraph-bridges) run over HTTP.
+- A spent budget answers HTTP 422 since 1.104.0. Homelab kept 429 with
+  `budget_exceeded_status_code: 429` until Unfold and Ploeg recognised a spent budget by its body
+  at any status (Unfold #401 in 0.4.0-rc.82, Ploeg #151 in 0.2.0-rc.23); the setting was removed
+  on 2026-10-17 once both ran here. The Omnigraph distill, brain-eval and embed-step jobs retry 429
+  as a rate limit, so a spent budget now stops them at once instead of being retried.
 
 Other changes in the move from 1.102.4 to 1.105.1 that need no setting:
 
