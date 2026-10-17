@@ -141,6 +141,52 @@ namespace. Keep the `release: kube-prometheus-stack` label on PrometheusRules �
 lint/policy requirement (`require-prometheusrule-labels`), a no-op for the VM operator. Label and
 annotation contract, severity rules, and the copy/paste template: [Alerting principles](alerting-principles.md).
 
+## Claude Code and Cowork telemetry
+
+Claude Code ignores `CLAUDE_CODE_ENABLE_TELEMETRY` and the `OTEL_EXPORTER_OTLP_*` variables in a
+repository's `.claude/settings.json` (since v2.1.282, [docs](https://code.claude.com/docs/en/settings-reference#variables-claude-code-ignores-in-env)).
+A telemetry block there is inert. That is why the Claude Code dashboards were empty until 2026-10-17:
+the gateway had accepted zero OTLP log records and metric points in 20 days.
+
+Telemetry is set where Claude Code honours it:
+
+| Scope | Where | Endpoint |
+|---|---|---|
+| Whole Claude org | claude.ai → Organization settings → Claude Code → Managed settings (`env` block) | public ingest |
+| One machine | `~/.claude/settings.json` `env` block | LAN `otlp.` or public ingest |
+| Cowork | claude.ai admin → Data and privacy → Monitoring (Cowork only, not Claude Code) | public ingest |
+
+Two OTLP endpoints front the same Alloy receiver:
+
+- `https://otlp.${SECRET_DOMAIN}`: `envoy-internal`, LAN only, no auth, gRPC and HTTP.
+- `https://otlp-ingest.${SECRET_DOMAIN}`: `envoy-external`, public, OTLP/HTTP only
+  (`/v1/traces`, `/v1/metrics`, `/v1/logs`). Envoy `apiKeyAuth` requires the header
+  `x-otlp-token`; the token is the `claude-org` key of the Secret `alloy-gateway-otlp-ingest`
+  in `observability` (generated once by `password-generator`). Missing or wrong token → 401.
+  Use it for anything that runs off the LAN: other org members, Cowork in the cloud, Office Agents.
+
+Org managed-settings `env` for Claude Code:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "https://otlp-ingest.<domain>",
+    "OTEL_EXPORTER_OTLP_HEADERS": "x-otlp-token=<token>",
+    "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+    "OTEL_RESOURCE_ATTRIBUTES": "service.namespace=ai,deployment.environment=homelab"
+  }
+}
+```
+
+Check arrival on the gateway's own counters: `otelcol_receiver_accepted_log_records_total` and
+`otelcol_receiver_accepted_metric_points_total` on the `alloy-gateway` pod (`:12345/metrics`)
+must rise after a session. The `blackbox-alloy-gateway-otlp-ingest` probe expects 401 without a
+token, so it fails both when the route is gone and when the auth gate is.
+
 ## SLOs (Sloth)
 
 Sloth generates recording + burn-rate rules from `PrometheusServiceLevel` CRs:

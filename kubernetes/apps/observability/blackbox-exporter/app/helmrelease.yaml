@@ -238,6 +238,24 @@ spec:
               Host: otlp.${SECRET_DOMAIN}
             fail_if_body_not_matches_regexp:
               - 'method not allowed'
+        http_alloy_otlp_ingest_gateway:
+          prober: http
+          timeout: 5s
+          http:
+            method: POST
+            valid_http_versions:
+              - "HTTP/1.1"
+              - "HTTP/2.0"
+            valid_status_codes:
+              - 401
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            tls_config:
+              insecure_skip_verify: true
+            headers:
+              Host: otlp-ingest.${SECRET_DOMAIN}
+              Content-Type: application/json
+            body: "{}"
         http_backstage_gateway:
           prober: http
           timeout: 5s
