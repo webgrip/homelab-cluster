@@ -116,6 +116,46 @@ Recreating a team under the same `team_id` keeps the chart value valid.
 - Nobody can switch logging off per request (`global_disable_no_log_param`), and prompts stay out
   of the spend log even if someone flips the Admin UI toggle (`store_prompts_in_spend_logs: false`).
 
+## Settings that keep 1.104+ defaults off
+
+LiteLLM 1.104 and 1.105 changed defaults that homelab depends on. Two settings put the old
+behaviour back, and each has a condition for removing it.
+
+| Setting | Where | Why | Remove when |
+| --- | --- | --- | --- |
+| `LITELLM_ENABLE_MCP_STDIO: "true"` | `helmrelease.yaml` env (LiteLLM reads it only from the environment, not from `config.yaml` or the database) | From 1.104.0 stdio MCP servers stay listed but never start. The six `omnigraph_*` bridges are stdio servers that run `node` | The bridges move to HTTP. With the flag on, a `proxy_admin` can also register a database stdio server running `node`, `npx`, `uvx`, `python`, `python3`, `docker` or `deno`, as on 1.102 |
+| `litellm_settings.budget_exceeded_status_code: 429` | `litellm-config.configmap.yaml` | From 1.104.0 a spent budget answers HTTP 422 instead of 429. Unfold's Ask (`gatewayFailure` in `apps/unfold/src/ask/service.ts`) reports a spent per-Ask budget only on 400 or 429 and would call a 422 a provider error. Ploeg's ACP adapter counts `429` in a session-start failure as `infra_llm`, while a 422 would count as `infra_node`. Both are infra failures and get retried the same way | Unfold accepts 422 and Ploeg's start-failure needles include it. Then drop the line, so harnesses stop retrying a spent budget as if it were a rate limit |
+
+Other changes in the move from 1.102.4 to 1.105.1 that need no setting:
+
+- **Master key.** The proxy refuses to start with an unset, empty or publicly known key (`sk-1234`).
+  The OpenBao key passes this check. Rotating it to a weak value now stops the proxy instead of
+  just weakening it.
+- **Failing migrations stop the proxy** (1.105.0), and `ENFORCE_PRISMA_MIGRATION_CHECK=false` is
+  ignored. A pod whose `prisma migrate deploy` fails crash-loops, and the old ReplicaSet keeps
+  serving (`unavailable: 0`).
+- **Spend-log indexes.** `LiteLLM_SpendLogs(api_key, startTime)` and `(litellm_call_id)` are
+  built after the migrations, `CONCURRENTLY`, on a background thread once the proxy serves, so
+  spend-log writes never block. At 85 199 rows (58 MB heap, 2026-10-17) each build takes seconds.
+  Check afterwards with
+  `SELECT indexrelname FROM pg_stat_user_indexes WHERE relname = 'LiteLLM_SpendLogs'`.
+- **Config file wins.** A runtime write to a key `config.yaml` declares answers 400 (1.103.0).
+  `LiteLLM_Config` holds only `auto_router_tuning_baseline_v2`, which the file does not declare.
+- **Admin UI sessions** use a new token format (1.104.0): everyone signs in again once.
+- **`/sso/debug/*` answers 404** unless `ENABLE_SSO_DEBUG=true` (1.105.0). Nothing here uses it.
+- **Organisation and project `max_budget: 0` means zero** (1.103.0). There are no organisations or
+  projects, and the team Job sets `max_budget: null`.
+- **Pinned prices still apply.** Every chat model with pinned `model_info` prices, the
+  `*_above_100k_tokens` rates of `claude-haiku-5-5` included, was priced from the pin in the
+  1.105.1 image through the Router's own cost path. The bundled map now has DeepSeek V4.1 Flash
+  at 0.30 / 0.006 / 1.20 per million tokens, the same as the pin.
+- **Per-key `metadata.disable_fallbacks`** is still copied onto each request and still stops
+  every fallback (checked in the 1.105.1 image). Ploeg mints every Run key with it.
+
+Rollback is the previous image pin. 1.102.4 starts on a database that 1.105.1 migrated, and keys
+minted on 1.105.1 keep working there (checked on a scratch Postgres). The new tables and columns
+stay unused.
+
 ## Metrics
 
 Two sources, both scraped by the `litellm` VMServiceScrape:
