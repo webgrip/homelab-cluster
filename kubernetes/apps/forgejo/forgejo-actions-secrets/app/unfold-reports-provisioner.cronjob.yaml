@@ -10,6 +10,11 @@
 # bot's own login, so Unfold tells its comments from the team's). No write:repository: the bot
 # can never push. Collaborator `write` is kept because labelling an issue at creation needs it.
 #
+# The kube-apiserver is reachable only through CiliumNetworkPolicy
+# allow-unfold-reports-provisioner-apiserver (kubernetes/apps/forgejo/networkpolicy.yaml), which
+# matches this pod's app.kubernetes.io/name label. Every call has a timeout, so a blocked path
+# fails the Job instead of hanging it.
+#
 # This app's Kustomization has NO postBuild.substituteFrom, so braced ${VARS} are left for the shell.
 apiVersion: v1
 kind: ServiceAccount
@@ -63,6 +68,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 2
+      activeDeadlineSeconds: 600
       ttlSecondsAfterFinished: 172800
       template:
         metadata:
@@ -84,6 +90,7 @@ spec:
               imagePullPolicy: IfNotPresent
               env:
                 - {name: HOME, value: /tmp}
+                - {name: CURL_TIMEOUT, value: "30"}
                 - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
                 - {name: NAMESPACE, value: forgejo}
                 - {name: REPO, value: webgrip/unfold}
@@ -105,6 +112,8 @@ spec:
                   admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
                   bot="${BOT_USERNAME}:${BOT_PASSWORD}"
                   scopes='["write:issue","read:repository","read:user"]'
+                  curl() { command curl --connect-timeout 10 --max-time "$CURL_TIMEOUT" "$@"; }
+                  kubectl() { command kubectl --request-timeout=30s "$@"; }
 
                   # 1) The bot user exists, and its password is the generated one.
                   code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${BOT_USERNAME}")"
