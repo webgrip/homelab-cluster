@@ -70,11 +70,14 @@ spec:
           }
 
           // VictoriaLogs Loki-protocol ingest; _stream_fields pins the stream shape
+          // _msg_field=body: OTLP records arrive as JSON lines whose text is in
+          // "body"; without it VictoriaLogs shows "missing _msg field". Plain
+          // (logfmt) Faro lines have no body field and keep their line as _msg.
           // for the OTLP->loki label set + Faro's app/kind labels (absent fields
           // on an entry are ignored).
           loki.write "main" {
             endpoint {
-              url = "http://vlsingle-victorialogs.observability.svc.cluster.local:9428/insert/loki/api/v1/push?_stream_fields=service_name,service_namespace,deployment_environment,event_name,event_domain,job,app,kind"
+              url = "http://vlsingle-victorialogs.observability.svc.cluster.local:9428/insert/loki/api/v1/push?_stream_fields=service_name,service_namespace,deployment_environment,event_name,event_domain,job,app,kind&_msg_field=body"
             }
           }
 
