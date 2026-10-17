@@ -63,7 +63,7 @@ The MCP servers are **Flux-managed workloads in the cluster**; Claude Code conne
 | `kubernetes` | `kubernetes/apps/observability/k8s-mcp/` | `https://k8s-mcp.${SECRET_DOMAIN}/mcp` — **read-only**, bound to the built-in `view` ClusterRole (no Secrets) |
 | `opencost` | `kubernetes/apps/observability/opencost/` | `https://opencost-mcp.${SECRET_DOMAIN}/` — cost allocation/efficiency queries |
 | `victorialogs` | `kubernetes/apps/observability/mcp-victorialogs/` | `https://mcp-victorialogs.${SECRET_DOMAIN}/mcp` — LogsQL log queries |
-| `vikunja` | `kubernetes/apps/vikunja/mcp-vikunja/` | `https://mcp-vikunja.${SECRET_DOMAIN}/mcp` — task/project CRUD, the one **write-capable** MCP (acts as the token owner's user; hard deletes disabled server-side). Conventions: `product-owner` skill (from `webgrip/ai-skills`); instance ops/token: `docs/techdocs/docs/runbooks/mcp-vikunja.md` |
+| `vikunja` | `kubernetes/apps/vikunja/mcp-vikunja/` | not on the LAN: through LiteLLM's gateway `https://litellm.${SECRET_DOMAIN}/mcp/` with a key holding the `board` group (Claude Code: the user-level server from `docs/techdocs/docs/general/knowledge-system.md`) — task/project CRUD, the one **write-capable** MCP (acts as the token owner's user; hard deletes disabled server-side). Conventions: `product-owner` skill (from `webgrip/ai-skills`); instance ops/token: `docs/techdocs/docs/runbooks/mcp-vikunja.md` |
 
 How it works: the servers run in-cluster (image digests pinned, RBAC/config in Git); their HTTPRoutes are `external-dns`-excluded so the hostnames resolve only on the LAN via split-DNS. The endpoints require no client auth on the LAN, so `.mcp.json` holds just the URLs.
 

@@ -29,14 +29,15 @@ all agents, not just Claude; `CLAUDE.md` is a symlink to this file.
 
 - **Task recipes → skills** (auto-load when relevant; full set in `.claude/skills/`): `add-app`, `external-secrets`, `cnpg-database`, `talos`, `longhorn`, `victoriametrics`, `workload-placement`, `network-policy`, and more — trust the skill descriptions over this list.
 - **Debug/health → `cluster-health` subagent**; trigger Renovate → `renovate-trigger` subagent.
-- **Live cluster (read-only) → MCP** (in-cluster, Flux-managed, connect over HTTP; committed `.mcp.json`): `grafana` (PromQL→VictoriaMetrics; its Loki tools only reach grace-period history; traces are VictoriaTraces via the Jaeger datasource, not the MCP Tempo tools) + `victorialogs` (LogsQL log queries) + `kubernetes` (read-only `view` role) + `opencost` (cost/efficiency) + `vikunja` (task CRUD — the one **write-capable** MCP; **the roadmap board lives there**, ADR-0043; `product-owner` skill). LAN-only; see `.claude/README.md`.
+- **Live cluster (read-only) → MCP** (in-cluster, Flux-managed, connect over HTTP; committed `.mcp.json`): `grafana` (PromQL→VictoriaMetrics; its Loki tools only reach grace-period history; traces are VictoriaTraces via the Jaeger datasource, not the MCP Tempo tools) + `victorialogs` (LogsQL log queries) + `kubernetes` (read-only `view` role) + `opencost` (cost/efficiency) + `vikunja` (task CRUD — the one **write-capable** MCP, NOT in `.mcp.json`: reached through LiteLLM's gateway with a `board`-group key; **the roadmap board lives there**, ADR-0043). LAN-only; see `.claude/README.md`.
 - **Safety is enforced** by hooks + permissions in `.claude/` (block SOPS edits, plaintext secrets, destructive cluster commands; validate manifests on edit).
 - **Deep docs → `docs/techdocs/docs/`** (+ `runbooks/`). Endpoints: API VIP `10.0.0.25`, envoy-internal `10.0.0.27` (LAN), envoy-external `10.0.0.28` (public), k8s-gateway `10.0.0.26`, Garage S3 `10.0.0.110:3900`. Hostnames template as `<app>.${SECRET_DOMAIN}` (literal is SOPS-encrypted; docs disagree — don't hardcode it).
 
 ## The roadmap lives in Vikunja, not in this repo
 
 The backlog/roadmap is the **`Homelab Roadmap` project on the Vikunja board**, reached through the
-`vikunja` MCP server configured in [.mcp.json](.mcp.json) (LAN-only, write-capable). There is no
+`vikunja` MCP tools, reached through LiteLLM's authenticated MCP gateway with a key that holds the
+`board` group (write-capable; [runbooks/mcp-vikunja.md](docs/techdocs/docs/runbooks/mcp-vikunja.md)). There is no
 roadmap file in git — see
 [ADR-0043](docs/techdocs/docs/adr/adr-0043-vikunja-roadmap-system-of-record.md).
 

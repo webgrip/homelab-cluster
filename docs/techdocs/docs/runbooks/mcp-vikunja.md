@@ -8,9 +8,14 @@ refinement, prioritization) is the `product-owner` skill from
 
 `kubernetes/apps/vikunja/mcp-vikunja/` — a `supercorp/supergateway` Deployment (ns `vikunja`)
 bridging the stdio-only npm server `@aimbitgmbh/vikunja-mcp` (pinned in `deployment.yaml` args) to
-streamable HTTP at `https://mcp-vikunja.${SECRET_DOMAIN}/mcp` (envoy-internal,
-external-dns-excluded, LAN-only, no client auth — same trust model as the other MCPs, but this one
-**writes**, acting as the token owner's Vikunja user).
+streamable HTTP on the in-cluster Service `http://mcp-vikunja.vikunja.svc.cluster.local:8000/mcp`.
+It **writes**, acting as the token owner's Vikunja user, so only LiteLLM may reach it
+(`app/networkpolicy.yaml`). Every client goes through LiteLLM's MCP gateway
+(`https://litellm.${SECRET_DOMAIN}/mcp/`) with a virtual key that holds the `board` access group:
+Claude Code uses the `claude-code` key on the user-level server set up in
+[the knowledge-system guide](../general/knowledge-system.md#claude-code), agents use their own keys.
+The LAN route `https://mcp-vikunja.${SECRET_DOMAIN}/mcp` was removed on 2026-10-17 (VIK-1515):
+it answered anonymous calls with the owner's token, so anyone on the LAN could write to the board.
 
 - Talks to Vikunja in-cluster: `http://vikunja.vikunja.svc.cluster.local:3456/api/v1` (the
   `/api/v1` suffix is required by vikunja-mcp).
