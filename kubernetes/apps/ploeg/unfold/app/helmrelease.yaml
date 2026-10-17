@@ -15,20 +15,6 @@ spec:
     cleanupOnFail: true
     remediation:
       retries: 3
-  # Restart Unfold when the cluster re-mints the Report a problem token (unfold-reports-provisioner
-  # in forgejo). Targeted, not reloader auto: Unfold holds at-rest keys that must never trigger a
-  # restart loop. The chart has no Deployment annotations, so a post-render patch adds it.
-  postRenderers:
-    - kustomize:
-        patches:
-          - target: {kind: Deployment, name: unfold}
-            patch: |
-              apiVersion: apps/v1
-              kind: Deployment
-              metadata:
-                name: unfold
-                annotations:
-                  secret.reloader.stakater.com/reload: unfold-reports-token
   values:
     mode: live
     baseUrl: https://unfold.${SECRET_DOMAIN}
