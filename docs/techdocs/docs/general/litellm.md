@@ -152,9 +152,119 @@ Other changes in the move from 1.102.4 to 1.105.1 that need no setting:
 - **Per-key `metadata.disable_fallbacks`** is still copied onto each request and still stops
   every fallback (checked in the 1.105.1 image). Ploeg mints every Run key with it.
 
-Rollback is the previous image pin. 1.102.4 starts on a database that 1.105.1 migrated, and keys
-minted on 1.105.1 keep working there (checked on a scratch Postgres). The new tables and columns
-stay unused.
+## What was checked for the move to 1.105.1
+
+Each check ran on 2026-10-17 against the pinned image digests, locally or read-only against the
+cluster. None made a paid model call.
+
+### Rollback to 1.102.4 keeps the 1.105.1 schema and data
+
+Rollback is the previous image pin. On a scratch PostgreSQL 18, the version CNPG runs:
+
+1. 1.105.1 migrated an empty database (195 migrations), minted a key with `tpd_limit`, served
+   three calls, and wrote a budget row with `temp_budget_increase` and `tpd_limit` and a
+   `LiteLLM_Lens` row.
+2. 1.102.4 started on that database. `prisma migrate deploy` found its own 171 migrations,
+   reported `No pending migrations to apply`, and skipped its post-migration drift fix. The 1.105.1
+   key still worked, a new key worked, and spend logs were written. Every column, table, index and
+   `_prisma_migrations` row was unchanged, and so was the data in the new columns. 1.102.4 does
+   not update the columns it does not know: key `total_spend` stayed at its 1.105.1 value, and
+   1.102.4's spend logs have no `litellm_call_id`.
+3. 1.105.1 started again on the same database with nothing to migrate. Both keys worked,
+   `total_spend` grew again, and the schema matched step 1.
+
+The risk is 1.102.4's drift fix, a `prisma migrate diff` from the database to its own
+`schema.prisma` that it then applies. Against a 1.105.1 database it drops 13 tables and 38 columns,
+among them key `total_spend` and `tpd_limit`, the daily response-time columns, and
+`LiteLLM_SpendLogs.litellm_call_id`. 1.102.4 runs it only after `migrate deploy` applied
+something, after an "already exists" migration failure, or when it has to baseline a database
+without migration history. None of these happens on a plain rollback, because every 1.102.4
+migration is already applied. If one happens anyway, 1.105.1 will not add the dropped columns back,
+because its migrations are already marked applied. Restore the database from the daily CNPG backup
+before rolling forward.
+
+### Omnigraph stdio bridges with the real config
+
+The bridges were installed as the `install-omnigraph-mcp` init container does (the
+`supergateway` image, `npm ci` from `omnigraph-mcp/package-lock.json`, `@modernrelay/omnigraph-mcp`
+0.10.0). The proxy ran this repository's `config.yaml` and `sitecustomize.py` with
+`LITELLM_ENABLE_MCP_STDIO=true`. `OMNIGRAPH_BASE_URL` pointed at a port-forward to
+`svc/omnigraph`, and every `OMNIGRAPH_*_TOKEN` was set to an invalid value. A key holding the
+`memory`, `brain`, `brain-eval-raw` and `glide` groups called the `/mcp` gateway. 1.102.4 and
+1.105.1 gave the same results:
+
+- `initialize` succeeds, and LiteLLM spawns all six bridges.
+- `tools/list` returns 15 tools for each bridge, and 10 for `omnigraph_brain_eval`. Its
+  `disallowed_tools` still hides `mutate`, `load` and the three `branches_*` writes, and calling
+  `mutate` is refused. On 1.105.1 that refusal is a 403 before the bridge is reached.
+- Listing tools needs no omnigraph token, and neither does `health`. Anything that reads a graph
+  answers 401 `invalid bearer token`, so a bad token shows up on the first real call, not in
+  `tools/list`.
+
+### Fireworks spend does not change
+
+1.103.0 sends Fireworks cost through the shared calculator, which bills cache writes and
+reasoning tokens. The last 7 days of Fireworks calls (5 462 successful, US$2.16) were replayed
+through `Router.completion` with each row's recorded usage in both images. 1.102.4 reproduces
+every recorded cost exactly, and 1.105.1 gives the same total, to the cent and per model.
+The reason is that Fireworks never reports cache-write tokens (0 of 5 462 rows), and its
+`completion_tokens` already include the reasoning tokens, which both versions bill at the output
+rate.
+
+### Provider caps stay at US$10 a day
+
+The highest daily spend in the spend log, which holds data from 2026-07-19 on, is
+US$10.40 for Anthropic on 2026-09-28 and US$4.02 for Fireworks on 2026-09-29. Anthropic reached
+its cap on 2026-09-28, when the cap was US$5, and on 2026-09-29 at US$10. It has had no calls
+since. Fireworks has never reached its cap, and in October it peaked at US$1.91 on 2026-10-05.
+
+1.105.0 counts provider spend "on every API surface". The budget limiter now takes the provider
+from the logging payload instead of the request's `litellm_params`. On 1.102.4 every embedding
+call to `tei-embeddings` (provider `openai`, priced at 0) logged a `custom_llm_provider is
+required` traceback, about 400 a day. Every chat call already carried its provider. So the
+change counts no spend that was not counted before, and only removes those tracebacks.
+
+### `stream_timeout: 120` on `/v1/messages`
+
+`stream_timeout` is the httpx read timeout: the longest wait for the next bytes, both before the
+first chunk and between chunks. It does not limit the length of the stream. With
+`stream_timeout: 5` and a fake Anthropic upstream, a 20-second stream with a chunk every 2 seconds
+completed on both routes in both versions. A first chunk after 8 seconds, or an 8-second gap
+mid-stream, cut chat completions off after 5 seconds in both versions. `/v1/messages` was cut off
+only on 1.105.1. 1.102.4 waited for the whole stream there.
+
+Nothing here streams through `/v1/messages` or a pass-through route. The spend log has only
+`acompletion`, `aembedding` and MCP rows, and the LiteLLM logs of the last 30 days have no
+`/v1/messages` request and no stream timeout. Unfold's Ask uses `/chat/completions`. Pewter's
+`claude-runner` talks to Anthropic directly. No Ploeg team on homelab uses the `claude-code`
+harness, which would send `/v1/messages` here. While Claude works, Anthropic's stream keeps
+sending thinking deltas and `ping` events, so a 120-second gap would mean the stream has stalled. The setting stays as it is. If a
+`/v1/messages` client arrives and hits it, give that model its own `stream_timeout` in
+`litellm_params`.
+
+### 1.106 stops forwarding the caller's LiteLLM key to MCP servers
+
+From 1.106.0 ([BerriAI/litellm#45401](https://github.com/BerriAI/litellm/pull/45401)) LiteLLM
+removes the caller's key from every header it sends to an MCP server. Nothing here needs that key:
+
+- The six `omnigraph_*` servers are stdio processes. They get only the `env` the config gives
+  them, with their own `OMNIGRAPH_*_TOKEN`, never request headers.
+- `grafana`, `victorialogs`, `kubernetes`, `opencost`, `vikunja` and `brain_tools` are HTTP
+  servers without `auth_type`, `extra_headers` or a pass-through setting, so LiteLLM forwards no
+  caller credential to them. A header-recording HTTP MCP server registered the same way received
+  no LiteLLM key on `initialize`, `tools/list` or `tools/call`, with the key in `Authorization`
+  (as the owner's Claude Code `omnigraph` entry sends it) or in `x-litellm-api-key` (as Ploeg and
+  Unfold send it), on 1.102.4 and on 1.105.1.
+- `LiteLLM_MCPServerTable` is empty, so there are no MCP servers registered in the database.
+
+Check again if a server gains `extra_headers`, `auth_type` or a pass-through setting.
+
+### Security advisories
+
+All 17 advisories at `repos/BerriAI/litellm/security-advisories` (one page), the GitHub advisory
+database for `litellm`, `litellm-proxy-extras` and `litellm-enterprise`, and OSV were checked. No
+advisory affects 1.102.4 or 1.105.1. The newest, GHSA-7hp6-4w63-5g45 (salt-key privilege
+escalation), was fixed in 1.102.2 and 1.103.1.
 
 ## Metrics
 
