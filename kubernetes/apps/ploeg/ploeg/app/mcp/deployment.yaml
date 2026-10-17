@@ -52,7 +52,16 @@ spec:
             - name: PLOEG_MCP_REQUEST_SCOPES
               value: openid ploeg:read offline_access
             - name: PLOEG_MCP_GROUPS
-              value: '[{"group":"ploeg-readers","tokenEnv":"PLOEG_MCP_TOKEN_READERS"}]'
+              value: '[{"group":"ploeg-operators","tokenEnv":"PLOEG_MCP_TOKEN_OPERATORS","execute":true},{"group":"ploeg-readers","tokenEnv":"PLOEG_MCP_TOKEN_READERS"}]'
+            # Name people with the namespace their person id was first recorded
+            # under, so one person is one id across every Operator Consumer.
+            - name: PLOEG_MCP_SUBJECT_NAMESPACE
+              value: https://authentik.${SECRET_DOMAIN}/application/o/vloer/
+            - name: PLOEG_MCP_TOKEN_OPERATORS
+              valueFrom:
+                secretKeyRef:
+                  name: ploeg-mcp-operator
+                  key: token
           envFrom:
             - secretRef:
                 name: ploeg-mcp-consumers
