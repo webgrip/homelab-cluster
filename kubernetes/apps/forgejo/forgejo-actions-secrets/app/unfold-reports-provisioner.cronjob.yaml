@@ -13,7 +13,9 @@
 # The kube-apiserver is reachable only through CiliumNetworkPolicy
 # allow-unfold-reports-provisioner-apiserver (kubernetes/apps/forgejo/networkpolicy.yaml), which
 # matches this pod's app.kubernetes.io/name label. Every call has a timeout, so a blocked path
-# fails the Job instead of hanging it.
+# fails the Job instead of hanging it. kubectl is bounded with `timeout`, never a client flag:
+# any override flag such as --request-timeout makes kubectl skip its in-cluster configuration and
+# call localhost:8080.
 #
 # This app's Kustomization has NO postBuild.substituteFrom, so braced ${VARS} are left for the shell.
 apiVersion: v1
@@ -113,7 +115,7 @@ spec:
                   bot="${BOT_USERNAME}:${BOT_PASSWORD}"
                   scopes='["write:issue","read:repository","read:user"]'
                   curl() { command curl --connect-timeout 10 --max-time "$CURL_TIMEOUT" "$@"; }
-                  kubectl() { command kubectl --request-timeout=30s "$@"; }
+                  kubectl() { timeout 30 kubectl "$@"; }
 
                   # 1) The bot user exists, and its password is the generated one.
                   code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${BOT_USERNAME}")"
