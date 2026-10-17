@@ -21,7 +21,7 @@ their own, so every identity, permission and behaviour question has to be answer
 
 All of Ploeg's and Unfold's Vikunja writes, and the wiring job's, use the owner's personal token
 (`agent-vikunja-token`, OpenBao `vikunja/mcp`). Report a problem files into Forgejo Issues with its
-own token (`forgejo/unfold-reports`).
+own token (`forgejo/unfold-reports-bot`, minted by the cluster).
 
 Two tracker adapter sets with different provider lists is the finding. Unfold's hand-off writes to
 the tracker to start Ploeg work, although Ploeg already accepts work directly through

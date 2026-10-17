@@ -55,3 +55,24 @@ patches:
                             secretKeyRef:
                               name: agent-vikunja-token
                               key: VIKUNJA_API_TOKEN
+  # Restart Unfold when the cluster re-mints the Report a problem token (unfold-reports-provisioner in
+  # forgejo). Targeted, not reloader auto: Unfold holds at-rest keys that must never trigger a restart.
+  # Appended to the worker-pool component's postRenderers, since a postRenderers list in the
+  # HelmRelease itself is replaced by that component.
+  - target:
+      kind: HelmRelease
+      name: unfold
+    patch: |-
+      - op: add
+        path: /spec/postRenderers/0/kustomize/patches/-
+        value:
+          target:
+            kind: Deployment
+            name: unfold
+          patch: |-
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: unfold
+              annotations:
+                secret.reloader.stakater.com/reload: unfold-reports-token
