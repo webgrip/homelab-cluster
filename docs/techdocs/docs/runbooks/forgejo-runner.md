@@ -112,6 +112,33 @@ Two **workflow-side** failures that look like runner bugs but live in the repo's
 | `failed to read action 'X', no files found after reading paths: action.yml, action.yaml, Dockerfile` | a job uses a local `uses: ./...` action **without checking out the repo first** (the workspace is empty until `actions/checkout`) | add an `actions/checkout@v5` step before the local-action step (each ephemeral job runs in a fresh pod, so every job that uses a local action must check out) |
 | semantic-release: `remote: mirror repository is read-only` (HTTP 403) on `git push` | the Forgejo repo is a **read-only pull-mirror**; semantic-release must push a tag | make the repo authoritative — see [ADR-0013](../adr/adr-0013-forgejo-leading-application-repos.md) |
 
+## The shared Docker daemon's disk cap
+
+CI containers run under the per-node `forgejo-dind` daemon, inside its own cgroup. That cgroup
+already has a 6 CPU and 6 GiB memory limit. Since 2026-10-17 it also has a disk limit: on start
+the daemon writes `io.max` for the whole disk behind `/var/lib/forgejo-dind`, 64 MiB/s reads and
+8 MiB/s writes, set by `DIND_DISK_READ_BPS` and `DIND_DISK_WRITE_BPS` in
+`kubernetes/apps/forgejo/forgejo-runner/app/dind-daemonset.yaml`.
+
+Why: on 2026-10-17 a burst of merges ran several CI jobs on `fringe-workstation` at once. The
+daemon wrote about 22 MB/s to `sda`, a 256 GB SATA SSD that also holds Forgejo and its Postgres.
+The node spent 40-50% of its time stalled on IO from 16:30 UTC and was NotReady for about 15
+minutes from 16:45. Forgejo stopped answering, runners could not upload their logs, and Unfold
+run 1769 failed with a log that stops where its checks start. After the node returned, the
+daemon reached its memory limit, re-read evicted page cache at up to 350 MB/s, and Postgres
+failed its liveness probe once.
+
+With the cap, a CI burst queues on the disk instead of stalling the node. The cost is slower
+cold image pulls: a 4 GB image takes about 8 minutes to extract instead of 1-2.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ForgejoCINodeDiskStalled` fires | the node spends over 30% of its time stalled on disk | `kubectl -n forgejo logs <forgejo-dind-pod> -c dind \| grep "CI disk IO"`; without a `capped:` line, the cap was not applied |
+| dind log: `WARN: disk IO cap failed; CI disk IO runs UNCAPPED` | the `io` controller or the disk's `/sys/dev/block` entry is missing in the daemon's cgroup | CI still runs; check `cgroup.controllers` and `/proc/self/mountinfo` for `/var/lib/docker` in the dind container |
+| Jobs slow at "Set up job" after a release of a CI image | the write cap slows the first extraction of a new image on each node | expected once per node per image; raise `DIND_DISK_WRITE_BPS` only with node IO stall data |
+
+The lasting fix is to keep CI's image store on a different disk from Forgejo and Postgres.
+
 ## Operations
 
 ```sh
