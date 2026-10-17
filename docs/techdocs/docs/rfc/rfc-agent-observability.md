@@ -82,6 +82,9 @@ spans, days for usage-driven Claude Code. SLO rules alert on no data rather than
 - **Prompt content org-wide.** The org's managed settings export usage, cost and tool events,
   not `OTEL_LOG_USER_PROMPTS`. Collecting colleagues' prompts is a privacy decision (GDPR, and
   possibly the works council), not a default.
+- **Harness environment.** Ploeg's worker passes the agent an allowlisted environment
+  (`pkg/worker/environment.go`), so telemetry for OpenHands, opencode and Claude Code under Ploeg
+  needs a Ploeg setting (VIK-2148), not pod env. opencode has no native OTLP export.
 - **A tracing SDK in the Ploeg worker.** ADR-0076 keeps sandbox egress closed; worker spans
   relay through ploegd.
 - **Retention, profiles, Kepler.** These stay with the [pipeline RFC](rfc-observability-pipeline.md).
@@ -98,6 +101,9 @@ spans, days for usage-driven Claude Code. SLO rules alert on no data rather than
 | 2 | [VIK-1580](https://vikunja.webgrip.dev/tasks/1580) OTel spans per Run | ploeg | existing |
 | 2 | [VIK-560](https://vikunja.webgrip.dev/tasks/560) epic: each Run readable as a trace | ploeg | existing |
 | 1 | [VIK-2053](https://vikunja.webgrip.dev/tasks/2053) public OTLP ingest for org telemetry | homelab-cluster | deployed, in review |
+| 1, 2 | [VIK-2148](https://vikunja.webgrip.dev/tasks/2148) harness telemetry as a setting per team, role and harness | ploeg | new |
+| 1, 2 | [VIK-2149](https://vikunja.webgrip.dev/tasks/2149) the chart deploys the Claude runner, every limit a setting | ploeg | new |
+| 1, 2 | claude-runner sessions export metrics, logs and traces, in a Kata VM (3550fcef, f0d2e8d2, a56e8b10) | homelab-cluster | deployed |
 
 VIK-1273 is labelled `repo/unfold` and points at `apps/ploeg` in `webgrip/unfold`. Ploeg's
 active trunk is [ploeg-hq/ploeg](https://github.com/ploeg-hq/ploeg) `development`, so its label
