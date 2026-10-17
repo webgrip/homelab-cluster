@@ -860,10 +860,12 @@
       description: "Ploeg and Unfold images follow 0.x prereleases, with semver versioning for the same reason as their charts.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/helmrelease.yaml",
-        "kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml"
+        "kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml",
+        "kubernetes/apps/ploeg/ploeg/app/claude-runner/deployment.yaml"
       ],
       matchDepNames: [
         "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd",
+        "harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner",
         "harbor.webgrip.dev/webgrip/unfold",
         "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
@@ -872,7 +874,7 @@
       ignoreUnstable: false,
     },
     {
-      description: "Unfold and Ploeg pins are read by exactly one manager each: the Unfold image by the repo-local repository/tag/digest manager, the workspace image by helm-values, ploegd by the repo-local repository/tag@digest manager. The flux and helm-values readings that duplicate them are dropped, so an Unfold release is exactly three upgrades in one branch, a Ploeg release exactly two, and never a tag bump that leaves the digest behind.",
+      description: "Unfold and Ploeg pins are read by exactly one manager each: the Unfold image by the repo-local repository/tag/digest manager, the workspace image by helm-values, ploegd by the repo-local repository/tag@digest manager, the ploeg-mcp image and the claude-runner Deployment by the kubernetes manager, the claude-runner harness image by helm-values. The flux, helm-values, kubernetes and `# renovate:` annotation readings that duplicate them are dropped, so a release never becomes a tag bump that leaves the digest behind.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/helmrelease.yaml"
       ],
@@ -883,6 +885,37 @@
         "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd",
         "harbor.webgrip.dev/webgrip/unfold",
         "harbor.webgrip.dev/webgrip/unfold-agent"
+      ],
+      enabled: false,
+    },
+    {
+      description: "The ploeg-mcp and claude-runner Deployments pin their image as one `image: repository:tag@digest` line, which the kubernetes manager reads. helm-values reads the same line again, and the `# renovate:` annotation above it captures the whole string as the version, which is unversioned and only logs \"Could not determine new digest\". Both duplicates are dropped.",
+      matchFileNames: [
+        "kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml",
+        "kubernetes/apps/ploeg/ploeg/app/claude-runner/deployment.yaml"
+      ],
+      matchManagers: [
+        "helm-values",
+        "custom.regex"
+      ],
+      matchDepNames: [
+        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd",
+        "harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner"
+      ],
+      enabled: false,
+    },
+    {
+      description: "The claude-environment harness image in the Ploeg HelmRelease is read by helm-values as one `image: repository:tag@digest` value. The flux, kubernetes and `# renovate:` annotation readings of the same line are dropped.",
+      matchFileNames: [
+        "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml"
+      ],
+      matchManagers: [
+        "flux",
+        "kubernetes",
+        "custom.regex"
+      ],
+      matchDepNames: [
+        "harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner"
       ],
       enabled: false,
     },
@@ -922,43 +955,20 @@
       enabled: false,
     },
     {
-      description: "One Unfold release is one PR that merges itself: Unfold releases its application as unfold-v<version> (glide-v before the rename), so its chart, image and workspace image move in a single branch, and homelab runs the newest release on its own. Ploeg releases on its own since Unfold ADR-0019 and has its own group below. A partial publication (chart before images, or images held by the CVE gate) leaves the pins on different versions, which scripts/check_release_lockstep.py fails in e2e, so that PR stays open until the rest lands.",
-      matchFileNames: [
-        "kubernetes/apps/ploeg/**"
-      ],
-      matchDepNames: [
-        "harbor.webgrip.dev/webgrip/charts/unfold",
-        "harbor.webgrip.dev/webgrip/unfold",
-        "harbor.webgrip.dev/webgrip/unfold-agent"
-      ],
-      groupName: "Unfold release",
-      groupSlug: "glide-release",
-      group: {
-        commitMessageTopic: "{{{groupName}}}",
-      },
-      separateMajorMinor: false,
-      separateMinorPatch: false,
-      separateMultipleMajor: false,
-      commitBodyTable: true,
-      dependencyDashboardApproval: false,
-      minimumReleaseAge: "0 days",
-      schedule: [
-        "at any time"
-      ],
-      automerge: true,
-      automergeType: "pr",
-    },
-    {
-      description: "One Ploeg release is one PR that merges itself: ploeg-hq/ploeg publishes its chart and the ploegd image at the same version (Unfold ADR-0019), and the two pins must move together or the Helm upgrade reports success against a binary that never changed. scripts/check_release_lockstep.py fails e2e while they differ, so a partial publication never merges.",
+      description: "One Ploeg and Unfold release pair is one PR that merges itself: the Ploeg chart, ploegd (daemon and ploeg-mcp) and claude-runner images, and the Unfold chart, image and workspace image move in a single branch. e2e fails while a release's own pins disagree (a partial publication) or while the Ploeg pin is not the release the pinned Unfold certifies, so such a PR stays open until the rest lands. Ploeg and Unfold share one branch because Unfold tests only the Ploeg release it pins (Ploeg 0.2.0-rc.20 needed Unfold 0.4.0-rc.77 at once): two automerging groups would merge whichever publishes first, and under rebaseWhen \"conflicted\" a branch red while waiting for the other never re-tests, while a new publication of either rewrites this branch and re-runs e2e. The branch and PR concurrency limits are off for this branch alone (0 on any upgrade means no limit for its branch): the repository-wide limit of 15 was already reached on 2026-10-11, when sixteen renovate/* branches made the run log \"Reached branch limit - skipping branch creation\", and a release must not queue behind unrelated image bumps.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**"
       ],
       matchDepNames: [
         "harbor.webgrip.dev/ghcr/ploeg-hq/charts/ploeg",
-        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd"
+        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd",
+        "harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner",
+        "harbor.webgrip.dev/webgrip/charts/unfold",
+        "harbor.webgrip.dev/webgrip/unfold",
+        "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
-      groupName: "Ploeg release",
-      groupSlug: "ploeg-release",
+      groupName: "Ploeg and Unfold release",
+      groupSlug: "ploeg-unfold-release",
       group: {
         commitMessageTopic: "{{{groupName}}}",
       },
@@ -971,6 +981,9 @@
       schedule: [
         "at any time"
       ],
+      prPriority: 10,
+      branchConcurrentLimit: 0,
+      prConcurrentLimit: 0,
       automerge: true,
       automergeType: "pr",
     },

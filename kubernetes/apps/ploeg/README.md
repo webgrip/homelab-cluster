@@ -5,6 +5,17 @@ into leased, audited agent runs — the event-driven replacement for ADR-0048's 
 Chart: `oci://harbor.webgrip.dev/webgrip/charts/ploeg`; image `webgrip/ploegd` (same version,
 kept in lockstep by the release train).
 
+## Releases
+
+Renovate moves Ploeg and Unfold together, in one `renovate/ploeg-unfold-release` PR that merges
+itself: the Ploeg chart, the ploegd image (daemon and ploeg-mcp) and the claude-runner image, and
+the Unfold chart, image and workspace image. `scripts/check_release_lockstep.py` keeps that PR red
+while a release's own pins disagree, and, with `--certified-pair` on pull requests, while the Ploeg
+pin is not the release the pinned Unfold names in its `.gitmodules` at tag `unfold-v<version>`
+(the pair Unfold tested). The PR is exempt from the repository's branch and PR concurrency limits.
+The [Unfold release train RFC](../../../docs/techdocs/docs/rfc/rfc-unfold-release-train.md)
+proposes replacing this with a manifest-driven bump.
+
 ## One-time setup after first deploy (ingest)
 
 1. Read the generated webhook secret:

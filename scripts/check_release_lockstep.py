@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Fail when a first-party release's chart and image pins name different versions.
+"""Fail when the Unfold and Ploeg pins do not name one tested release pair.
 
-Unfold and Ploeg each publish a chart and images under one version, and Renovate
-automerges their release PRs. A release whose chart reached Harbor before its images
-(or whose images failed the CVE gate) yields a PR that moves only part of the pins;
-this check keeps such a PR red so it never merges.
+Each release publishes a chart and images under one version, so its pins must agree.
+With --certified-pair the Ploeg pin must also be the Ploeg release that the pinned
+Unfold release names in its .gitmodules, the pair Unfold tested.
 """
 
 from __future__ import annotations
 
+import argparse
 import re
+import subprocess
 import sys
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,60 +32,91 @@ class Release:
 
 SEMVER = r"(?P<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)"
 DIGEST = r"@sha256:[a-f0-9]{64}"
+UNFOLD_RELEASE_TAG_PREFIX = "unfold-v"
+PLOEG_SUBMODULE_BRANCH = re.compile(
+    r'\[submodule\s+"apps/ploeg"\][^\[]*?^\s*branch\s*=\s*v?(?P<version>\S+)\s*$',
+    re.MULTILINE,
+)
 
-RELEASES = (
-    Release(
-        "Unfold",
-        (
-            Pin(
-                "chart",
-                "kubernetes/apps/ploeg/unfold/app/ocirepository.yaml",
-                rf"url:\s*oci://harbor\.webgrip\.dev/webgrip/charts/unfold\s*\n(?:.*\n)*?\s*tag:\s*[\"']?{SEMVER}[\"']?\s*\n\s*digest:\s*sha256:[a-f0-9]{{64}}",
-            ),
-            Pin(
-                "image",
-                "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml",
-                rf"repository:\s*harbor\.webgrip\.dev/webgrip/unfold\s*\n\s*tag:\s*[\"']?{SEMVER}[\"']?\s*\n\s*digest:\s*[\"']?sha256:[a-f0-9]{{64}}",
-            ),
-            Pin(
-                "workspace image",
-                "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml",
-                rf"workspaceImage:\s*[\"']?harbor\.webgrip\.dev/webgrip/unfold-agent:{SEMVER}{DIGEST}",
-            ),
+UNFOLD = Release(
+    "Unfold",
+    (
+        Pin(
+            "chart",
+            "kubernetes/apps/ploeg/unfold/app/ocirepository.yaml",
+            rf"url:\s*oci://harbor\.webgrip\.dev/webgrip/charts/unfold\s*\n(?:.*\n)*?\s*tag:\s*[\"']?{SEMVER}[\"']?\s*\n\s*digest:\s*sha256:[a-f0-9]{{64}}",
         ),
-    ),
-    Release(
-        "Ploeg",
-        (
-            Pin(
-                "chart",
-                "kubernetes/apps/ploeg/ploeg/app/ocirepository.yaml",
-                rf"url:\s*oci://harbor\.webgrip\.dev/ghcr/ploeg-hq/charts/ploeg\s*\n(?:.*\n)*?\s*tag:\s*[\"']?{SEMVER}[\"']?\s*\n\s*digest:\s*sha256:[a-f0-9]{{64}}",
-            ),
-            Pin(
-                "ploegd image",
-                "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml",
-                rf"repository:\s*harbor\.webgrip\.dev/ghcr/ploeg-hq/ploegd\s*\n\s*tag:\s*[\"']?{SEMVER}{DIGEST}[\"']?",
-            ),
-            Pin(
-                "ploeg-mcp image",
-                "kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml",
-                rf"image:\s*harbor\.webgrip\.dev/ghcr/ploeg-hq/ploegd:{SEMVER}{DIGEST}",
-            ),
+        Pin(
+            "image",
+            "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml",
+            rf"repository:\s*harbor\.webgrip\.dev/webgrip/unfold\s*\n\s*tag:\s*[\"']?{SEMVER}[\"']?\s*\n\s*digest:\s*[\"']?sha256:[a-f0-9]{{64}}",
+        ),
+        Pin(
+            "workspace image",
+            "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml",
+            rf"workspaceImage:\s*[\"']?harbor\.webgrip\.dev/webgrip/unfold-agent:{SEMVER}{DIGEST}",
         ),
     ),
 )
 
+PLOEG = Release(
+    "Ploeg",
+    (
+        Pin(
+            "chart",
+            "kubernetes/apps/ploeg/ploeg/app/ocirepository.yaml",
+            rf"url:\s*oci://harbor\.webgrip\.dev/ghcr/ploeg-hq/charts/ploeg\s*\n(?:.*\n)*?\s*tag:\s*[\"']?{SEMVER}[\"']?\s*\n\s*digest:\s*sha256:[a-f0-9]{{64}}",
+        ),
+        Pin(
+            "ploegd image",
+            "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml",
+            rf"repository:\s*harbor\.webgrip\.dev/ghcr/ploeg-hq/ploegd\s*\n\s*tag:\s*[\"']?{SEMVER}{DIGEST}[\"']?",
+        ),
+        Pin(
+            "ploeg-mcp image",
+            "kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml",
+            rf"image:\s*harbor\.webgrip\.dev/ghcr/ploeg-hq/ploegd:{SEMVER}{DIGEST}",
+        ),
+        Pin(
+            "claude-runner harness image",
+            "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml",
+            rf"image:\s*harbor\.webgrip\.dev/ghcr/ploeg-hq/claude-runner:{SEMVER}{DIGEST}",
+        ),
+        Pin(
+            "claude-runner image",
+            "kubernetes/apps/ploeg/ploeg/app/claude-runner/deployment.yaml",
+            rf"image:\s*harbor\.webgrip\.dev/ghcr/ploeg-hq/claude-runner:{SEMVER}{DIGEST}",
+        ),
+    ),
+)
 
-def read_versions(root: Path, release: Release) -> tuple[dict[str, str], list[str]]:
+RELEASES = (UNFOLD, PLOEG)
+
+
+def text_in_tree(root: Path, path: str) -> str | None:
+    file = root / path
+    return file.read_text() if file.is_file() else None
+
+
+def text_at_revision(root: Path, revision: str, path: str) -> str | None:
+    shown = subprocess.run(
+        ["git", "-C", str(root), "show", f"{revision}:{path}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return shown.stdout if shown.returncode == 0 else None
+
+
+def read_versions(read, release: Release) -> tuple[dict[str, str], list[str]]:
     versions: dict[str, str] = {}
     problems: list[str] = []
     for pin in release.pins:
-        file = root / pin.path
-        if not file.is_file():
+        text = read(pin.path)
+        if text is None:
             problems.append(f"{release.name} {pin.label}: {pin.path} does not exist")
             continue
-        matches = list(re.finditer(pin.pattern, file.read_text()))
+        matches = list(re.finditer(pin.pattern, text))
         if len(matches) != 1:
             problems.append(
                 f"{release.name} {pin.label}: expected one digest-pinned version in {pin.path}, found {len(matches)}"
@@ -93,21 +126,87 @@ def read_versions(root: Path, release: Release) -> tuple[dict[str, str], list[st
     return versions, problems
 
 
-def main(argv: list[str]) -> int:
-    root = Path(argv[1]) if len(argv) > 1 else Path.cwd()
+def release_version(read, release: Release) -> str | None:
+    versions, problems = read_versions(read, release)
+    distinct = set(versions.values())
+    return distinct.pop() if not problems and len(distinct) == 1 else None
+
+
+def lockstep_failures(root: Path) -> list[str]:
     failures: list[str] = []
     for release in RELEASES:
-        versions, problems = read_versions(root, release)
+        versions, problems = read_versions(lambda path: text_in_tree(root, path), release)
         failures.extend(problems)
         if len(set(versions.values())) > 1:
             listed = ", ".join(f"{label} {version}" for label, version in versions.items())
             failures.append(f"{release.name} pins disagree: {listed}")
         elif versions and not problems:
             print(f"OK {release.name} {next(iter(versions.values()))}")
+    return failures
+
+
+def certified_ploeg_version(source: str, unfold_version: str) -> str:
+    url = f"{source.rstrip('/')}/{UNFOLD_RELEASE_TAG_PREFIX}{unfold_version}/.gitmodules"
+    with urllib.request.urlopen(url, timeout=30) as response:
+        gitmodules = response.read().decode()
+    found = PLOEG_SUBMODULE_BRANCH.search(gitmodules)
+    if found is None:
+        raise ValueError(f"{url} names no branch for the apps/ploeg submodule")
+    return found.group("version")
+
+
+def certified_pair_failures(root: Path, source: str, base: str | None) -> list[str]:
+    unfold = release_version(lambda path: text_in_tree(root, path), UNFOLD)
+    ploeg = release_version(lambda path: text_in_tree(root, path), PLOEG)
+    if unfold is None or ploeg is None:
+        return ["the Unfold and Ploeg pins do not each name one release, so the pair cannot be checked"]
+    if base is not None:
+        base_pair = (
+            release_version(lambda path: text_at_revision(root, base, path), UNFOLD),
+            release_version(lambda path: text_at_revision(root, base, path), PLOEG),
+        )
+        if base_pair == (unfold, ploeg):
+            print(f"SKIP pair Unfold {unfold} with Ploeg {ploeg}: unchanged from {base}")
+            return []
+    try:
+        certified = certified_ploeg_version(source, unfold)
+    except (OSError, ValueError) as error:
+        return [f"cannot read the Ploeg release Unfold {unfold} pins: {error}"]
+    if certified != ploeg:
+        return [
+            f"Ploeg {ploeg} is pinned, but Unfold {unfold} was released and tested with Ploeg {certified}; "
+            "this stays red until both pins name a pair Unfold released"
+        ]
+    print(f"OK pair Unfold {unfold} with Ploeg {ploeg}")
+    return []
+
+
+def parse_arguments(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("root", nargs="?", type=Path, default=Path.cwd())
+    parser.add_argument("--certified-pair", action="store_true")
+    parser.add_argument(
+        "--source",
+        default="https://forgejo.webgrip.dev/webgrip/unfold/raw/tag",
+        help="base URL that serves unfold-v<version>/.gitmodules",
+    )
+    parser.add_argument(
+        "--base",
+        help="git revision whose pair needs no certification: the pair is checked only when it differs",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str]) -> int:
+    arguments = parse_arguments(argv)
+    if arguments.certified_pair:
+        failures = certified_pair_failures(arguments.root, arguments.source, arguments.base)
+    else:
+        failures = lockstep_failures(arguments.root)
     for failure in failures:
         print(f"FAIL {failure}", file=sys.stderr)
     return 1 if failures else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(main(sys.argv[1:]))

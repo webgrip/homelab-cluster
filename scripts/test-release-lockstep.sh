@@ -9,6 +9,7 @@ PINS=(
   kubernetes/apps/ploeg/ploeg/app/ocirepository.yaml
   kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml
   kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml
+  kubernetes/apps/ploeg/ploeg/app/claude-runner/deployment.yaml
 )
 failures=0
 
@@ -61,6 +62,70 @@ expect fail "ploegd without a digest" \
   kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml 's/(tag: "[0-9][^@]*)@sha256:[a-f0-9]{64}/\1/'
 expect fail "ploeg-mcp ahead of ploegd" \
   kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml 's/(ploegd:)[0-9][^@]*@/\19.9.9-rc.1@/'
+expect fail "claude-runner harness behind ploegd" \
+  kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml 's/(claude-runner:)[0-9][^@]*@/\10.0.1-rc.1@/'
+expect fail "claude-runner behind ploegd" \
+  kubernetes/apps/ploeg/ploeg/app/claude-runner/deployment.yaml 's/(claude-runner:)[0-9][^@]*@/\10.0.1-rc.1@/'
+
+committed_version() {
+  python3 "$CHECK" "$ROOT_DIR" | sed -n "s/^OK $1 //p"
+}
+
+UNFOLD_VERSION="$(committed_version Unfold)"
+PLOEG_VERSION="$(committed_version Ploeg)"
+
+unfold_release_source() {
+  local certified_ploeg="$1" source
+  source="$(mktemp -d)"
+  if [[ -n "$certified_ploeg" ]]; then
+    mkdir -p "${source}/unfold-v${UNFOLD_VERSION}"
+    printf '[submodule "apps/ploeg"]\n\tpath = apps/ploeg\n\turl = https://github.com/ploeg-hq/ploeg.git\n\tbranch = v%s\n' \
+      "$certified_ploeg" >"${source}/unfold-v${UNFOLD_VERSION}/.gitmodules"
+  fi
+  echo "$source"
+}
+
+committed_repository() {
+  local dir
+  dir="$(fresh_copy)"
+  git -C "$dir" init -q
+  git -C "$dir" add .
+  git -C "$dir" -c user.name=test -c user.email=test@example.invalid -c commit.gpgsign=false commit -qm base
+  echo "$dir"
+}
+
+move_ploeg_pins_to() {
+  local dir="$1" version="$2"
+  sed -E -i "s/(tag: )[0-9][^[:space:]]*/\1${version}/" "${dir}/kubernetes/apps/ploeg/ploeg/app/ocirepository.yaml"
+  sed -E -i -e "s/(tag: \")[0-9][^@]*@/\1${version}@/" -e "s/(claude-runner:)[0-9][^@]*@/\1${version}@/" \
+    "${dir}/kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml"
+  sed -E -i "s/(ploegd:)[0-9][^@]*@/\1${version}@/" "${dir}/kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml"
+  sed -E -i "s/(claude-runner:)[0-9][^@]*@/\1${version}@/" "${dir}/kubernetes/apps/ploeg/ploeg/app/claude-runner/deployment.yaml"
+}
+
+expect_pair() {
+  local want="$1" name="$2" certified_ploeg="$3" ploeg_pin="$4" base="$5" dir source got
+  dir="$(committed_repository)"
+  source="$(unfold_release_source "$certified_ploeg")"
+  [[ "$ploeg_pin" == "$PLOEG_VERSION" ]] || move_ploeg_pins_to "$dir" "$ploeg_pin"
+  local arguments=(--certified-pair --source "file://${source}")
+  [[ -z "$base" ]] || arguments+=(--base "$base")
+  if python3 "$CHECK" "${arguments[@]}" "$dir" >/dev/null 2>&1; then got=pass; else got=fail; fi
+  if [[ "$got" == "$want" ]]; then
+    echo "ok   ${name}: ${got}"
+  else
+    echo "FAIL ${name}: expected ${want}, got ${got}"
+    failures=$((failures + 1))
+  fi
+  rm -rf "$dir" "$source"
+}
+
+expect_pair pass "Ploeg is the release Unfold pins" "$PLOEG_VERSION" "$PLOEG_VERSION" ""
+expect_pair fail "Ploeg is not the release Unfold pins" "0.0.1-rc.1" "$PLOEG_VERSION" ""
+expect_pair fail "Unfold release publishes no .gitmodules" "" "$PLOEG_VERSION" ""
+expect_pair pass "uncertified pair unchanged from the base" "0.0.1-rc.1" "$PLOEG_VERSION" HEAD
+expect_pair fail "Ploeg moved ahead of the release Unfold pins" "$PLOEG_VERSION" "9.9.9-rc.1" HEAD
+expect_pair pass "Ploeg moved to the release Unfold pins" "9.9.9-rc.1" "9.9.9-rc.1" HEAD
 
 if (( failures > 0 )); then
   echo "${failures} lockstep case(s) failed"
