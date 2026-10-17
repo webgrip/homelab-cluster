@@ -12,7 +12,7 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   so since; this index was still listing it as the open "big cutover" as late as 2026-08-05.
   Verified live: flux-system's GitRepository is
   `http://forgejo-http.forgejo.svc.cluster.local:3000/webgrip/homelab-cluster.git`).
-- **Accepted, executing** — [One delivery contract](rfc-unfold-release-train.md) (accepted 2026-10-17, ADR-0069: forges produce, registries carry, clusters consume; every project on semantic-release with a forge adapter, Renovate channel automerge, post-deploy verify; P1 in a separate work stream), [Renovate on Forgejo](rfc-renovate-forgejo.md) (GitHub retirement
+- **Accepted, executing** — [Trackers are a port](rfc-tracker-port.md) (accepted in part 2026-10-17: Ploeg owns tracker I/O for work, Unfold talks only to Ploeg, trackers are plug-ins with one conformance suite, only the homelab knows every name; Vikunja stays the roadmap; Report a problem placement open), [One delivery contract](rfc-unfold-release-train.md) (accepted 2026-10-17, ADR-0069: forges produce, registries carry, clusters consume; every project on semantic-release with a forge adapter, Renovate channel automerge, post-deploy verify; P1 in a separate work stream), [Renovate on Forgejo](rfc-renovate-forgejo.md) (GitHub retirement
   gated on the Flux cutover), [CI pipeline performance](rfc-ci-pipeline-performance.md) (lives in
   `webgrip/workflows`), [Codeberg Pages TechDocs](rfc-codeberg-pages-techdocs.md) (interim;
   publish path unproven), [security hardening](rfc-security-hardening.md) (program frame),
