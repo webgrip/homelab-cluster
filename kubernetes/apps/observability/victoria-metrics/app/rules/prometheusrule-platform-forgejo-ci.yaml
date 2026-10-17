@@ -135,3 +135,35 @@ spec:
               - infra-forgejo-ci dashboard (warm-idle / running panels)
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
+
+        - alert: ForgejoCINodeDiskStalled
+          expr: |
+            max by (nodename) (
+              rate(node_pressure_io_stalled_seconds_total[5m])
+              * on (instance) group_left(nodename) node_uname_info
+            ) > 0.3
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo-ci
+          annotations:
+            summary: "{{ $labels.nodename }} spends over 30% of its time stalled on disk"
+            description: |
+              What's happening:
+              - Every task on {{ $labels.nodename }} has been blocked on disk IO for more than 30% of
+                the last 10 minutes.
+
+              Impact/risk:
+              - On 2026-10-17 this preceded a 15-minute NotReady on fringe-workstation: Forgejo and its
+                Postgres stopped answering, CI runs lost their logs and failed, and pushes were refused.
+
+              Likely causes:
+              - A burst of CI jobs on the node's shared forgejo-dind daemon
+              - The dind disk IO cap is missing: its log says "disk IO cap failed"
+
+              First actions:
+              - kubectl -n forgejo logs the node's forgejo-dind pod, container dind, for the "CI disk IO" line
+              - Per-pod container_fs_reads_bytes_total / container_fs_writes_bytes_total on the node
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/forgejo-runner/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"

@@ -82,6 +82,15 @@ spec:
               # then count against this container's limit and die by ordinary cgroup OOM
               # instead of taking the node down. With a private cgroupns (cg == "/")
               # nesting is already contained and /docker lands inside the container.
+              cap_disk_io() {
+                dev=$(awk '$5 == "/var/lib/docker" {print $3; exit}' /proc/self/mountinfo)
+                [ -n "$dev" ] || return 1
+                sys=$(readlink -f "/sys/dev/block/$dev") || return 1
+                if [ -f "$sys/partition" ]; then sys=${sys%/*}; fi
+                disk=$(cat "$sys/dev") || return 1
+                echo "$disk rbps=$DIND_DISK_READ_BPS wbps=$DIND_DISK_WRITE_BPS" > "$1/io.max" || return 1
+                echo "CI disk IO on $disk capped: $(grep "^$disk " "$1/io.max")"
+              }
               cg=$(sed -n 's/^0:://p' /proc/self/cgroup)
               parent=/docker
               if [ -n "$cg" ] && [ "$cg" != "/" ] && [ -d "/sys/fs/cgroup$cg" ]; then
@@ -92,6 +101,7 @@ spec:
                 done < "$root/cgroup.procs"
                 if sed -e 's/ / +/g' -e 's/^/+/' "$root/cgroup.controllers" > "$root/cgroup.subtree_control" 2>/dev/null; then
                   parent="$cg/docker"
+                  cap_disk_io "$root" || echo "WARN: disk IO cap failed; CI disk IO runs UNCAPPED" >&2
                 else
                   # Fail OPEN (uncontained, the pre-fix behaviour) rather than take CI
                   # down; CISubstrateMemoryOutsideKubepods alerts on this state.
@@ -107,6 +117,10 @@ spec:
             # node port; the CiliumNetworkPolicy is the access boundary).
             - name: DOCKER_TLS_CERTDIR
               value: ""
+            - name: DIND_DISK_READ_BPS
+              value: "67108864"
+            - name: DIND_DISK_WRITE_BPS
+              value: "8388608"
           ports:
             - name: docker
               containerPort: 2375
