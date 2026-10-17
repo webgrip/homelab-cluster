@@ -1,7 +1,4 @@
 ---
-# Additive rules scoped to the mcp-vikunja pod, on top of the namespace-wide
-# vikunja default-deny + allow policies (which already grant intra-namespace
-# traffic, i.e. mcp -> vikunja:3456, and DNS).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -15,9 +12,6 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # gateway (network ns) + LAN (gateway traffic can masquerade to a node IP)
-    # + the LiteLLM MCP gateway (VIK-263: agents reach vikunja tools through
-    # per-key access groups instead of hitting this bridge directly)
     - from:
         - namespaceSelector:
             matchLabels:

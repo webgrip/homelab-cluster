@@ -17,6 +17,21 @@ Claude Code uses the `claude-code` key on the user-level server set up in
 The LAN route `https://mcp-vikunja.${SECRET_DOMAIN}/mcp` was removed on 2026-10-17 (VIK-1515):
 it answered anonymous calls with the owner's token, so anyone on the LAN could write to the board.
 
+The namespace-wide `vikunja-allow-ingress` policy used to select the bridge too, so every pod in
+`observability`, `ploeg` and `cnpg-system` could still call it on port 8000 after the route was
+gone. The bridge's Service and pods carry `mcp.webgrip.io/access: litellm-gateway-only`, and that
+policy now excludes pods with that label. `scripts/validate_mcp_gateway_only.py` fails the e2e gate
+on every push and PR if any of these happens to a labelled Service:
+
+- a route points at it, or it stops being `ClusterIP`;
+- a policy that selects its pods admits anything other than the LiteLLM pods;
+- no policy admits LiteLLM at all;
+- LiteLLM serves an HTTP MCP server to a write-capable access group (anything but
+  `observability` and `brain-dogfood`) from a Service that does not carry the label.
+
+`scripts/test-validate-mcp-gateway-only.sh` is the mutation test for this check: it breaks each
+rule once and includes one case that must pass.
+
 - Talks to Vikunja in-cluster: `http://vikunja.vikunja.svc.cluster.local:3456/api/v1` (the
   `/api/v1` suffix is required by vikunja-mcp).
 - **STATELESS since 2026-07-18** (VIK-314/VIK-263): a fresh vikunja-mcp child per request.
