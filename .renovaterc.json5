@@ -45,6 +45,14 @@
   registryAliases: {
     "harbor.webgrip.dev/dockerhub": "docker.io",
   },
+  hostRules: [
+    {
+      description: "Docker Hub over HTTP/2. This run stalls its event loop for 50s and more (the open-webui lookup alone holds it ~50s), and Docker Hub closes a connection after 60s idle. Over HTTP/1.1 the next request reuses that dead keep-alive socket and fails in a few ms with ERR_STREAM_DESTROYED or EBADF, which got does not retry and the docker datasource turns into an ExternalHostError that aborts the whole run (every homelab-cluster run from 2026-10-11 to 2026-10-17). Over HTTP/2 the same dead session fails with ECONNRESET, which got retries, and the lookup succeeds.",
+      matchHost: "docker.io",
+      hostType: "docker",
+      enableHttp2: true,
+    },
+  ],
   // Schedule: the shared preset ships "after 3am and before 7am every weekday" + "every weekend"
   // (Europe/Amsterdam). That window was already MOOT for almost everything here — the digest,
   // patch, minor, vulnerability, OCIRepository-patch and dev/staging/production rules below each
