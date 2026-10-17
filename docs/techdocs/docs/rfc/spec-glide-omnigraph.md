@@ -9,7 +9,7 @@ Ticket: VIK-1259. Target repo: `webgrip/glide`, app `apps/ploeg`. Cluster side i
 |---|---|
 | Omnigraph actor | `act-glide`, on graphs `memory`, `brain`, `webgrip` |
 | Policy | read on any branch; `change` only on unprotected branches; `branch_create` and `branch_delete` on unprotected; `invoke_query`. No `branch_merge`, no `export`. `main` is protected on all three |
-| LiteLLM MCP servers | `omnigraph_glide_memory`, `omnigraph_glide_brain`, `omnigraph_glide_webgrip` (stdio bridge `@modernrelay/omnigraph-mcp`, 15 tools each) |
+| LiteLLM MCP servers | `omnigraph_glide_memory`, `omnigraph_glide_brain`, `omnigraph_glide_webgrip` (`@modernrelay/omnigraph-mcp` over HTTP in the `omnigraph-mcp` pod, 15 tools each) |
 | Access group | `glide` (all three servers) |
 | MCP endpoint | `http://litellm.ai.svc.cluster.local:4000/mcp/` (streamable HTTP, `Authorization: Bearer <key>`) |
 | Tool names through `/mcp/` | `<server>-<tool>`, e.g. `omnigraph_glide_brain-query`, `omnigraph_glide_memory-branches_create` |
