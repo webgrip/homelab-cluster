@@ -25,7 +25,7 @@ spec:
               cleanup.webgrip.io/enabled: "true"
   conditions:
     all:
-      - key: "{{ target.status.conditions[?type == 'Complete' && status == 'True'] | length(@) }}"
+      - key: "{{ (target.status.conditions || `[]`)[?type == 'Complete' && status == 'True'] | length(@) }}"
         operator: GreaterThan
         value: 0
   schedule: "17 * * * *"
@@ -65,7 +65,7 @@ spec:
               cleanup.webgrip.io/retry-failed: "true"
   conditions:
     all:
-      - key: "{{ target.status.conditions[?type == 'Failed' && status == 'True'] | length(@) }}"
+      - key: "{{ (target.status.conditions || `[]`)[?type == 'Failed' && status == 'True'] | length(@) }}"
         operator: GreaterThan
         value: 0
   schedule: "41 * * * *"
