@@ -32,8 +32,9 @@ metadata:
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
       Application workloads must declare a liveness, readiness or startup probe on every
-      container. Job-owned pods are out of scope — probes are meaningless on a pod that
-      runs to completion.
+      container. Job-owned pods and tofu-controller runner pods (controlled by a
+      Terraform object, dialled over gRPC for one plan or apply and then deleted) are out
+      of scope — probes are meaningless on a pod that runs to completion.
 spec:
   validationActions:
     - Deny
@@ -102,6 +103,13 @@ spec:
       expression: >-
         object.kind != 'Pod' ||
         !object.metadata.?ownerReferences.orValue([]).exists(o, o.kind == 'Job')
+    - name: exclude-tofu-runner-pods
+      expression: >-
+        object.kind != 'Pod' ||
+        !object.metadata.?ownerReferences.orValue([]).exists(o,
+          o.kind == 'Terraform' &&
+          o.apiVersion.startsWith('infra.contrib.fluxcd.io/') &&
+          o.?controller.orValue(false))
   variables:
     - name: podSpec
       expression: >-
