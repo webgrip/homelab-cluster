@@ -72,16 +72,16 @@ Large parts of the chain already rebuild from git. They are listed so the gaps s
 
 | # | What | Where | Created by today | Fresh install | Failure if missing or drifted |
 | --- | --- | --- | --- | --- | --- |
-| F1 | Branch protection on `homelab-cluster` `main`: push `ryangr0`, merge `ryangr0`,`renovate`, the `e2e /` status contexts | Forgejo DB | script: `forgejo-sync.sh --only protect` with env overrides | no | owner lock-out (happened 2026-08-05), or `platformAutomerge` merges a red Renovate PR (P1b prerequisite 1, D8) |
-| F2 | Branch protection on `webgrip/unfold` `development` and `main`, with `ploeg-docs` required on `development` and the merge whitelist | Forgejo DB | script | no | a Ploeg bump with a vocabulary clash merges red (ADR-0041); the producer bot cannot schedule its merge |
-| F3 | Branch protection on the other chain repos (`semantic-release-config`, `workflows`, `renovate-config`, `infrastructure`) | Forgejo DB | script | no | `webgrip-ci` missing from the push whitelist stops semantic-release; unprotected library tags move |
+| F1 | Branch protection on `homelab-cluster` `main`: push `ryangr0`, merge `ryangr0`,`renovate`, the four `e2e /` status contexts | Forgejo DB | **repo-config module** (`homelab` profile, applied hourly since 2026-10-18); lock-out guard in the schema and a module precondition | yes, from the model | owner lock-out (happened 2026-08-05), or `platformAutomerge` merges a red Renovate PR (P1b prerequisite 1, D8) |
+| F2 | Branch protection on `webgrip/unfold` `development` and `main`, with `ploeg-docs` required on `development` | Forgejo DB | **repo-config module** (`repos.yaml` `unfold.branches`). Neither rule has a push or merge whitelist live: anyone with write pushes and merges, status checks gate the PR | yes, from the model | a Ploeg bump with a vocabulary clash merges red (ADR-0041) |
+| F3 | Branch protection on the other chain repos (`semantic-release-config`, `workflows`, `renovate-config`, `infrastructure`) | Forgejo DB | `workflows` `main` (no whitelists) is in the repo-config module; the others have no rule live | partly | `webgrip-ci` missing from the push whitelist stops semantic-release; unprotected library tags move |
 | F4 | Per-repo webhook → `renovate-operator` with a top-level `authorization_header` | Forgejo DB | script: `--only webhook` | no | Dependency Dashboard clicks wait for the hourly run; a nested header 401s silently |
-| F5 | Repo units and merge settings (PRs, Releases, Actions on; merge styles; delete branch after merge) | Forgejo DB | script: `--only actions,prs,releases,settings` | no | Renovate skips repos with PRs off; semantic-release has no Releases tab |
+| F5 | Repo units and merge settings (PRs, Releases, Actions on; merge styles; delete branch after merge) | Forgejo DB | **repo-config module** for PRs, Releases, Actions and merge settings; `forgejo-sync.sh --only settings` is retired | yes, from the model | Renovate skips repos with PRs off; semantic-release has no Releases tab |
 | F6 | Topics (`renovate`) used for discovery | Forgejo DB | hand; `scripts/renovate-discovery-drift.sh` detects | no | repo drops out of Renovate autodiscovery |
 | F7 | Push mirrors Forgejo → GitHub | Forgejo DB | script: `--only mirror` with G10 | no | GitHub copies go stale |
 | F8 | Pull mirror of `ploeg-hq/ploeg` on Forgejo | Forgejo DB | hand, New Migration form | no | read-only copy only; nothing in the chain reads it after D2, so low impact |
 | F9 | Unfold repo Actions variables `UNFOLD_RELEASES_ENABLED`, `UNFOLD_DOCS_PUBLISH_ENABLED` | Forgejo DB | hand, repo settings | no | releases and docs publishing are skipped without an error |
-| F10 | Producer bot `ploeg-release`: merge-whitelist entry on `development` (VIK-1311). The user, its collaboration and its token are reconciled since VIK-2222, see above | Forgejo | **does not exist** | no | the producer bot cannot schedule the merge of its Unfold bump |
+| F10 | Producer bot `ploeg-release`: merging on `unfold` `development`. The user, its collaboration and its token are reconciled since VIK-2222, see above | Forgejo | no whitelist entry needed today: `development` has no merge whitelist, so the bot merges as a write collaborator. If a merge whitelist is ever modelled there, it must list `ploeg-release` | n/a | the producer bot cannot schedule the merge of its Unfold bump |
 
 ### OpenBao provided values (L1, typed once by a person)
 
@@ -135,7 +135,7 @@ neither should be.
 
 | Mechanism | Owns | Exists today? | Bootstrap credential it needs |
 | --- | --- | --- | --- |
-| **Forgejo repo-config module** ([RFC](../rfc/rfc-forgejo-repo-config-gitops.md), epic VIK-1302): tofu-controller + `svalabs/forgejo` provider, `profiles.yaml` + `repos.yaml` model | F1–F7, F9, the F10 merge-whitelist entry | **no**: accepted design, spike done (VIK-1309); no `kubernetes/apps/forgejo/repo-config` in git, no `forgejo_*` resource anywhere | a `forgejo-repo-config` bot token, minted by a provisioner from V1 and read through OpenBao Kubernetes auth |
+| **Forgejo repo-config module** ([RFC](../rfc/rfc-forgejo-repo-config-gitops.md), epic VIK-1302): tofu-controller + `svalabs/forgejo` provider, `profiles.yaml` + `repos.yaml` model, Terraform object `repo-config` in namespace `repo-config` | F1, F2, F5, the `workflows` part of F3 | **yes** since 2026-10-18: 27 repositories and 5 branch protection rules, `approvePlan: auto`, hourly. `ForgejoRepoConfigNotReady` and `ForgejoRepoConfigApplyChangedSomething` watch it | a `forgejo-repo-config` bot token, minted by a provisioner from V1 and read through OpenBao Kubernetes auth |
 | **Forgejo identity provisioners** (the `unfold-reports-provisioner` pattern) | F10 user, collaboration and token | **yes**, the pattern runs in production | V1 |
 | **GitHub module**: tofu-controller + `integrations/github` provider, app auth (`kubernetes/apps/github-config/ploeg-hq`) | G1–G4, G6 for `ploeg-hq`; later G11 and the `webgrip` mirrors with a second App | **built 2026-10-18** (VIK-2223), suspended until the `ploeg-hq` App exists | one GitHub App per owner (`ploeg-hq`, `webgrip`) with Administration, Actions variables and Secrets write on the listed repos; its private key in OpenBao |
 | **GitHub L3 bridge** (`kubernetes/apps/github-secrets-bridge`) | G7 and any other GitHub Actions secret | **built 2026-10-18** (VIK-2224), runs hourly, no-ops with `GitHubAppPloegHqPending` (info) until the App exists | the same GitHub App; encrypts each value with the repo public key (sealed box), so no value enters tofu state |
@@ -175,7 +175,7 @@ ExternalSecret template.
 | Forgejo user `ploeg-release` | **yes** | copy `unfold-reports-provisioner.cronjob.yaml`: generator password, `POST /admin/users`, idempotent |
 | Write on `webgrip/unfold` only | **yes** | same provisioner: `PUT /repos/webgrip/unfold/collaborators/ploeg-release` with `write`; not a team member |
 | Token (`write:repository`, `write:issue`, `read:user`) | **yes** | same provisioner: keep while it authenticates, otherwise re-mint and revoke the rest; Secret → PushSecret → OpenBao `forgejo/ploeg-release` |
-| Merge-whitelist entry on `development` | **no** | only `forgejo-sync.sh` can set it, by hand, and the next `--all --only protect` sweep with the default `MERGE_WHITELIST=ryangr0,renovate` removes it again. Missing: the repo-config module (VIK-1310 + VIK-1311) with `webgrip/unfold` modelled. A provisioner PATCH would be a second writer on the same rule, so it is not the answer |
+| Merge-whitelist entry on `development` | **not needed** | `development` has no merge whitelist live, so the write collaboration is enough. The rule itself (including `ploeg-docs`) is owned by the repo-config module, and `forgejo-sync.sh --only protect` is retired, so no hand sweep can rewrite it |
 | GitHub secret `RELEASE_CONSUMER_TOKEN_FORGEJO` | **after the App step** | the GitHub L3 bridge is built; it waits only for the `ploeg-hq` GitHub App ([owner steps](../runbooks/github-app-ploeg-hq.md#owner-steps-the-one-ui-step)). GitHub-hosted runners cannot reach the LAN-only OpenBao, so an L4 OIDC read is not available |
 | GitHub variable `RELEASE_CONSUMERS` | **after the App step and the switch** | the GitHub module holds it behind `release_consumers_enabled`; the same App |
 
@@ -186,10 +186,11 @@ owner.
 
 ### Order of work
 
-1. **Repo-config module, branch protection first** (VIK-1310, VIK-1311): model `homelab-cluster`
-   (all seven `e2e /` contexts) and `webgrip/unfold` (`ploeg-docs` on `development`, merge
-   whitelist `ryangr0`, `renovate`, `ploeg-release`). Retire `--only protect` from the script the
-   same day. This closes the 2026-08-05 lock-out class and the P1b prerequisites (D8).
+1. **Repo-config module, branch protection first** (VIK-1310, VIK-1311): **done 2026-10-18.**
+   `homelab-cluster` `main` is the `homelab` profile with the four `e2e /` contexts live (the owner
+   kept four, not seven); `webgrip/unfold` `development` requires `ploeg-docs`. `forgejo-sync.sh`
+   refuses `--only protect` and `--only settings`. Turning on merge whitelists on `unfold` is an
+   open owner decision: it would restrict merging, which is open to every writer today.
 2. **`ploeg-release` provisioner**, the pattern above, with a staleness alert like
    `unfold-reports`.
 3. **`ploeg-hq` GitHub App and the GitHub module**: import G1–G4 into state with `import` blocks,

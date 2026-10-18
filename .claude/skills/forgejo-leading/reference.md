@@ -42,7 +42,7 @@ git push github main                         # still mirrors to GitHub until it'
 
 ```bash
 set -a; source ~/.config/webgrip/forgejo.env; set +a
-scripts/forgejo-sync.sh --repo <name>            # dry-run: shows the planned Actions/mirror/protect changes
+scripts/forgejo-sync.sh --repo <name>            # dry-run: shows the planned Actions/PRs/Releases/mirror/webhook changes
 scripts/forgejo-sync.sh --repo <name> --apply
 ```
 
