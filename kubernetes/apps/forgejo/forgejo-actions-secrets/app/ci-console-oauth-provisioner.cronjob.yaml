@@ -1,0 +1,138 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ci-console-oauth-provisioner
+  namespace: forgejo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ci-console-oauth-provisioner
+  namespace: forgejo
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    resourceNames:
+      - "forgejo-ci-console-oauth"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ci-console-oauth-provisioner
+  namespace: forgejo
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ci-console-oauth-provisioner}
+subjects:
+  - {kind: ServiceAccount, name: ci-console-oauth-provisioner, namespace: forgejo}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ci-console-oauth-provisioner
+  namespace: forgejo
+spec:
+  schedule: "*/20 * * * *"
+  startingDeadlineSeconds: 600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ci-console-oauth-provisioner
+        spec:
+          serviceAccountName: ci-console-oauth-provisioner
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: provision
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4
+              imagePullPolicy: IfNotPresent
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: CURL_TIMEOUT, value: "30"}
+                - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+                - {name: NAMESPACE, value: forgejo}
+                - {name: APP_NAME, value: CI console}
+                - {name: CONSOLE_PATH, value: /-/ci}
+                - {name: CONFIG_MAP, value: forgejo-ci-console-oauth}
+                - {name: CONFIG_KEY, value: wg-ci-oauth.json}
+                - name: ADMIN_USERNAME
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+                - name: ADMIN_PASSWORD
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  api="$FORGEJO_URL/api/v1"
+                  admin="$ADMIN_USERNAME:$ADMIN_PASSWORD"
+                  curl() { command curl --connect-timeout 10 --max-time "$CURL_TIMEOUT" "$@"; }
+                  kubectl() { timeout 30 kubectl "$@"; }
+
+                  issuer="$(curl -fsS "$FORGEJO_URL/.well-known/openid-configuration" | jq -r '.issuer' | sed 's#/*$##')"
+                  case "$issuer" in https://*) ;; *) echo "unexpected issuer: $issuer" >&2; exit 1 ;; esac
+                  redirect="$issuer$CONSOLE_PATH"
+                  body="$(jq -nc --arg name "$APP_NAME" --arg uri "$redirect" \
+                    '{name: $name, redirect_uris: [$uri], confidential_client: false}')"
+
+                  id="$(curl -fsS -u "$admin" "$api/user/applications/oauth2?page=1&limit=50" \
+                    | jq -r --arg name "$APP_NAME" 'map(select(.name == $name)) | sort_by(.id) | first | .id // empty')"
+                  if [ -z "$id" ]; then
+                    echo "creating OAuth2 application '$APP_NAME' for $redirect"
+                    app="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/user/applications/oauth2" -d "$body")"
+                  else
+                    app="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/user/applications/oauth2/$id" -d "$body")"
+                  fi
+                  client_id="$(printf %s "$app" | jq -r '.client_id // empty')"
+                  [ -n "$client_id" ] || { echo "no client_id in the Forgejo response" >&2; exit 1; }
+                  [ "$(printf %s "$app" | jq -r '.confidential_client')" = "false" ] || { echo "application is still confidential" >&2; exit 1; }
+
+                  config="$(jq -nc --arg client_id "$client_id" --arg redirect "$redirect" \
+                    '{client_id: $client_id, redirect_uri: $redirect}')"
+                  current="$(kubectl -n "$NAMESPACE" get configmap "$CONFIG_MAP" -o jsonpath="{.data.wg-ci-oauth\.json}" 2>/dev/null || true)"
+                  if [ "$current" = "$config" ]; then
+                    echo "ConfigMap $CONFIG_MAP already current; no change"
+                  else
+                    kubectl -n "$NAMESPACE" create configmap "$CONFIG_MAP" --from-literal="$CONFIG_KEY=$config" \
+                      --dry-run=client -o yaml \
+                      | kubectl annotate --local -f - reloader.stakater.com/ignore=true -o yaml \
+                      | kubectl apply -f - >/dev/null
+                    echo "wrote ConfigMap $CONFIG_MAP for client $client_id"
+                  fi
+                  echo "ci-console OAuth provisioner converged"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 64Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}

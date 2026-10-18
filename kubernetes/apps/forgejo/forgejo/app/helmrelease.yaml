@@ -170,8 +170,13 @@ spec:
         configMap:
           name: forgejo-custom-header
       - name: custom-assets
-        configMap:
-          name: forgejo-custom-assets
+        projected:
+          sources:
+            - configMap:
+                name: forgejo-custom-assets
+            - configMap:
+                name: forgejo-ci-console-oauth
+                optional: true
     extraContainerVolumeMounts:
       - name: custom-header
         mountPath: /data/gitea/templates/custom/header.tmpl

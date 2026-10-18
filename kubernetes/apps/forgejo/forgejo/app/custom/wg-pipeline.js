@@ -11,7 +11,7 @@
 (function () {
   'use strict';
 
-  var WG_VERSION = '3.6.0';
+  var WG_VERSION = '3.7.0';
   try {
     window.__wgPipeline = {
       version: WG_VERSION,
@@ -1111,7 +1111,20 @@
     document.head.appendChild(s);
   }
 
+  function addConsoleNavLink() {
+    var explore = document.querySelector('#navbar .navbar-left a.item[href="/explore/repos"]');
+    var signedIn = document.querySelector('#navbar a[href="/notifications"]');
+    if (!explore || !signedIn || document.querySelector('#navbar [data-wg-console-link]')) return;
+    var link = document.createElement('a');
+    link.className = 'item';
+    link.href = '/-/ci';
+    link.textContent = 'CI';
+    link.setAttribute('data-wg-console-link', '');
+    explore.parentNode.insertBefore(link, explore);
+  }
+
   function init() {
+    try { addConsoleNavLink(); } catch (e) { console.debug('[wg-pipeline]', e); }
     try {
       var host = document.getElementById('repo-action-view');
       if (!host) { initPR(); loadRunListControls(); return; }

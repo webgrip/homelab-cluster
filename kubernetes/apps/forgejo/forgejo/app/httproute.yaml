@@ -16,6 +16,27 @@ spec:
   rules:
     - matches:
         - path:
+            type: Exact
+            value: /-/ci
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /assets/wg/wg-ci.html
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: X-Forwarded-Port
+                value: "443"
+              - name: X-Forwarded-Proto
+                value: https
+      backendRefs:
+        - name: forgejo-http
+          namespace: forgejo
+          port: 3000
+    - matches:
+        - path:
             type: PathPrefix
             value: /
       filters:
