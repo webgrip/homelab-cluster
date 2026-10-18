@@ -35,7 +35,7 @@ spec:
           image: harbor.webgrip.dev/dockerhub/curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
           imagePullPolicy: IfNotPresent
           env:
-            - {name: PROBED_POLICY, value: gateway-scoped}
+            - {name: PROBED_POLICY, value: worker-scoped}
             - name: NODE_NAME
               valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
           command:
@@ -65,6 +65,13 @@ spec:
               reachable http://ploeg.ploeg.svc.cluster.local:8080/healthz
               reachable http://litellm.ai.svc.cluster.local:4000/health/liveliness
               reachable http://forgejo-http.forgejo.svc.cluster.local:3000/api/healthz
+              blocked http://ploeg-db-rw.ploeg.svc.cluster.local:5432/
+              blocked http://unfold.ploeg.svc.cluster.local:4080/
+              blocked http://ploeg-mcp.ploeg.svc.cluster.local:8090/
+              blocked http://vikunja.vikunja.svc.cluster.local:3456/
+              blocked http://omnigraph.ai.svc.cluster.local:8080/
+              blocked http://litellm-db-rw.ai.svc.cluster.local:5432/
+              blocked http://forgejo-db-rw.forgejo.svc.cluster.local:5432/
               blocked https://k8s-mcp.${SECRET_DOMAIN}/
               blocked https://mcp-grafana.${SECRET_DOMAIN}/
               blocked https://forgejo.${SECRET_DOMAIN}/

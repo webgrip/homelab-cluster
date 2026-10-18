@@ -49,12 +49,16 @@ containers run in CI, in CI's own images.
 
 ### What a Run can reach
 
-A worker pod (`app.kubernetes.io/name: ploeg-worker`) reaches DNS, the pods in `ploeg`, LiteLLM
-(`ai:4000`), in-cluster Forgejo (`forgejo:3000`) and the Vikunja API (`vikunja:3456`). It has no
-route to the public gateway, the LAN or the internet: `allow-gateway-egress` (from
+A worker pod (`app.kubernetes.io/name: ploeg-worker`) reaches DNS, ploegd on 8080, the LiteLLM pods
+on 4000, the Forgejo pods on 3000 and Alloy on 4318, through `ploeg-worker-egress`
+([ADR-0071](../../../docs/techdocs/docs/adr/adr-0071-agent-egress-reaches-only-what-it-needs.md)).
+It has no route to the database, Unfold, ploeg-mcp or any other pod in `ploeg`, to Vikunja or
+Omnigraph, to the public gateway, the LAN or the internet: `ploeg-allow-egress` leaves out
+`ploeg-worker`, `ploeg-sandbox-launcher` and `claude-runner`, and `allow-gateway-egress` (from
 `components/gateway-egress`, patched in `unfold/app/kustomization.yaml`) selects only `unfold`
-and `ploeg` (ploegd). `worker-egress-probe` checks both halves as a worker-labelled Job; rerun it
-by changing its `PROBED_POLICY` value.
+and `ploeg` (ploegd). A sandbox launcher reaches only ploegd and the API server.
+`worker-egress-probe` checks both halves as a worker-labelled Job; rerun it by changing its
+`PROBED_POLICY` value.
 
 The Claude runner (`app.kubernetes.io/name: claude-runner`, Kata) is left out of `ploeg-allow-egress`. It reaches only DNS, `api.anthropic.com:443`, ploegd on 8080 (the checkout and post-session hooks), the public gateway on 10443 (it clones `https://forgejo.<domain>`), and Alloy on 4318: no LiteLLM, no database, no other pod in `ploeg`.
 
