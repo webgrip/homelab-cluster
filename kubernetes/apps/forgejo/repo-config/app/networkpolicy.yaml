@@ -1,0 +1,62 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgejo-repo-config-allow-controller-to-runner
+  labels:
+    app.kubernetes.io/name: forgejo-repo-config
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tf-runner
+      app.kubernetes.io/part-of: forgejo-repo-config
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: flux-system
+      ports:
+        - protocol: TCP
+          port: 30000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: forgejo-repo-config-runner-allow-openbao
+  labels:
+    app.kubernetes.io/name: forgejo-repo-config
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tf-runner
+      app.kubernetes.io/part-of: forgejo-repo-config
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: security
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openbao
+      ports:
+        - protocol: TCP
+          port: 8200
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: forgejo-repo-config-runner-allow-apiserver
+  labels:
+    app.kubernetes.io/name: forgejo-repo-config
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: tf-runner
+      app.kubernetes.io/part-of: forgejo-repo-config
+  egress:
+    - toEntities:
+        - kube-apiserver

@@ -27,6 +27,54 @@ spec:
       - kube_pod_status_reason
     metricLabelsAllowlist:
       - nodes=[node.webgrip.io/pet]
+    rbac:
+      extraRules:
+        - apiGroups:
+            - infra.contrib.fluxcd.io
+          resources:
+            - terraforms
+          verbs:
+            - list
+            - watch
+    customResourceState:
+      enabled: true
+      config:
+        kind: CustomResourceStateMetrics
+        spec:
+          resources:
+            - groupVersionKind:
+                group: infra.contrib.fluxcd.io
+                version: v1alpha2
+                kind: Terraform
+              metricNamePrefix: tofu
+              labelsFromPath:
+                terraform_name:
+                  - metadata
+                  - name
+                terraform_namespace:
+                  - metadata
+                  - namespace
+              metrics:
+                - name: terraform_status_condition
+                  help: Condition status of a tofu-controller Terraform object.
+                  each:
+                    type: StateSet
+                    stateSet:
+                      path:
+                        - status
+                        - conditions
+                      labelName: status
+                      labelsFromPath:
+                        type:
+                          - type
+                        reason:
+                          - reason
+                      valueFrom:
+                        - status
+                      list:
+                        - "True"
+                        - "False"
+                        - "Unknown"
     podAnnotations:
       reloader.stakater.com/auto: "true"
     resources:

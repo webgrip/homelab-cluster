@@ -1,0 +1,31 @@
+---
+apiVersion: infra.contrib.fluxcd.io/v1alpha2
+kind: Terraform
+metadata:
+  name: repo-config
+  labels:
+    app.kubernetes.io/name: forgejo-repo-config
+spec:
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/forgejo/repo-config/tofu
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  serviceAccountName: forgejo-repo-config-runner
+  storeReadablePlan: human
+  alwaysCleanupRunnerPod: true
+  runnerPodTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: forgejo-repo-config
+    spec:
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 1Gi

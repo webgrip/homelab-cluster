@@ -1,0 +1,50 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: forgejo-repo-config
+  labels:
+    app.kubernetes.io/name: forgejo-repo-config
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: forgejo-repo-config.rules
+      rules:
+        - alert: ForgejoRepoConfigNotReady
+          expr: |
+            max by (terraform_namespace, terraform_name) (
+              tofu_terraform_status_condition{
+                terraform_namespace="forgejo",
+                terraform_name="repo-config",
+                type="Ready",
+                status!="True",
+                reason!="TerraformPlannedWithChanges"
+              }
+            ) == 1
+          for: 3h
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "Forgejo repo-config Terraform not Ready for 3h (forgejo/repo-config)"
+            description: |
+              What's happening:
+              - The repo-config Terraform object in namespace forgejo has not been Ready for three hourly reconciles.
+              - A plan waiting for approval is excluded: that is the deliberate plan-only state.
+
+              Impact/risk:
+              - Repository settings drift in Forgejo is neither planned nor corrected.
+
+              Likely causes:
+              - OpenBao login failed (role forgejo-repo-config, secret/forgejo/repo-config missing)
+              - The bot token was revoked or lost repo admin (team repo-config)
+              - A model edit that fails a precondition, prevent_destroy, or the provider schema
+              - registry.opentofu.org unreachable during tofu init
+
+              First actions:
+              - kubectl -n forgejo get terraform repo-config -o yaml
+              - kubectl -n forgejo logs -l app.kubernetes.io/part-of=forgejo-repo-config
+              - kubectl -n forgejo logs job/repo-config-provisioner
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/rfc/rfc-forgejo-repo-config-gitops/"

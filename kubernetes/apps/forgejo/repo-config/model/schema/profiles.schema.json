@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProfileSet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "profiles"],
+  "properties": {
+    "apiVersion": { "const": "repo-config.webgrip.io/v1alpha1" },
+    "kind": { "const": "ProfileSet" },
+    "profiles": {
+      "type": "object",
+      "required": ["baseline"],
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": { "$ref": "#/$defs/profile" }
+    }
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["settings"],
+      "properties": {
+        "settings": {
+          "allOf": [
+            { "$ref": "settings.schema.json" },
+            {
+              "required": [
+                "has_actions",
+                "has_pull_requests",
+                "has_releases",
+                "default_merge_style",
+                "default_delete_branch_after_merge",
+                "allow_fast_forward_only_merge"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

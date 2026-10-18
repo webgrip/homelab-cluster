@@ -31,6 +31,7 @@ bao policy write access-plane /scripts/access-plane.hcl
 bao policy write ci-unfold /scripts/ci-unfold.hcl
 bao policy write ci-twente-dev /scripts/ci-twente-dev.hcl
 bao policy write ci-cloudflare /scripts/ci-cloudflare.hcl
+bao policy write forgejo-repo-config /scripts/forgejo-repo-config.hcl
 
 echo "==> kubernetes roles"
 bao write auth/kubernetes/role/external-secrets \
@@ -52,6 +53,9 @@ bao write auth/kubernetes/role/cosign-pub-publisher \
 bao write auth/kubernetes/role/access-plane \
   bound_service_account_names=access-plane-runner bound_service_account_namespaces=security \
   policies=access-plane ttl=30m >/dev/null
+bao write auth/kubernetes/role/forgejo-repo-config \
+  bound_service_account_names=forgejo-repo-config-runner bound_service_account_namespaces=forgejo \
+  policies=forgejo-repo-config ttl=30m >/dev/null
 
 # Forgejo Actions OIDC -> Transit signing (JWT auth). Per-workflow identity: only the
 # release-publish flows of the explicitly listed repos can mint a sign-only token — tighter

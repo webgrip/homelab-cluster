@@ -1,0 +1,105 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: repo-config-provisioner
+  namespace: forgejo
+  labels:
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 4
+  template:
+    spec:
+      serviceAccountName: repo-config-provisioner
+      restartPolicy: Never
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: provision
+          image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+            - {name: NAMESPACE, value: forgejo}
+            - {name: ORG, value: webgrip}
+            - {name: TOKEN_SECRET, value: repo-config-token}
+            - {name: TOKEN_NAME, value: webgrip-repo-config}
+            - {name: TOKEN_SCOPES, value: '["write:repository","read:organization"]'}
+            - {name: BOT_USERNAME, value: webgrip-repo-config}
+            - {name: BOT_EMAIL, value: webgrip-repo-config@webgrip.dev}
+            - {name: TEAM_NAME, value: repo-config}
+            - {name: TEAM_DESCRIPTION, value: 'repository settings reconciler (kubernetes/apps/forgejo/repo-config) - admin, all repos'}
+            - {name: TEAM_PERMISSION, value: admin}
+            - {name: TEAM_UNITS, value: '["repo.code","repo.issues","repo.pulls","repo.releases","repo.wiki","repo.projects","repo.packages","repo.actions"]'}
+            - name: ADMIN_USERNAME
+              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+            - name: ADMIN_PASSWORD
+              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+            - name: BOT_PASSWORD
+              valueFrom: {secretKeyRef: {name: repo-config-password, key: password}}
+          command:
+            - /bin/sh
+            - -ceu
+            - |
+              api="${FORGEJO_URL}/api/v1"
+              admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+              bot="${BOT_USERNAME}:${BOT_PASSWORD}"
+
+              code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${BOT_USERNAME}")"
+              if [ "$code" = "404" ]; then
+                echo "creating bot user ${BOT_USERNAME}"
+                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/admin/users" \
+                  -d "{\"username\":\"${BOT_USERNAME}\",\"email\":\"${BOT_EMAIL}\",\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+              elif [ "$code" != "200" ]; then
+                echo "unexpected status probing bot user: $code" >&2; exit 1
+              fi
+
+              tok="$(kubectl -n "$NAMESPACE" get secret "$TOKEN_SECRET" -o jsonpath='{.data.FORGEJO_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+              if [ -n "$tok" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/orgs/${ORG}/teams"; then
+                echo "existing token still valid - no change"
+              else
+                echo "minting a fresh token"
+                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/${BOT_USERNAME}" \
+                  -d "{\"login_name\":\"${BOT_USERNAME}\",\"source_id\":0,\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+                curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${TOKEN_NAME}" || true
+                tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
+                  -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":${TOKEN_SCOPES}}" | jq -r '.sha1')"
+                [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
+                kubectl -n "$NAMESPACE" create secret generic "$TOKEN_SECRET" \
+                  --from-literal="FORGEJO_TOKEN=$tok" \
+                  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                echo "wrote Secret $TOKEN_SECRET"
+              fi
+
+              team="{\"name\":\"${TEAM_NAME}\",\"description\":\"${TEAM_DESCRIPTION}\",\"permission\":\"${TEAM_PERMISSION}\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":${TEAM_UNITS}}"
+              tid="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams" | jq -r --arg n "$TEAM_NAME" '.[] | select(.name==$n) | .id' | head -1)"
+              if [ -z "$tid" ]; then
+                tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/${ORG}/teams" -d "$team" | jq -r '.id // empty')"
+              else
+                curl -fsS -o /dev/null -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/teams/$tid" -d "$team"
+              fi
+              [ -n "$tid" ] || { echo "ERROR: could not ensure ${ORG}/${TEAM_NAME}" >&2; exit 1; }
+              curl -fsS -o /dev/null -u "$admin" -X PUT "$api/teams/$tid/members/${BOT_USERNAME}"
+              curl -fsS -o /dev/null -u "$admin" "$api/teams/$tid/members/${BOT_USERNAME}"
+              perm="$(curl -fsS -u "$admin" "$api/teams/$tid" | jq -r '.permission')"
+              [ "$perm" = "$TEAM_PERMISSION" ] || { echo "ERROR: team ${TEAM_NAME} permission is ${perm}, want ${TEAM_PERMISSION}" >&2; exit 1; }
+              echo "bot ${BOT_USERNAME} in ${ORG}/${TEAM_NAME} (id $tid, permission $perm)"
+              echo "repo-config provisioner converged"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

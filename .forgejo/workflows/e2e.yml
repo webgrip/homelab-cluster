@@ -130,6 +130,15 @@ jobs:
           docker run --rm -v "$ws":/data:ro -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
             sh -ec "pip install --quiet check-jsonschema==0.38.0 pyyaml==6.0.3 && ./scripts/validate-access-model.sh /data"
 
+      - name: Validate the Forgejo repo-config model (schema + profile references + mutation cases)
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/forgejo/repo-config"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          rsync -a "$GITHUB_WORKSPACE/kubernetes/apps/forgejo/repo-config/model" "$ws/kubernetes/apps/forgejo/repo-config/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            sh -ec "pip install --quiet check-jsonschema==0.38.0 pyyaml==6.0.3 && ./scripts/validate-repo-config-model.sh /data && ./scripts/test-validate-repo-config-model.sh /data"
+
       - name: Validate Omnigraph policy isolation
         run: |
           ws="$(mktemp -d)"
