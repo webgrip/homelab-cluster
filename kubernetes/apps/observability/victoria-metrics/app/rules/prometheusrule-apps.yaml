@@ -13,19 +13,19 @@ spec:
       rules:
         - alert: AppDeploymentReplicasMismatch
           expr: |
-            kube_deployment_spec_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
+            max by (exported_namespace, deployment) (kube_deployment_spec_replicas{exported_namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"})
             >
-            kube_deployment_status_replicas_available{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
+            max by (exported_namespace, deployment) (kube_deployment_status_replicas_available{exported_namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"})
           for: 10m
           labels:
             severity: warning
             owner: platform
             service: apps
           annotations:
-            summary: "Deployment replicas unavailable ({{$labels.namespace}}/{{$labels.deployment}})"
+            summary: "Deployment replicas unavailable ({{$labels.exported_namespace}}/{{$labels.deployment}})"
             description: |
               What's happening:
-              - Available replicas are below spec for 10m for {{$labels.namespace}}/{{$labels.deployment}}.
+              - Available replicas are below spec for 10m for {{$labels.exported_namespace}}/{{$labels.deployment}}.
 
               Impact/risk:
               - Reduced capacity; requests may be slower or error if load increases.
@@ -36,7 +36,7 @@ spec:
               - Rollout stalled (bad image/config)
 
               First actions:
-              - Check Deployment status and recent events for {{$labels.namespace}}/{{$labels.deployment}}
+              - Check Deployment status and recent events for {{$labels.exported_namespace}}/{{$labels.deployment}}
               - Check pods for CrashLoopBackOff/ImagePullBackOff/NotReady
               - Verify cluster capacity (CPU/memory) and node readiness
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
@@ -44,19 +44,19 @@ spec:
 
         - alert: AppDeploymentDown
           expr: |
-            kube_deployment_spec_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"} > 0
+            max by (exported_namespace, deployment) (kube_deployment_spec_replicas{exported_namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}) > 0
             and
-            kube_deployment_status_replicas_available{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"} == 0
+            max by (exported_namespace, deployment) (kube_deployment_status_replicas_available{exported_namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}) == 0
           for: 10m
           labels:
             severity: critical
             owner: platform
             service: apps
           annotations:
-            summary: "Deployment is down ({{$labels.namespace}}/{{$labels.deployment}})"
+            summary: "Deployment is down ({{$labels.exported_namespace}}/{{$labels.deployment}})"
             description: |
               What's happening:
-              - No available replicas for 10m for {{$labels.namespace}}/{{$labels.deployment}}.
+              - No available replicas for 10m for {{$labels.exported_namespace}}/{{$labels.deployment}}.
 
               Impact/risk:
               - Service is likely unavailable or severely degraded.
@@ -75,19 +75,19 @@ spec:
 
         - alert: AppStatefulSetReplicasMismatch
           expr: |
-            kube_statefulset_status_replicas{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
+            max by (exported_namespace, statefulset) (kube_statefulset_status_replicas{exported_namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"})
             >
-            kube_statefulset_status_replicas_ready{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"}
+            max by (exported_namespace, statefulset) (kube_statefulset_status_replicas_ready{exported_namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)"})
           for: 10m
           labels:
             severity: warning
             owner: platform
             service: apps
           annotations:
-            summary: "StatefulSet replicas unavailable ({{$labels.namespace}}/{{$labels.statefulset}})"
+            summary: "StatefulSet replicas unavailable ({{$labels.exported_namespace}}/{{$labels.statefulset}})"
             description: |
               What's happening:
-              - Ready replicas are below desired for 10m for {{$labels.namespace}}/{{$labels.statefulset}}.
+              - Ready replicas are below desired for 10m for {{$labels.exported_namespace}}/{{$labels.statefulset}}.
 
               Impact/risk:
               - Reduced capacity; stateful services may be degraded.
@@ -106,8 +106,8 @@ spec:
 
         - alert: AppCrashLoopBackOff
           expr: |
-            max by (namespace, pod, container) (
-              kube_pod_container_status_waiting_reason{namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)", reason="CrashLoopBackOff"}
+            max by (exported_namespace, exported_pod, exported_container) (
+              kube_pod_container_status_waiting_reason{exported_namespace!~"(kube-system|flux-system|observability|cert-manager|cnpg-system|longhorn-system|network)", reason="CrashLoopBackOff"}
             ) > 0
           for: 15m
           labels:
@@ -115,10 +115,10 @@ spec:
             owner: platform
             service: apps
           annotations:
-            summary: "CrashLoopBackOff ({{$labels.namespace}})"
+            summary: "CrashLoopBackOff ({{$labels.exported_namespace}}/{{$labels.exported_pod}})"
             description: |
               What's happening:
-              - Container {{$labels.container}} in pod {{$labels.pod}} has been in CrashLoopBackOff for 15m.
+              - Container {{$labels.exported_container}} in pod {{$labels.exported_namespace}}/{{$labels.exported_pod}} has been in CrashLoopBackOff for 15m.
 
               Impact/risk:
               - The workload may be partially unavailable or failing requests.
@@ -129,8 +129,8 @@ spec:
               - Dependency unavailable (DB/API/DNS) or failing startup checks
 
               First actions:
-              - Check pod events and last termination reason for {{$labels.pod}}
-              - Review previous container logs for {{$labels.container}}
+              - Check pod events and last termination reason for {{$labels.exported_pod}}
+              - Review previous container logs for {{$labels.exported_container}}
               - Verify recent deploy/config changes and dependent services
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-cluster-health/kubernetes-cluster-health"

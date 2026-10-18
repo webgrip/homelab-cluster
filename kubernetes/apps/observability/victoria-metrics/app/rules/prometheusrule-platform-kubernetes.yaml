@@ -78,17 +78,17 @@ spec:
 
         - alert: KubeJobFailed
           expr: |
-            kube_job_status_failed > 0
+            kube_job_status_failed{job="kube-state-metrics"} > 0
           for: 15m
           labels:
             severity: warning
             owner: platform
             service: kubernetes
           annotations:
-            summary: "Job {{ $labels.namespace }}/{{ $labels.job_name }} failed ({{ $labels.namespace }})"
+            summary: "Job {{ $labels.exported_namespace }}/{{ $labels.job_name }} failed ({{ $labels.exported_namespace }})"
             description: |
               What's happening:
-              - Job {{ $labels.namespace }}/{{ $labels.job_name }} has failed pods
+              - Job {{ $labels.exported_namespace }}/{{ $labels.job_name }} has failed pods
                 and has not succeeded for 15m.
 
               Impact/risk:
@@ -102,8 +102,8 @@ spec:
               - Node pressure evicting the pod repeatedly
 
               First actions:
-              - kubectl -n {{ $labels.namespace }} logs job/{{ $labels.job_name }}
-              - kubectl -n {{ $labels.namespace }} describe job {{ $labels.job_name }}
+              - kubectl -n {{ $labels.exported_namespace }} logs job/{{ $labels.job_name }}
+              - kubectl -n {{ $labels.exported_namespace }} describe job {{ $labels.job_name }}
               - If it is a CronJob child, check whether later runs succeeded
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
 

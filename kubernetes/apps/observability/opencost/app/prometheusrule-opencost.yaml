@@ -82,10 +82,10 @@ spec:
           expr: |
             (
               sum by (namespace) (rate(container_cpu_usage_seconds_total{container!=""}[1h]))
-              / sum by (namespace) (kube_pod_container_resource_requests{resource="cpu"})
+              / sum by (namespace) (label_replace(kube_pod_container_resource_requests{job="kube-state-metrics", resource="cpu"}, "namespace", "$$1", "exported_namespace", "(.+)"))
             ) < 0.15
             and
-            sum by (namespace) (kube_pod_container_resource_requests{resource="cpu"}) > 1
+            sum by (namespace) (label_replace(kube_pod_container_resource_requests{job="kube-state-metrics", resource="cpu"}, "namespace", "$$1", "exported_namespace", "(.+)")) > 1
           for: 12h
           labels:
             severity: info

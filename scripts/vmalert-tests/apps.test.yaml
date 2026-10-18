@@ -1,0 +1,95 @@
+---
+rule_files:
+  - rules/apps.yaml
+evaluation_interval: 1m
+tests:
+  - name: a deployment with no available replicas pages through the kube-state-metrics exported_namespace
+    interval: 1m
+    input_series:
+      - series: 'kube_deployment_spec_replicas{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="vikunja", deployment="vikunja"}'
+        values: "1x30"
+      - series: 'kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="vikunja", deployment="vikunja"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 8m
+        groupname: apps.namespace.baseline
+        alertname: AppDeploymentDown
+        exp_alerts: []
+      - eval_time: 15m
+        groupname: apps.namespace.baseline
+        alertname: AppDeploymentDown
+        exp_alerts:
+          - exp_labels:
+              exported_namespace: vikunja
+              deployment: vikunja
+              severity: critical
+              owner: platform
+              service: apps
+            exp_annotations:
+              summary: "Deployment is down (vikunja/vikunja)"
+      - eval_time: 15m
+        groupname: apps.namespace.baseline
+        alertname: AppDeploymentReplicasMismatch
+        exp_alerts:
+          - exp_labels:
+              exported_namespace: vikunja
+              deployment: vikunja
+              severity: warning
+              owner: platform
+              service: apps
+            exp_annotations:
+              summary: "Deployment replicas unavailable (vikunja/vikunja)"
+
+  - name: a deployment short of replicas but still serving is a mismatch, not down
+    interval: 1m
+    input_series:
+      - series: 'kube_deployment_spec_replicas{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="harbor", deployment="harbor-core"}'
+        values: "3x30"
+      - series: 'kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="harbor", deployment="harbor-core"}'
+        values: "2x30"
+    alert_rule_test:
+      - eval_time: 15m
+        groupname: apps.namespace.baseline
+        alertname: AppDeploymentReplicasMismatch
+        exp_alerts:
+          - exp_labels:
+              exported_namespace: harbor
+              deployment: harbor-core
+              severity: warning
+              owner: platform
+              service: apps
+            exp_annotations:
+              summary: "Deployment replicas unavailable (harbor/harbor-core)"
+      - eval_time: 15m
+        groupname: apps.namespace.baseline
+        alertname: AppDeploymentDown
+        exp_alerts: []
+
+  - name: healthy, scaled-to-zero, recovered and platform-namespace deployments stay quiet
+    interval: 1m
+    input_series:
+      - series: 'kube_deployment_spec_replicas{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="ai", deployment="open-webui"}'
+        values: "2x30"
+      - series: 'kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="ai", deployment="open-webui"}'
+        values: "2x30"
+      - series: 'kube_deployment_spec_replicas{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="n8n", deployment="n8n"}'
+        values: "0x30"
+      - series: 'kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="n8n", deployment="n8n"}'
+        values: "0x30"
+      - series: 'kube_deployment_spec_replicas{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="ploeg", deployment="unfold"}'
+        values: "1x30"
+      - series: 'kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="ploeg", deployment="unfold"}'
+        values: "0x5 1x25"
+      - series: 'kube_deployment_spec_replicas{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="longhorn-system", deployment="csi-attacher"}'
+        values: "3x30"
+      - series: 'kube_deployment_status_replicas_available{job="kube-state-metrics", namespace="observability", pod="kube-state-metrics-0", exported_namespace="longhorn-system", deployment="csi-attacher"}'
+        values: "0x30"
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: apps.namespace.baseline
+        alertname: AppDeploymentDown
+        exp_alerts: []
+      - eval_time: 20m
+        groupname: apps.namespace.baseline
+        alertname: AppDeploymentReplicasMismatch
+        exp_alerts: []
