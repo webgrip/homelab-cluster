@@ -77,6 +77,59 @@ publishes an image, and Renovate picks it up.
 | P4 | post-deploy check with revert and deploy events | a broken rc is reverted automatically; a good one is recorded as deployed |
 | P5 | GitLab and Bitbucket adapters | each after its conformance run |
 
+### P4 verify
+
+P4 lands in two slices. The first detects and notifies; the second reverts.
+
+**Slice 1: detection (landed).** The rules are in
+`kubernetes/apps/observability/victoria-metrics/app/rules/prometheusrule-delivery-verify.yaml`, with
+vmalert-tool unit tests in `scripts/vmalert-tests/` (run `./scripts/test-vmalert-rules.sh`). Each
+alert has a case that must fire and a case that must not.
+
+| Series or alert | Meaning | Source |
+| --- | --- | --- |
+| `delivery:release_revision:current{release, revision}` | the chart version Flux is applying for `ploeg` or `unfold` | flux-operator `flux_resource_info` |
+| `delivery:release_deployed:info{release, revision}` | that version is applied and Ready; when a revision first shows up here is when it went live (use it as a Grafana annotation) | same, `ready="True"` |
+| `delivery:release_running_image:info{release, image_id}` | the image digest the Deployment pods actually run | kube-state-metrics `kube_pod_container_info` |
+| `delivery:release_candidate:fresh{release, revision}` | the revision was not there an hour ago | `flux_resource_info` offset 1h |
+| `delivery:release_unhealthy:signal{release, signal}` | `release_not_ready`, `replicas_unavailable`, `container_restarting` (two or more restarts in 15m), `route_probe_failing` (Unfold only; Ploeg has no route probe) | Flux, kube-state-metrics, blackbox |
+| `DeliveryCandidateUnhealthy` | a fresh revision has had an unhealthy signal for 15m; carries `release`, `revision`, `signal` | the two above |
+| `DeliveryVerifySignalMissing` | the layer has gone blind for a release | absent for 30m |
+
+Both alerts are `severity: warning` and reach ntfy through the warning route in
+`vmalertmanager-config`. A broken candidate pages about 16 to 20 minutes after Flux applies it. The
+15-minute hold comes from the data: over the seven days before 2026-10-18, the longest stretch where
+a healthy Unfold rollout looked unready was 11 minutes. A revision older than an hour is no longer a
+candidate. From then on the steady-state alerts (`FluxHelmReleaseNotReady`, `SyntheticRouteDown`,
+`AppContainerCrashLooping`) cover it, and they also fire during the first hour, next to this one.
+
+**Slice 2: revert (design, not built).**
+
+- *What reverts.* The Renovate commit on `main` that moved the pins: the OCIRepository `tag` and
+  `digest`, and the image `tag` and `digest` in `helmrelease.yaml` (kept in lockstep by
+  `scripts/check_release_lockstep.py`). The revert is a `git revert` of that commit, and Flux
+  applies it. Helm rollback, `flux suspend` and `kubectl` patches are out, because git would still
+  name the bad version and Flux would put it back on the next reconcile.
+- *Trigger.* An Alertmanager route for `alertname="DeliveryCandidateUnhealthy"` sends to a webhook
+  receiver in the cluster. The receiver finds the commit that introduced `revision` in the pin
+  files and reverts it.
+- *Guards.* Revert only when that commit is Renovate's and is still the latest change to those
+  files. Revert each revision once. Never revert past a forward-only database migration: Ploeg
+  would first have to expose its schema version so the receiver can refuse. If Ploeg and Unfold
+  moved together, revert the pair.
+- *Keeping it reverted.* Renovate proposes the same version again after a revert. The bad version
+  has to land in a list that Renovate reads (an `allowedVersions` exclusion in the channel preset),
+  or the next rc has to supersede it. The owner chooses which.
+- *Deploy event.* On success, the first sample of `delivery:release_deployed:info` for a revision is
+  the record. Slice 2 can also write it as a Ploeg deploy event (Ploeg ADR-0047).
+- *Credential a person must provide.* `main` is protected (ADR-0050): only `ryangr0` may push, and
+  only `ryangr0` and `renovate` may merge, after the five `e2e /` checks. So the receiver needs a
+  Forgejo token that may open and merge a revert PR on `homelab-cluster`, scoped to that one
+  repository. It is stored in OpenBao KV and delivered by an ExternalSecret (ADR-0055). The owner
+  picks the identity: reuse `renovate` (already on the merge whitelist, but it mixes two writers
+  under one name) or add a dedicated bot (which runs against the no-new-bot-accounts decision). A
+  revert PR also waits for the e2e checks, which adds their run time to the rollback.
+
 Implementation runs in a separate work stream; its first slice is the homelab branch
 `fix/renovate-ploeg-unfold-release`.
 

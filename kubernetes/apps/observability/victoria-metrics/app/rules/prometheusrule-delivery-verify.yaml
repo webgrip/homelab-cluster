@@ -1,0 +1,166 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: delivery-verify
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: delivery-verify
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: delivery-verify.releases
+      interval: 1m
+      rules:
+        - record: delivery:release_revision:current
+          expr: |
+            max by (release, revision) (
+              label_replace(
+                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name=~"ploeg|unfold", suspended="False"},
+                "release", "$$1", "name", "(.+)"
+              )
+            )
+        - record: delivery:release_deployed:info
+          expr: |
+            max by (release, revision) (
+              label_replace(
+                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name=~"ploeg|unfold", ready="True", suspended="False"},
+                "release", "$$1", "name", "(.+)"
+              )
+            )
+        - record: delivery:release_running_image:info
+          expr: |
+            max by (release, image_id) (
+              label_replace(
+                kube_pod_container_info{exported_namespace="ploeg", exported_container=~"ploegd|workbench", exported_pod=~"(ploeg|unfold)-[a-z0-9]+-[a-z0-9]{5}"},
+                "release", "$$1", "exported_pod", "(ploeg|unfold)-.+"
+              )
+            )
+        - record: delivery:release_candidate:fresh
+          expr: |
+            max by (release, revision) (
+              label_replace(
+                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name=~"ploeg|unfold", suspended="False"},
+                "release", "$$1", "name", "(.+)"
+              )
+            )
+            unless on (release, revision)
+            max by (release, revision) (
+              label_replace(
+                last_over_time(flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name=~"ploeg|unfold"}[10m] offset 1h),
+                "release", "$$1", "name", "(.+)"
+              )
+            )
+
+    - name: delivery-verify.signals
+      interval: 1m
+      rules:
+        - record: delivery:release_unhealthy:signal
+          labels:
+            signal: release_not_ready
+          expr: |
+            max by (release) (
+              label_replace(
+                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name=~"ploeg|unfold", ready!="True", suspended="False"},
+                "release", "$$1", "name", "(.+)"
+              )
+            )
+        - record: delivery:release_unhealthy:signal
+          labels:
+            signal: replicas_unavailable
+          expr: |
+            max by (release) (
+              label_replace(
+                (
+                  kube_deployment_spec_replicas{exported_namespace="ploeg", deployment=~"ploeg|unfold"}
+                  - kube_deployment_status_replicas_available{exported_namespace="ploeg", deployment=~"ploeg|unfold"}
+                ) > 0,
+                "release", "$$1", "deployment", "(.+)"
+              )
+            )
+        - record: delivery:release_unhealthy:signal
+          labels:
+            signal: container_restarting
+          expr: |
+            max by (release) (
+              label_replace(
+                increase(kube_pod_container_status_restarts_total{exported_namespace="ploeg", exported_container=~"ploegd|workbench", exported_pod=~"(ploeg|unfold)-[a-z0-9]+-[a-z0-9]{5}"}[15m]) >= 2,
+                "release", "$$1", "exported_pod", "(ploeg|unfold)-.+"
+              )
+            )
+        - record: delivery:release_unhealthy:signal
+          labels:
+            signal: route_probe_failing
+          expr: |
+            max by (release) (
+              label_replace(
+                (1 - probe_success{job="probe/observability/blackbox-unfold"}) > 0,
+                "release", "$$1", "endpoint", "(.+)"
+              )
+            )
+
+    - name: delivery-verify.alerts
+      interval: 1m
+      rules:
+        - alert: DeliveryCandidateUnhealthy
+          expr: |
+            max by (release, signal) (delivery:release_unhealthy:signal)
+            * on (release) group_left (revision)
+            topk by (release) (1, delivery:release_candidate:fresh)
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: delivery-verify
+          annotations:
+            summary: "Release candidate {{ $labels.revision }} is unhealthy after deploy (ploeg/{{ $labels.release }})"
+            description: |
+              What's happening:
+              - Flux moved ploeg/{{ $labels.release }} to {{ $labels.revision }} less than an hour ago, and the verify signal {{ $labels.signal }} has held for 15 minutes.
+              - Signals: release_not_ready (HelmRelease not Ready), replicas_unavailable (Deployment below spec), container_restarting (two or more restarts in 15 minutes), route_probe_failing (the Unfold gateway probe).
+
+              Impact/risk:
+              - A candidate from the prerelease channel reached the homelab through a Renovate automerge with no person in between (ADR-0069). Agent work routed through Ploeg or followed in Unfold may be failing.
+              - Nothing reverts the bump yet; until P4's revert step lands, the bad candidate stays until a person acts.
+
+              Likely causes:
+              - The candidate itself is broken: a crash on start, a failed migration, a renamed environment variable or value the homelab chart patches still set.
+              - A dependency of the new version is missing: a secret key, a database column, a network path the new code needs.
+              - Ploeg and Unfold moved apart: Unfold expects a Ploeg API version the homelab does not run.
+
+              First actions:
+              - flux -n ploeg get helmrelease {{ $labels.release }} and kubectl -n ploeg describe deployment {{ $labels.release }}
+              - kubectl -n ploeg logs deploy/{{ $labels.release }} --previous
+              - Compare with the version that ran before: delivery:release_deployed:info{release="{{ $labels.release }}"} over the last 24h
+              - To roll back, revert the Renovate bump commit on main (OCIRepository tag and digest, plus the image tag and digest in helmrelease.yaml)
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/rfc/rfc-unfold-release-train/#p4-verify"
+        - alert: DeliveryVerifySignalMissing
+          expr: |
+            absent(delivery:release_revision:current{release="ploeg"})
+            or
+            absent(delivery:release_revision:current{release="unfold"})
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: delivery-verify
+          annotations:
+            summary: "The delivery verify layer cannot see a release (ploeg/{{ $labels.release }})"
+            description: |
+              What's happening:
+              - delivery:release_revision:current{release="{{ $labels.release }}"} has been absent for 30 minutes. It comes from flux-operator's flux_resource_info for the HelmRelease ploeg/{{ $labels.release }}.
+
+              Impact/risk:
+              - DeliveryCandidateUnhealthy cannot fire for this release, so a broken candidate would land without notice, and the deploy history has a gap.
+
+              Likely causes:
+              - flux-operator stopped exporting flux_resource_info, or its scrape is down.
+              - The HelmRelease was renamed, moved out of the ploeg namespace, or suspended.
+              - The recording group delivery-verify.releases fails to evaluate.
+
+              First actions:
+              - Query flux_resource_info{kind="HelmRelease", exported_namespace="ploeg"} in Grafana Explore
+              - flux -n ploeg get helmrelease
+              - kubectl -n observability logs deploy/vmalert-vmalert -c vmalert | grep delivery-verify
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/rfc/rfc-unfold-release-train/#p4-verify"
