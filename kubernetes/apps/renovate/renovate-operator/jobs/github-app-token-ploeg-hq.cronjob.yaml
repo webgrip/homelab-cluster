@@ -1,0 +1,105 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: renovate-github-app-token-ploeg-hq
+  labels:
+    app.kubernetes.io/name: renovate-github-app-token-ploeg-hq
+spec:
+  schedule: "7,37 * * * *"
+  startingDeadlineSeconds: 300
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: renovate-github-app-token-ploeg-hq
+        spec:
+          serviceAccountName: renovate-github-app-token-ploeg-hq
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: mint-token
+              image: ghcr.io/mshekow/github-app-installation-token:2026.07.31@sha256:cb8752da9c957f470b47abf07926bb4eb579b4e1d82a0f19b585a0474d1f1bd7
+              imagePullPolicy: IfNotPresent
+              command:
+                - "node"
+                - "/scripts/mint.mjs"
+              env:
+                - {name: VAULT_ADDR, value: 'http://openbao.security.svc.cluster.local:8200'}
+                - {name: VAULT_ROLE, value: renovate-github-app-token-ploeg-hq}
+                - {name: APP_SECRET_PATH, value: github/ploeg-hq-renovate-app}
+                - {name: GITHUB_REPOSITORIES, value: ploeg}
+                - name: TOKEN_PERMISSIONS
+                  value: >-
+                    {"contents":"write","pull_requests":"write","issues":"write","workflows":"write","checks":"read","statuses":"read","vulnerability_alerts":"read","metadata":"read"}
+                - {name: NAMESPACE, value: renovate}
+                - {name: RUNTIME_SECRET_NAME, value: renovate-ploeg-hq-token}
+                - {name: NODE_EXTRA_CA_CERTS, value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 64Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: script, mountPath: /scripts, readOnly: true}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: script
+              configMap:
+                name: renovate-github-app-token-ploeg-hq-script
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: renovate-github-app-token-ploeg-hq
+  labels:
+    app.kubernetes.io/name: renovate-github-app-token-ploeg-hq
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: renovate-github-app-token-ploeg-hq
+  labels:
+    app.kubernetes.io/name: renovate-github-app-token-ploeg-hq
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "renovate-ploeg-hq-token"
+    verbs:
+      - "update"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: renovate-github-app-token-ploeg-hq
+  labels:
+    app.kubernetes.io/name: renovate-github-app-token-ploeg-hq
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: renovate-github-app-token-ploeg-hq}
+subjects:
+  - {kind: ServiceAccount, name: renovate-github-app-token-ploeg-hq, namespace: renovate}

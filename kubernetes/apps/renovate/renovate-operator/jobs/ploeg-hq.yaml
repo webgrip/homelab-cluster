@@ -1,0 +1,64 @@
+---
+apiVersion: renovate-operator.mogenius.com/v1alpha1
+kind: RenovateJob
+metadata:
+  name: ploeg-hq
+spec:
+  discoveryFilters:
+    - ploeg-hq/ploeg
+  provider:
+    name: github
+    endpoint: https://api.github.com/
+  schedule: "11 * * * *"
+  parallelism: 1
+  image: docker.io/renovate/renovate:44.165.2-full@sha256:3065e5718caafe079c2a2b998b45dca8edffea3a9effcb8f4c6d3b8cc819bb47
+  extraEnvFrom:
+    - secretRef:
+        name: renovate-ploeg-hq-token
+        optional: true
+  extraEnv:
+    - name: RENOVATE_CONFIG_FILE
+      value: /config/renovate.json
+    - name: RENOVATE_BASE_DIR
+      value: /tmp
+    - name: HOME
+      value: /tmp
+    - name: NODE_OPTIONS
+      value: --max-old-space-size=3000
+    - name: LOG_LEVEL
+      value: info
+    - name: RENOVATE_HOST_RULES
+      valueFrom:
+        secretKeyRef:
+          name: renovate-runtime-token
+          key: RENOVATE_HOST_RULES
+          optional: true
+  extraVolumes:
+    - name: config
+      configMap:
+        name: renovate-config-ploeg-hq
+  extraVolumeMounts:
+    - name: config
+      mountPath: /config
+      readOnly: true
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: fringe
+      effect: NoSchedule
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1500m"
+      memory: 4Gi
+  securityContext:
+    pod:
+      runAsNonRoot: true
+      runAsUser: 12021
+      runAsGroup: 12021
+    container:
+      allowPrivilegeEscalation: false

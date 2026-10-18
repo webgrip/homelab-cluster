@@ -115,6 +115,77 @@ with no Ploeg release in flight:
 Between steps 3 and 4 a release would get no bump at all (a gap, not a race); do them back to
 back. To roll back, revert ploeg#173 first, then restore unfold#437, then set the flag to false.
 
+## The Renovate App
+
+Renovate on `ploeg-hq/ploeg` authenticates as a second App, not as `ploeg-hq-gitops`. Renovate
+needs to push branches, edit workflow files and merge pull requests. `ploeg-hq-gitops` holds
+Administration, which can edit or delete the rulesets that require `verify`. On one App, whoever
+holds that key could both switch off the required check and merge code past it. With two Apps
+they cannot: a leaked Renovate key can only open and merge pull requests that still need a green
+`verify`, and a leaked config key cannot push code. The PRs also show a bot name of their own
+(`<app name>[bot]`), apart from the config bot.
+
+| Piece | Path | Does |
+| --- | --- | --- |
+| Token minter | `kubernetes/apps/renovate/renovate-operator/jobs/github-app-token-ploeg-hq.*` | CronJob `renovate-github-app-token-ploeg-hq` at :07 and :37. Reads `secret/github/ploeg-hq-renovate-app` over OpenBao Kubernetes auth (role `renovate-github-app-token-ploeg-hq`). Mints an installation token for the `ploeg` repository with only the permissions below, and writes it to Secret `renovate/renovate-ploeg-hq-token` as `RENOVATE_TOKEN`. Without credentials it logs `app credentials absent` and exits 0 |
+| RenovateJob | `kubernetes/apps/renovate/renovate-operator/jobs/ploeg-hq.yaml` | hourly at :11, platform `github`, discovery filter `ploeg-hq/ploeg`. It reads the token Secret as optional: with no token, discovery finds no repository and nothing runs. It starts on its own the first run after the token exists |
+| Global config | `kubernetes/apps/renovate/renovate-operator/jobs/configmap-ploeg-hq.yaml` | `requireConfig: required` and `onboarding: false`, so Renovate does nothing until `renovate.json5` is on `development`. `platformCommit: enabled` makes GitHub sign the commits as the App. No `allowedCommands` |
+| Repository config | `renovate.json5` in `ploeg-hq/ploeg` | the shared presets plus the Ploeg rules; security fixes merge themselves once `verify` is green |
+
+Until the App exists, alert `GitHubAppPloegHqRenovatePending` (info, no receiver) stays listed.
+It resolves the first time the token Secret exists.
+
+### Owner steps (one UI flow)
+
+1. Open <https://github.com/organizations/ploeg-hq/settings/apps/new>.
+2. Fill in:
+   - **GitHub App name:** `ploeg-hq-renovate` (any free name; it becomes the PR author `ploeg-hq-renovate[bot]`)
+   - **Homepage URL:** `https://github.com/ploeg-hq/ploeg`
+   - **Webhook:** untick **Active**.
+   - **Repository permissions:**
+     - **Contents:** Read and write (branches, commits, merging)
+     - **Pull requests:** Read and write
+     - **Issues:** Read and write (the Dependency Dashboard issue)
+     - **Workflows:** Read and write (pinned Actions bumps in `.github/workflows/`)
+     - **Checks:** Read-only
+     - **Commit statuses:** Read-only
+     - **Dependabot alerts:** Read-only (GitHub's advisories as a second source next to OSV)
+     - **Metadata:** Read-only (GitHub sets this itself)
+     - every other repository permission, including **Administration**: No access
+   - **Organization permissions** and **Account permissions:** No access for all.
+   - **Where can this GitHub App be installed?** Only on this account.
+3. **Create GitHub App**, note the **App ID**, then **Generate a private key**.
+4. **Install App**, **Install** on `ploeg-hq`, **Only select repositories**, pick `ploeg-hq/ploeg`.
+   The URL number is the **installation ID**.
+5. Store the three values:
+
+   ```bash
+   mise exec -- just bao-login
+   export BAO_ADDR="$(mise exec -- just bao-addr)"
+   mise exec -- bao kv put secret/github/ploeg-hq-renovate-app \
+     app_id=<App ID> installation_id=<installation ID> private_key=@<path to the .pem>
+   ```
+
+6. Delete the `.pem` from your machine.
+
+Optional and free: in the repository's **Settings → Advanced Security** turn on **Dependabot
+alerts** (alerts only; leave Dependabot security and version updates off, Renovate opens the
+PRs). Renovate then also reads GitHub's advisory database. Without it, security fixes still come
+from OSV (`osvVulnerabilityAlerts` in the default preset).
+
+### After the key is stored
+
+```bash
+mise exec -- kubectl -n renovate create job --from=cronjob/renovate-github-app-token-ploeg-hq renovate-github-app-token-ploeg-hq-first
+mise exec -- kubectl -n renovate logs job/renovate-github-app-token-ploeg-hq-first
+```
+
+Expect `installation token for ploeg written to Secret renovate/renovate-ploeg-hq-token`. A
+`(422)` that reads `The permissions requested are not granted` means a permission from step 2 is
+missing: add it on the App's page, then accept it on the installation page (GitHub asks the
+owner to approve widened permissions). The next :11 run discovers `ploeg-hq/ploeg`; check with
+`kubectl -n renovate get renovatejob ploeg-hq -o jsonpath='{.status.projects}'`.
+
 ## Rotate the App key
 
 1. On the App's settings page, **Generate a private key** (the old one keeps working).
@@ -159,3 +230,6 @@ if any mutant passes. It runs in the e2e workflow.
 | bridge log `source value … is empty` | ExternalSecret `github-secrets-bridge-source` not synced | `kubectl -n github-secrets-bridge get externalsecret`; check `secret/forgejo/ploeg-release` |
 | plan shows changes on a ruleset | someone edited it in the GitHub UI | decide which is right; change the model or let apply restore it |
 | runner cannot download providers | FQDN egress policy misses a GitHub download host | add it to `github-config-ploeg-hq-runner-egress` |
+| `GitHubAppPloegHqRenovatePending` | no `secret/github/ploeg-hq-renovate-app`, or one of its keys empty | [Renovate App](#the-renovate-app) owner steps |
+| minter log `GitHub refused an installation token … (422)` | the Renovate App lacks a permission the minter requests | add it on the App, approve it on the installation |
+| minter log `OpenBao denied reading secret/github/ploeg-hq-renovate-app (403)` | policy or role missing | check the `openbao-config` CronJob ran `config.sh` |

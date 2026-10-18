@@ -67,6 +67,7 @@ Large parts of the chain already rebuild from git. They are listed so the gaps s
 | G9 | Classic PAT `github/ci-pat` (`repo` + `write:packages`) | GitHub user settings; OpenBao `github/ci-pat` | hand | provided L1 | Forgejo CI cannot mirror Unfold images to `ghcr.io/webgrip/*` or mirror Releases |
 | G10 | PAT `GH_MIRROR_TOKEN` for Forgejo → GitHub push mirrors | a person's shell when running `forgejo-sync.sh --only mirror` | hand | no | new push mirrors cannot be created; existing ones keep the token they were made with |
 | G11 | Mirror repos `github.com/webgrip/*` (e.g. `webgrip/unfold`) | GitHub | hand | no | push mirror errors; GitHub copies of releases vanish |
+| G12 | Renovate GitHub App for `ploeg-hq` (registration, private key, installation on `ploeg-hq/ploeg`), separate from `ploeg-hq-gitops` | GitHub App settings; key in OpenBao `github/ploeg-hq-renovate-app` (V9) | **not created**; CronJob `renovate/renovate-github-app-token-ploeg-hq` and RenovateJob `ploeg-hq` are built and no-op until it exists ([runbook](../runbooks/github-app-ploeg-hq.md#the-renovate-app)) | key: provided L1; app: no | `ploeg-hq/ploeg` gets no dependency or security update PRs (`GitHubAppPloegHqRenovatePending`, info) |
 
 ### Forgejo (`forgejo.webgrip.dev`)
 
@@ -97,6 +98,7 @@ These are read by ExternalSecrets in git, so the *wiring* is declarative; the *v
 | V6 | `cloudflare/tunnel`, `cloudflare/manager` (and the tunnel object at Cloudflare) | tunnel token in front of `forgejo.webgrip.dev`; the token that mints the rolled deploy and DNS tokens | provided | GitHub-hosted runners cannot reach Forgejo (G6/G7 calls, npm registry, `semantic-release-config` clone); Unfold site deploys stop |
 | V7 | `openvsx/unfold`, VS Marketplace PAT and Azure ids | extension publishing for Unfold | provided | extension publish steps fail or skip |
 | V8 | `github/ci-pat` | see G9 | provided | see G9 |
+| V9 | `github/ploeg-hq-renovate-app` | App id, installation id, private key of the G12 App | provided, **not yet stored** | see G12 |
 
 V8 is the vault copy of G9 and is counted once below.
 
@@ -104,12 +106,12 @@ V8 is the vault copy of G9 and is counted once below.
 
 | Category | Hand or script, not reconciled | Of which not yet created |
 | --- | --- | --- |
-| GitHub (G1–G11) | 11 | 2 (G6, G7) |
+| GitHub (G1–G12) | 12 | 3 (G6, G7, G12) |
 | Forgejo (F1–F10) | 10 | 1 (F10) |
-| OpenBao provided values (V1–V7) | 7 | 0 |
+| OpenBao provided values (V1–V7, V9) | 8 | 1 (V9) |
 | Harbor | 0 | 0 |
 | Authentik | 0 | 0 |
-| **Total** | **28** | **3** |
+| **Total** | **30** | **5** |
 
 Plus one stale item: P1b of the RFC named a Ploeg secret `RENOVATE_TRIGGER_TOKEN` and variable
 `RENOVATE_TRIGGER_URL`. D5 replaced that hop with the producer opening the PR; neither is set and
