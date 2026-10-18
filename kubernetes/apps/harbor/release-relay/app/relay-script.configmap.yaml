@@ -1,0 +1,179 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harbor-release-relay-script
+data:
+  relay.py: |-
+    import hmac
+    import json
+    import os
+    import re
+    import sys
+    import threading
+    import time
+    import urllib.error
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "8080"))
+    INBOUND_TOKEN = os.environ.get("RELAY_TOKEN", "")
+    RENOVATE_TOKEN = os.environ.get("RENOVATE_WEBHOOK_TOKEN", "")
+    SCHEDULE_URL = os.environ.get("RENOVATE_SCHEDULE_URL", "")
+    WATCHED_REPOSITORIES = frozenset(
+        name.strip() for name in os.environ.get("WATCHED_REPOSITORIES", "").split(",") if name.strip()
+    )
+    REPEAT_AFTER_SECONDS = int(os.environ.get("REPEAT_AFTER_SECONDS", "1200"))
+    SCHEDULE_TIMEOUT_SECONDS = int(os.environ.get("SCHEDULE_TIMEOUT_SECONDS", "10"))
+    MAX_EVENT_BYTES = 1 << 20
+    RELEASE_TAG = re.compile(r"v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?")
+
+    _lock = threading.Lock()
+    _events = {}
+    _schedules = {}
+    _repeat_due_at = None
+
+    def log(message, **fields):
+        print(json.dumps({"ts": round(time.time(), 3), "msg": message, **fields}), file=sys.stdout, flush=True)
+
+    def count(table, key):
+        with _lock:
+            table[key] = table.get(key, 0) + 1
+
+    def schedule_renovate(reason):
+        request = urllib.request.Request(
+            SCHEDULE_URL,
+            data=b"",
+            method="POST",
+            headers={"Authorization": f"Bearer {RENOVATE_TOKEN}"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=SCHEDULE_TIMEOUT_SECONDS) as response:
+                status = response.status
+        except urllib.error.HTTPError as error:
+            status = error.code
+        except (urllib.error.URLError, OSError) as error:
+            status = 0
+            log("renovate schedule unreachable", reason=reason, error=str(error))
+        result = "ok" if 200 <= status < 300 else "failed"
+        count(_schedules, (reason, result))
+        log("renovate schedule sent", reason=reason, status=status, result=result)
+
+    def defer_repeat():
+        global _repeat_due_at
+        with _lock:
+            _repeat_due_at = time.time() + REPEAT_AFTER_SECONDS
+
+    def run_due_repeats():
+        global _repeat_due_at
+        while True:
+            time.sleep(5)
+            with _lock:
+                due = _repeat_due_at is not None and time.time() >= _repeat_due_at
+                if due:
+                    _repeat_due_at = None
+            if due:
+                schedule_renovate("repeat")
+
+    def release_tags(event):
+        if event.get("type") != "PUSH_ARTIFACT":
+            return None, []
+        data = event.get("event_data") or {}
+        repository = (data.get("repository") or {}).get("repo_full_name", "")
+        tags = [resource.get("tag") or "" for resource in data.get("resources") or []]
+        return repository, [tag for tag in tags if RELEASE_TAG.fullmatch(tag)]
+
+    def classify(event):
+        repository, tags = release_tags(event)
+        if repository not in WATCHED_REPOSITORIES:
+            return "ignored_repository", repository, tags
+        if not tags:
+            return "ignored_tag", repository, tags
+        return "release", repository, tags
+
+    def render_metrics():
+        with _lock:
+            events = dict(_events)
+            schedules = dict(_schedules)
+            pending = 0 if _repeat_due_at is None else 1
+        lines = [
+            "# TYPE harbor_release_relay_events_total counter",
+            *(f'harbor_release_relay_events_total{{outcome="{outcome}"}} {value}' for outcome, value in sorted(events.items())),
+            "# TYPE harbor_release_relay_schedules_total counter",
+            *(
+                f'harbor_release_relay_schedules_total{{reason="{reason}",result="{result}"}} {value}'
+                for (reason, result), value in sorted(schedules.items())
+            ),
+            "# TYPE harbor_release_relay_repeat_pending gauge",
+            f"harbor_release_relay_repeat_pending {pending}",
+            "# TYPE harbor_release_relay_configured gauge",
+            f"harbor_release_relay_configured {int(bool(INBOUND_TOKEN and RENOVATE_TOKEN and SCHEDULE_URL))}",
+        ]
+        return ("\n".join(lines) + "\n").encode()
+
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "harbor-release-relay"
+
+        def log_message(self, format, *args):
+            return
+
+        def reply(self, status, body=b""):
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            if self.path == "/healthz":
+                self.reply(200, b"ok\n")
+            elif self.path == "/metrics":
+                self.reply(200, render_metrics())
+            else:
+                self.reply(404)
+
+        def authorized(self):
+            presented = self.headers.get("Authorization", "")
+            return bool(INBOUND_TOKEN) and hmac.compare_digest(presented.encode(), f"Bearer {INBOUND_TOKEN}".encode())
+
+        def do_POST(self):
+            if self.path != "/harbor":
+                self.reply(404)
+                return
+            if not self.authorized():
+                count(_events, "unauthorized")
+                self.reply(401)
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0 or length > MAX_EVENT_BYTES:
+                count(_events, "malformed")
+                self.reply(400)
+                return
+            try:
+                event = json.loads(self.rfile.read(length))
+            except ValueError:
+                count(_events, "malformed")
+                self.reply(400)
+                return
+            outcome, repository, tags = classify(event if isinstance(event, dict) else {})
+            count(_events, outcome)
+            log("harbor event", outcome=outcome, repository=repository, tags=tags)
+            if outcome == "release":
+                defer_repeat()
+                threading.Thread(target=schedule_renovate, args=("release",), daemon=True).start()
+                self.reply(202)
+            else:
+                self.reply(200)
+
+    def main():
+        log(
+            "harbor-release-relay listening",
+            port=LISTEN_PORT,
+            watched=sorted(WATCHED_REPOSITORIES),
+            repeat_after_seconds=REPEAT_AFTER_SECONDS,
+            configured=bool(INBOUND_TOKEN and RENOVATE_TOKEN and SCHEDULE_URL),
+        )
+        threading.Thread(target=run_due_repeats, daemon=True).start()
+        ThreadingHTTPServer(("", LISTEN_PORT), Handler).serve_forever()
+
+    if __name__ == "__main__":
+        main()

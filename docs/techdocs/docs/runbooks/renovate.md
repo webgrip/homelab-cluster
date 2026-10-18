@@ -48,6 +48,34 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 Note: editing a dashboard issue on Forgejo fires a webhook run near-instantly, but that run can read the **pre-click** issue body — checkbox ticks are honored by the *next* run.
 
+## Unfold releases trigger a homelab run
+
+An Unfold release does not wait for the hourly run. The path is:
+
+1. Harbor project `webgrip` holds webhook policy `unfold-release-renovate` (event `PUSH_ARTIFACT`),
+   written every hour by the `harbor-proxy-config` CronJob. Its target is
+   `http://harbor-release-relay.harbor.svc.cluster.local:8080/harbor`, authenticated with the
+   generated token in Secret `harbor-release-relay-inbound` (key `RELAY_TOKEN`).
+2. `harbor-release-relay` (namespace `harbor`, `kubernetes/apps/harbor/release-relay`) keeps only
+   pushes to `webgrip/unfold`, `webgrip/unfold-agent` and `webgrip/charts/unfold` whose tag is a
+   version (`0.4.0`, `v0.4.0`, `0.4.0-rc.77`); `cache`, `sha256-….sig` and untagged pushes are
+   ignored. Harbor policies cannot filter by repository, so the relay does it.
+3. For each release push it schedules `webgrip/homelab-cluster` on RenovateJob `webgrip-forgejo`
+   at once, and once more 20 minutes after the **last** release push. The operator drops a
+   trigger for a project that is already running (still answering 200); the trailing trigger is
+   the run that sees the complete release. The hourly schedule stays as the backstop.
+4. The `ploeg-unfold-release` group has `platformAutomerge: true`: Forgejo merges the PR on its
+   last required `e2e /` status. That is safe only while homelab `main` requires every e2e
+   context ([branch protection runbook](forgejo-branch-protection-rollout.md), step 3).
+
+Evidence, in order: `kubectl -n harbor logs job/<latest harbor-proxy-config>` shows
+`webhook policy 'unfold-release-renovate' verified`; `kubectl -n harbor logs deploy/harbor-release-relay`
+shows `harbor event … outcome: release` then `renovate schedule sent … status: 200`. Metrics:
+`harbor_release_relay_events_total{outcome}` and `harbor_release_relay_schedules_total{reason,result}`;
+alerts `HarborReleaseRelayScheduleFailing`, `HarborReleaseRelayUnconfigured`, `HarborReleaseRelayDown`.
+The relay authenticates to the operator with the first entry of OpenBao `renovate/webhook-auth`
+`token` (Secret `harbor-release-relay-renovate`).
+
 ## All PRs red at once: OCI digest drift
 
 If `verify-oci-digests` FAILs the same file on main **and** every PR, an upstream chart tag was re-pushed (coredns `1.46.0` has shipped three digests). Confirm against the registry, then let the automerged digest PR fix it (or bump the pin by hand — precedent: `72f52195`, `796989d0`):
