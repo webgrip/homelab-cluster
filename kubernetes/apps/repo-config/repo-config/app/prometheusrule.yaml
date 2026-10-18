@@ -48,3 +48,36 @@ spec:
               - kubectl -n repo-config logs -l app.kubernetes.io/part-of=forgejo-repo-config
               - kubectl -n forgejo logs job/repo-config-provisioner
               - docs/techdocs/docs/rfc/rfc-forgejo-repo-config-gitops.md
+        - alert: ForgejoRepoConfigApplyChangedSomething
+          expr: |
+            max by (terraform_namespace, terraform_name) (
+              tofu_terraform_status_condition{
+                terraform_namespace="repo-config",
+                terraform_name="repo-config",
+                type="Ready",
+                reason="TerraformAppliedSucceed"
+              }
+            ) == 1
+          for: 5m
+          labels:
+            severity: info
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "Forgejo repo-config applied a non-empty plan (repo-config/repo-config)"
+            description: |-
+              What's happening:
+              - The last hourly reconcile of the repo-config Terraform object applied changes to Forgejo.
+              - A plan with no changes is never applied, so this fires only when tofu changed a repository setting or a branch protection rule.
+
+              Impact/risk:
+              - Expected right after a model commit. Without one, somebody changed Forgejo by hand and tofu reverted it.
+
+              Likely causes:
+              - A model change in kubernetes/apps/repo-config/repo-config/model was merged
+              - A hand edit in the Forgejo UI or API (forgejo-sync.sh, a PATCH) drifted a setting tofu owns
+
+              First actions:
+              - git log -3 -- kubernetes/apps/repo-config/repo-config
+              - kubectl -n repo-config get configmap tfplan-default-repo-config -o jsonpath='{.data}'
+              - docs/techdocs/docs/general/delivery-chain-external-state.md

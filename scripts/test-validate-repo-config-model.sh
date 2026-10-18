@@ -27,7 +27,11 @@ run_case pass unchanged-model 'true'
 run_case fail unknown-setting-key "sed -i 's/^      has_releases: false$/      has_release: false/' repos.yaml"
 run_case fail wrong-setting-type "sed -i 's/^      default_merge_style: merge$/      default_merge_style: yes-please/' profiles.yaml"
 run_case fail unknown-profile "sed -i '0,/profile: baseline/s//profile: product/' repos.yaml"
-run_case fail homelab-cluster-missing "python3 -c 'import re,pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(re.sub(r\"  homelab-cluster:\n    profile: baseline\n\", \"\", p.read_text()))'"
+run_case fail homelab-cluster-missing "python3 -c 'import re,pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(re.sub(r\"  homelab-cluster:\n    profile: homelab\n\", \"\", p.read_text()))'"
+run_case fail homelab-cluster-off-homelab-profile "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"  homelab-cluster:\n    profile: homelab\n\", \"  homelab-cluster:\n    profile: baseline\n\"))'"
+run_case fail homelab-push-without-owner "python3 -c 'import pathlib; p=pathlib.Path(\"profiles.yaml\"); p.write_text(p.read_text().replace(\"        push:\n          - ryangr0\n\", \"        push:\n          - webgrip-ci\n\"))'"
+run_case fail homelab-cluster-branch-override "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"  homelab-cluster:\n    profile: homelab\n\", \"  homelab-cluster:\n    profile: homelab\n    branches:\n      main:\n        push: []\n        merge: []\n        status_checks: []\n\"))'"
+run_case fail branch-rule-unknown-key "sed -i '0,/^        status_checks: \\[\\]$/s//        status_checks: []\\n        required_approvals: 1/' repos.yaml"
 run_case fail baseline-missing-field "sed -i '/^      allow_fast_forward_only_merge: true$/d' profiles.yaml"
 
 if [ "$failures" -ne 0 ]; then

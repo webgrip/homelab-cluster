@@ -3,26 +3,71 @@
   "title": "ProfileSet",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "profiles"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "profiles"
+  ],
   "properties": {
-    "apiVersion": { "const": "repo-config.webgrip.io/v1alpha1" },
-    "kind": { "const": "ProfileSet" },
+    "apiVersion": {
+      "const": "repo-config.webgrip.io/v1alpha1"
+    },
+    "kind": {
+      "const": "ProfileSet"
+    },
     "profiles": {
       "type": "object",
-      "required": ["baseline"],
-      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
-      "additionalProperties": { "$ref": "#/$defs/profile" }
+      "required": [
+        "baseline",
+        "homelab"
+      ],
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/profile"
+      },
+      "properties": {
+        "homelab": {
+          "$ref": "#/$defs/profile",
+          "required": [
+            "branches"
+          ],
+          "properties": {
+            "branches": {
+              "required": [
+                "main"
+              ],
+              "properties": {
+                "main": {
+                  "properties": {
+                    "push": {
+                      "contains": {
+                        "const": "ryangr0"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
     "profile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["settings"],
+      "required": [
+        "settings"
+      ],
       "properties": {
         "settings": {
           "allOf": [
-            { "$ref": "settings.schema.json" },
+            {
+              "$ref": "settings.schema.json"
+            },
             {
               "required": [
                 "has_actions",
@@ -35,6 +80,9 @@
               ]
             }
           ]
+        },
+        "branches": {
+          "$ref": "branch-protection.schema.json"
         }
       }
     }

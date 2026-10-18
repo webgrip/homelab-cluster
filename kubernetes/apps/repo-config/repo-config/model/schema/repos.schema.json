@@ -3,27 +3,79 @@
   "title": "RepoSet",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "owner", "repos"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "owner",
+    "repos"
+  ],
   "properties": {
-    "apiVersion": { "const": "repo-config.webgrip.io/v1alpha1" },
-    "kind": { "const": "RepoSet" },
-    "owner": { "const": "webgrip" },
+    "apiVersion": {
+      "const": "repo-config.webgrip.io/v1alpha1"
+    },
+    "kind": {
+      "const": "RepoSet"
+    },
+    "owner": {
+      "const": "webgrip"
+    },
     "repos": {
       "type": "object",
       "minProperties": 1,
-      "required": ["homelab-cluster", "unfold"],
-      "propertyNames": { "pattern": "^[A-Za-z0-9._-]+$" },
-      "additionalProperties": { "$ref": "#/$defs/repo" }
+      "required": [
+        "homelab-cluster",
+        "unfold"
+      ],
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9._-]+$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/repo"
+      },
+      "properties": {
+        "homelab-cluster": {
+          "$ref": "#/$defs/repo",
+          "properties": {
+            "profile": {
+              "const": "homelab"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "branches"
+                ]
+              },
+              {
+                "required": [
+                  "settings"
+                ]
+              }
+            ]
+          }
+        }
+      }
     }
   },
   "$defs": {
     "repo": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["profile"],
+      "required": [
+        "profile"
+      ],
       "properties": {
-        "profile": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
-        "settings": { "$ref": "settings.schema.json" }
+        "profile": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "settings": {
+          "$ref": "settings.schema.json"
+        },
+        "branches": {
+          "$ref": "branch-protection.schema.json"
+        }
       }
     }
   }

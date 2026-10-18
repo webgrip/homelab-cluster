@@ -10,6 +10,24 @@ locals {
       try(repo.settings, {}),
     )
   }
+
+  branch_protections = merge([
+    for name, repo in local.model.repos : {
+      for branch, rule in merge(
+        try(local.profiles[repo.profile].branches, {}),
+        try(repo.branches, {}),
+      ) : "${name}/${branch}" => merge(rule, { repo = name, branch = branch })
+    }
+  ]...)
+
+  owner_push_guard = {
+    rule = "homelab-cluster/main"
+    user = "ryangr0"
+  }
+  owner_keeps_trunk_push = contains(
+    try(local.branch_protections[local.owner_push_guard.rule].push, []),
+    local.owner_push_guard.user,
+  )
 }
 
 resource "forgejo_repository" "repo" {
@@ -30,5 +48,29 @@ resource "forgejo_repository" "repo" {
   lifecycle {
     prevent_destroy = true
     ignore_changes  = [clone_addr]
+  }
+}
+
+resource "forgejo_branch_protection" "rule" {
+  for_each = local.branch_protections
+
+  repository_id = forgejo_repository.repo[each.value.repo].id
+  branch_name   = each.value.branch
+
+  enable_push               = true
+  enable_push_whitelist     = true
+  push_whitelist_usernames  = each.value.push
+  enable_merge_whitelist    = true
+  merge_whitelist_usernames = each.value.merge
+  enable_status_check       = length(each.value.status_checks) > 0
+  status_check_contexts     = each.value.status_checks
+
+  lifecycle {
+    prevent_destroy = true
+
+    precondition {
+      condition     = local.owner_keeps_trunk_push
+      error_message = "The model must keep ${local.owner_push_guard.user} in the push list of ${local.owner_push_guard.rule}: without it the owner is locked out of trunk pushes (2026-08-05). Nothing is applied while this fails."
+    }
   }
 }
