@@ -50,7 +50,7 @@ spec:
             | rename "user.username" as user, "objectRef.resource" as resource
             | filter "objectRef.apiGroup":="rbac.authorization.k8s.io"
             AND verb:~"^(create|update|patch|delete|deletecollection)$"
-            AND NOT user:~"^system:serviceaccount:(flux-system:(kustomize-controller|helm-controller|flux-operator)|security:access-plane-runner|cnpg-system:cloudnative-pg|kube-system:clusterrole-aggregation-controller)$"
+            AND NOT user:~"^system:serviceaccount:(flux-system:(kustomize-controller|helm-controller|flux-operator)|security:access-plane-runner|cnpg-system:(cloudnative-pg|plugin-barman-cloud)|kube-system:(clusterrole-aggregation-controller|generic-garbage-collector|namespace-controller))$"
             | stats by (user, resource) count() as hits
           for: 0m
           labels:
@@ -62,7 +62,7 @@ spec:
             description: |
               What's happening:
               - {{ $labels.user }} changed {{ $labels.resource }} directly against the API ({{ $value }} in 15m).
-              - Only Flux, the access-plane runner, CNPG and the aggregation controller write RBAC here.
+              - Only Flux, the access-plane runner, CNPG and its backup plugin, and the Kubernetes aggregation, garbage and namespace controllers write RBAC here.
 
               Impact/risk:
               - A grant that exists in the cluster and not in Git; Flux reverts what it owns on the next reconcile, but not objects it never created.
@@ -161,3 +161,129 @@ spec:
               - Read the audit events for the object and verb.
               - If the impersonator is not on the allow-list in this rule, remove its impersonate binding.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-login/#impersonation"
+        - alert: KubernetesExecIntoAgentNamespace
+          expr: >-
+            _time:15m
+            | rename "user.username" as user, "objectRef.namespace" as namespace, "objectRef.subresource" as subresource
+            | filter namespace:~"^(ploeg|unfold-workspaces|unfold-verifier)$"
+            AND subresource:~"^(exec|attach|portforward|ephemeralcontainers)$"
+            AND NOT user:~"^system:serviceaccount:(cnpg-system:cloudnative-pg|ploeg:cnpg-disaster-recovery-check)$"
+            | stats by (user, namespace, subresource) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: kubernetes-api
+          annotations:
+            summary: "{{ $labels.user }} used {{ $labels.subresource }} in the agent namespace {{ $labels.namespace }}"
+            description: |
+              What's happening:
+              - {{ $labels.user }} opened {{ $labels.subresource }} into a pod in {{ $labels.namespace }} ({{ $value }} calls in 15m).
+              - Only CloudNativePG and the disaster-recovery check exec into the agent plane on their own.
+
+              Impact/risk:
+              - A shell in Ploeg, a workspace or the verifier reads that pod's tokens, provider keys and repository credentials.
+
+              Likely causes:
+              - The owner debugging a Run.
+              - An agent session on the workstation using the admin certificate (see KubernetesBreakGlassCertificateUsed).
+              - A workload or a stolen token that should not hold pods/exec.
+
+              First actions:
+              - Ask whoever {{ $labels.user }} is whether this was them.
+              - If it was not, read the RequestResponse audit events for the pod name and command, and revoke the credential.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-audit-trail/#exec-into-agent-namespace"
+        - alert: KubernetesSecretReadInAgentNamespace
+          expr: >-
+            _time:15m
+            | rename "user.username" as user, "objectRef.namespace" as namespace
+            | filter "objectRef.resource":="secrets"
+            AND verb:~"^(get|list|watch)$"
+            AND namespace:~"^(ploeg|unfold-workspaces|unfold-verifier)$"
+            AND NOT user:~"^(system:serviceaccount:(flux-system:(kustomize-controller|helm-controller|source-controller)|security:(external-secrets|trivy-operator)|cnpg-system:cloudnative-pg|ploeg:(cnpg-disaster-recovery|ploeg-db)|kube-system:(generic-garbage-collector|namespace-controller))|system:node:[a-z0-9-]+)$"
+            AND NOT (user:="system:serviceaccount:ploeg:unfold" AND namespace:="unfold-workspaces")
+            | stats by (user, namespace) count() as hits
+          for: 0m
+          labels:
+            severity: critical
+            owner: platform
+            service: kubernetes-api
+          annotations:
+            summary: "Unexpected Secret read in {{ $labels.namespace }} by {{ $labels.user }}"
+            description: |
+              What's happening:
+              - {{ $labels.user }} read Secrets in {{ $labels.namespace }} ({{ $value }} calls in 15m) and is not on the allow-list of known readers.
+
+              Impact/risk:
+              - The agent plane's Secrets hold provider keys, forge tokens and database passwords; a read by an unknown identity is how they leave.
+
+              Likely causes:
+              - A person or an agent session reading a Secret by hand.
+              - A new controller that legitimately reads Secrets there and is not yet on the allow-list.
+              - A stolen service-account token.
+
+              First actions:
+              - Read the audit events for the Secret names and the source IP.
+              - If the reader is legitimate, add it to the allow-list in this rule through a pull request.
+              - If not, rotate the Secrets it read and remove its access.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-audit-trail/#secret-read-in-agent-namespace"
+        - alert: KubernetesNetworkPolicyChangedOutsideGitOps
+          expr: >-
+            _time:15m
+            | rename "user.username" as user, "objectRef.namespace" as namespace, "objectRef.resource" as resource
+            | filter resource:~"^(networkpolicies|ciliumnetworkpolicies|ciliumclusterwidenetworkpolicies)$"
+            AND verb:~"^(create|update|patch|delete|deletecollection)$"
+            AND NOT user:~"^system:serviceaccount:(flux-system:(kustomize-controller|helm-controller)|kube-system:(namespace-controller|generic-garbage-collector)|security:kyverno-background-controller)$"
+            AND NOT (user:="system:serviceaccount:ploeg:unfold" AND namespace:="unfold-workspaces")
+            | stats by (user, resource) count() as hits
+          for: 0m
+          labels:
+            severity: critical
+            owner: platform
+            service: kubernetes-api
+          annotations:
+            summary: "Network policy changed outside GitOps (user {{ $labels.user }}, {{ $labels.resource }})"
+            description: |
+              What's happening:
+              - {{ $labels.user }} changed {{ $labels.resource }} directly against the API ({{ $value }} in 15m).
+              - Only Flux, Kyverno's generate rules, the namespace and garbage controllers, and Unfold inside unfold-workspaces write network policy here.
+
+              Impact/risk:
+              - Network policy is the agent plane's egress wall; a hand edit can open it without a trace in Git.
+
+              Likely causes:
+              - A hand-applied policy during an incident.
+              - A new controller that writes policy and is not yet on the allow-list.
+
+              First actions:
+              - Read the audit event for the object name and the Request body.
+              - Revert it if it is not in Git, or add the writer to the allow-list in this rule through a pull request.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-audit-trail/#network-policy-changed-outside-gitops"
+        - alert: KubernetesAuditTrailIncomplete
+          expr: >-
+            _time:15m
+            | stats count_uniq(node) as nodes
+            | filter nodes:<3
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: kubernetes-api
+          annotations:
+            summary: "Kubernetes audit lines arrive from fewer than three control planes"
+            description: |
+              What's happening:
+              - Audit lines arrived from {{ $value }} control-plane nodes in the last fifteen minutes, for thirty minutes; there are three.
+
+              Impact/risk:
+              - Calls served by the silent API server leave no trail, and every audit alert is blind to them.
+
+              Likely causes:
+              - A control plane is down or rebooting for longer than an upgrade takes.
+              - The Alloy agent on that node is not running or cannot reach victorialogs-audit.
+              - The audit policy was removed from the node's machine config.
+
+              First actions:
+              - Check which soyo is missing in the audit stream and whether its alloy-agent pod is Running.
+              - Check the node's apiserver static pod and the file /var/log/audit/kube/kube-apiserver.log on it.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/kubernetes-audit-trail/#audit-trail-incomplete"
