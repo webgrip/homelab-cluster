@@ -632,13 +632,16 @@ spec:
           maxFixRounds: 1
           plan:
             - roles:
-                - {name: builder, writes: true, cap: "2.50"}
+                - name: builder
+                  writes: true
+                  cap: "2.50"
+                  harness: {name: acp, dind: false, acp: {profile: opencode, idleTimeout: 10m, promptTimeout: 90m}}
             - roles:
                 - name: reviewer
                   writes: false
                   cap: "0.40"
                   model: litellm_proxy/fireworks-glm-5p3-flash
-                  harness: {name: openhands, dind: false}
+                  harness: {name: acp, dind: false, acp: {profile: opencode, idleTimeout: 10m, promptTimeout: 90m}}
                   workerResources:
                     requests: {cpu: 100m, memory: 768Mi}
                     limits: {cpu: 500m, memory: 768Mi}
