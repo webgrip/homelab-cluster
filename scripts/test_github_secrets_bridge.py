@@ -16,7 +16,7 @@ from nacl.public import PrivateKey, SealedBox
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BRIDGE = Path(os.environ.get(
     "BRIDGE_SCRIPT",
-    REPO_ROOT / "kubernetes/apps/github-config/secrets-bridge/app/github_secrets_bridge.py"))
+    REPO_ROOT / "kubernetes/apps/github-secrets-bridge/github-secrets-bridge/app/github_secrets_bridge.py"))
 
 APP_ID = "424242"
 INSTALLATION_ID = "777"
@@ -131,7 +131,7 @@ def handler_for(world):
                 created = world.github_secret is None
                 world.bump_secret(plaintext)
                 return self.reply(201 if created else 204)
-            if path.startswith("/api/v1/namespaces/github-config/configmaps"):
+            if path.startswith("/api/v1/namespaces/github-secrets-bridge/configmaps"):
                 if self.headers.get("Authorization") != "Bearer fake-sa-jwt":
                     return self.reply(401, {})
                 name = path.rsplit("/", 1)[-1]
@@ -195,7 +195,7 @@ class BridgeTest(unittest.TestCase):
             "GITHUB_API": self.url, "VAULT_ADDR": self.url, "VAULT_ROLE": "github-secrets-bridge",
             "APP_SECRET_PATH": "github/ploeg-hq-app", "SOURCE_PATH": str(self.source),
             "SERVICE_ACCOUNT_TOKEN_PATH": str(self.sa_token), "KUBERNETES_API": self.url,
-            "KUBERNETES_CA_PATH": "", "NAMESPACE": "github-config",
+            "KUBERNETES_CA_PATH": "", "NAMESPACE": "github-secrets-bridge",
             "STATE_CONFIGMAP": "github-secrets-bridge-state",
             "METRICS_URL": f"{self.url}/api/v1/import/prometheus?extra_label=job=github-secrets-bridge",
         }

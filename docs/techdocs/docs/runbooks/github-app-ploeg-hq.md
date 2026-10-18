@@ -1,6 +1,6 @@
 # The ploeg-hq GitHub App: rulesets, settings and Actions secrets from git
 
-Two mechanisms in namespace `github-config` own the GitHub side of the delivery chain
+Two mechanisms own the GitHub side of the delivery chain
 ([inventory](../general/delivery-chain-external-state.md) items G1–G4, G6, G7). Both authenticate
 as one GitHub App, `ploeg-hq-gitops`, installed on `ploeg-hq/ploeg` only. Creating and installing
 that App is the one step git cannot do (GitHub has no API for it). Everything else is built and
@@ -8,10 +8,12 @@ waits for it.
 
 | Mechanism | Path | Owns | Runs |
 | --- | --- | --- | --- |
-| GitHub module | `kubernetes/apps/github-config/ploeg-hq/` (`model/ploeg-hq.yaml`, `tofu/`) | the three rulesets, repository settings, default branch, Actions permissions, the `RELEASE_CONSUMERS` variable | tofu-controller `Terraform/ploeg-hq`, hourly, plan-only |
-| GitHub secrets bridge | `kubernetes/apps/github-config/secrets-bridge/` | Actions secret `RELEASE_CONSUMER_TOKEN_FORGEJO` | CronJob `github-secrets-bridge`, hourly at :41 |
+| GitHub module | `kubernetes/apps/github-config/ploeg-hq/` (namespace `github-config`; `model/ploeg-hq.yaml`, `tofu/`) | the three rulesets, repository settings, default branch, Actions permissions, the `RELEASE_CONSUMERS` variable | tofu-controller `Terraform/ploeg-hq`, hourly, plan-only |
+| GitHub secrets bridge | `kubernetes/apps/github-secrets-bridge/` (namespace `github-secrets-bridge`) | Actions secret `RELEASE_CONSUMER_TOKEN_FORGEJO` | CronJob `github-secrets-bridge`, hourly at :41 |
 
-No secret value enters tofu state: the module owns shape, the bridge owns values (repo-config
+They sit in separate namespaces on purpose: the tf-runner Role may read Secrets in its own
+namespace, so `github-config` holds no Secret but the runner's state and plan, and the Forgejo
+token the bridge publishes lives only in `github-secrets-bridge`. No secret value enters tofu state: the module owns shape, the bridge owns values (repo-config
 RFC §8.1). The module reads the App key through an ephemeral OpenBao read; the bridge reads it
 over OpenBao Kubernetes auth, encrypts the token with the repository public key (libsodium
 sealed box) and keeps only a SHA-256 fingerprint of the source in ConfigMap
@@ -71,8 +73,8 @@ That is all the owner has to do. The rest can be done by an agent.
 1. **Bridge.** Run it now instead of waiting for :41, then read the log:
 
    ```bash
-   mise exec -- kubectl -n github-config create job --from=cronjob/github-secrets-bridge github-secrets-bridge-first
-   mise exec -- kubectl -n github-config logs job/github-secrets-bridge-first
+   mise exec -- kubectl -n github-secrets-bridge create job --from=cronjob/github-secrets-bridge github-secrets-bridge-first
+   mise exec -- kubectl -n github-secrets-bridge logs job/github-secrets-bridge-first
    ```
 
    Expect `ploeg-hq/ploeg/RELEASE_CONSUMER_TOKEN_FORGEJO written (absent on GitHub)`. A second run
@@ -154,6 +156,6 @@ if any mutant passes. It runs in the e2e workflow.
 | bridge log `OpenBao denied reading secret/github/ploeg-hq-app (403)` | policy or role missing | check `config.sh` in `security/openbao/bootstrap` ran (`openbao-config` CronJob) |
 | bridge log `GitHub refused an installation token … (401)` | App key revoked or wrong `app_id` | rotate the key, check the App ID |
 | bridge log `… (404)` or `(422)` on the token | App uninstalled, or `ploeg` not in the installation | reinstall on `ploeg-hq/ploeg` |
-| bridge log `source value … is empty` | ExternalSecret `github-secrets-bridge-source` not synced | `kubectl -n github-config get externalsecret`; check `secret/forgejo/ploeg-release` |
+| bridge log `source value … is empty` | ExternalSecret `github-secrets-bridge-source` not synced | `kubectl -n github-secrets-bridge get externalsecret`; check `secret/forgejo/ploeg-release` |
 | plan shows changes on a ruleset | someone edited it in the GitHub UI | decide which is right; change the model or let apply restore it |
 | runner cannot download providers | FQDN egress policy misses a GitHub download host | add it to `github-config-ploeg-hq-runner-egress` |

@@ -22,7 +22,7 @@ spec:
             owner: platform
             service: github-config
           annotations:
-            summary: "The ploeg-hq GitHub App is not set up yet, so nothing on GitHub is managed (github-config/github-secrets-bridge)"
+            summary: "The ploeg-hq GitHub App is not set up yet, so nothing on GitHub is managed (github-secrets-bridge/github-secrets-bridge)"
             description: |
               What's happening:
               - The bridge found no App credentials at OpenBao secret/github/ploeg-hq-app and exited cleanly without touching GitHub.
@@ -38,20 +38,19 @@ spec:
 
               First actions:
               - Follow docs/techdocs/docs/runbooks/github-app-ploeg-hq.md, section "Owner steps".
-              - kubectl -n github-config create job --from=cronjob/github-secrets-bridge github-secrets-bridge-manual
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-app-ploeg-hq/"
+              - kubectl -n github-secrets-bridge create job --from=cronjob/github-secrets-bridge github-secrets-bridge-manual
         - alert: GitHubSecretsBridgeFailing
           expr: |
             (
-              max by (cronjob) (kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-secrets-bridge"})
+              max by (cronjob) (kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="github-secrets-bridge", cronjob="github-secrets-bridge"})
               > on (cronjob)
-              max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-secrets-bridge"})
+              max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-secrets-bridge", cronjob="github-secrets-bridge"})
             )
             or
             (
-              max by (cronjob) (kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-secrets-bridge"})
+              max by (cronjob) (kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="github-secrets-bridge", cronjob="github-secrets-bridge"})
               unless on (cronjob)
-              max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-secrets-bridge"})
+              max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-secrets-bridge", cronjob="github-secrets-bridge"})
             )
           for: 20m
           labels:
@@ -59,10 +58,10 @@ spec:
             owner: platform
             service: github-config
           annotations:
-            summary: "The GitHub secrets bridge did not converge on its last run (github-config/github-secrets-bridge)"
+            summary: "The GitHub secrets bridge did not converge on its last run (github-secrets-bridge/github-secrets-bridge)"
             description: |
               What's happening:
-              - The latest hourly run of the CronJob github-config/github-secrets-bridge has not succeeded for 20 minutes, or it has never succeeded.
+              - The latest hourly run of the CronJob github-secrets-bridge/github-secrets-bridge has not succeeded for 20 minutes, or it has never succeeded.
               - The job publishes the Forgejo token of ploeg-release as RELEASE_CONSUMER_TOKEN_FORGEJO on ploeg-hq/ploeg.
               - Missing App credentials are not a failure: that run exits 0 and raises GitHubAppPloegHqPending instead.
 
@@ -76,22 +75,21 @@ spec:
               - The state ConfigMap could not be written (RBAC or the apiserver CiliumNetworkPolicy).
 
               First actions:
-              - kubectl -n github-config logs job/<latest github-secrets-bridge job>; the log names the failing call and never prints a value.
-              - Fix the cause, then kubectl -n github-config create job --from=cronjob/github-secrets-bridge github-secrets-bridge-manual
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-app-ploeg-hq/"
+              - kubectl -n github-secrets-bridge logs job/<latest github-secrets-bridge job>; the log names the failing call and never prints a value.
+              - Fix the cause, then kubectl -n github-secrets-bridge create job --from=cronjob/github-secrets-bridge github-secrets-bridge-manual
         - alert: GitHubSecretsBridgeStale
           expr: |
-            time() - max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-secrets-bridge"}) > 3 * 3600
+            time() - max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-secrets-bridge", cronjob="github-secrets-bridge"}) > 3 * 3600
           for: 30m
           labels:
             severity: warning
             owner: platform
             service: github-config
           annotations:
-            summary: "The GitHub secrets bridge has not succeeded in over three hours (github-config/github-secrets-bridge)"
-            description: |
+            summary: "The GitHub secrets bridge has not succeeded in over three hours (github-secrets-bridge/github-secrets-bridge)"
+            description: |-
               What's happening:
-              - The hourly CronJob github-config/github-secrets-bridge last succeeded more than three hours ago.
+              - The hourly CronJob github-secrets-bridge/github-secrets-bridge last succeeded more than three hours ago.
 
               Impact/risk:
               - A rotated ploeg-release token is not republished to ploeg-hq/ploeg, so Ploeg's release hook authenticates with a revoked token.
@@ -101,6 +99,5 @@ spec:
               - Every run fails; GitHubSecretsBridgeFailing names the reason.
 
               First actions:
-              - kubectl -n github-config get cronjob github-secrets-bridge
-              - kubectl -n github-config get jobs --sort-by=.status.startTime
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-app-ploeg-hq/"
+              - kubectl -n github-secrets-bridge get cronjob github-secrets-bridge
+              - kubectl -n github-secrets-bridge get jobs --sort-by=.status.startTime

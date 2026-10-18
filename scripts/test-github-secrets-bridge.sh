@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-bridge="$repo_root/kubernetes/apps/github-config/secrets-bridge/app/github_secrets_bridge.py"
+bridge="$repo_root/kubernetes/apps/github-secrets-bridge/github-secrets-bridge/app/github_secrets_bridge.py"
 suite="$repo_root/scripts/test_github_secrets_bridge.py"
 python="${PYTHON:-python3}"
 work="$(mktemp -d)"

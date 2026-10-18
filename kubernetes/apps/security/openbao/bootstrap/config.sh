@@ -62,7 +62,7 @@ bao write auth/kubernetes/role/github-config-ploeg-hq \
   bound_service_account_names=github-config-ploeg-hq-runner bound_service_account_namespaces=github-config \
   policies=github-config-ploeg-hq ttl=30m >/dev/null
 bao write auth/kubernetes/role/github-secrets-bridge \
-  bound_service_account_names=github-secrets-bridge bound_service_account_namespaces=github-config \
+  bound_service_account_names=github-secrets-bridge bound_service_account_namespaces=github-secrets-bridge \
   policies=github-secrets-bridge ttl=10m >/dev/null
 
 # Forgejo Actions OIDC -> Transit signing (JWT auth). Per-workflow identity: only the
