@@ -1,0 +1,52 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/clusterpolicy_v1.json
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: image-verify-harbor-enforce
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
+    policies.kyverno.io/title: Harbor Image Signatures (Enforce)
+    policies.kyverno.io/category: Software Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.19.1
+    policies.kyverno.io/description: >-
+      Refuses any Pod that runs a first-party image from harbor/webgrip unless the image
+      digest carries a cosign signature from the webgrip OpenBao Transit key. Signature
+      only: the SBOM and CVE-budget attestations stay in their audit policies (ADR-0073).
+spec:
+  validationFailureAction: Enforce
+  background: false
+  webhookTimeoutSeconds: 30
+  failurePolicy: Ignore
+  rules:
+    - name: require-webgrip-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      context:
+        - name: cosignpub
+          configMap:
+            name: cosign-webgrip-pub
+            namespace: security
+      verifyImages:
+        - imageReferences:
+            - "harbor.${SECRET_DOMAIN}/webgrip/*"
+          imageRegistryCredentials:
+            allowInsecureRegistry: false
+            secrets:
+              - harbor-pull
+          required: true
+          mutateDigest: false
+          verifyDigest: true
+          useCache: true
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    publicKeys: '{{ cosignpub.data."cosign.pub" }}'
+                    rekor:
+                      ignoreTlog: true

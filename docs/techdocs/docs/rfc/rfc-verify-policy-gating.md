@@ -5,6 +5,13 @@
 > **2026-10-09:** `image-verify-audit` and `image-attestations-audit` were deleted, so waves 6,
 > 13 and 14 no longer exist ([why](../general/supply-chain-pipeline.md#retired-the-ghcr-verification-policies)).
 > What this RFC still governs is `image-verify-harbor-audit` and `image-cve-budget-audit`.
+>
+> **2026-10-18:** proposals 1, 2 and 5 are implemented differently from this text, by
+> [ADR-0073](../adr/adr-0073-image-admission-signatures-enforced.md): the inventory sweep is
+> `scripts/verify-image-admission.sh`, which runs the Kyverno engine itself against Harbor instead of
+> re-encoding the check in a CronJob, and the coverage gate requires every enforcing `verifyImages`
+> policy to be in it. The signature check is enforced as `image-verify-harbor-enforce`;
+> `failurePolicy` stays `Ignore` for all verify policies.
 
 > **TL;DR.** [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md) gates every
 > Audit→Enforce promotion on two pieces of evidence: a clean PolicyReport, and (since 2026-08-03)

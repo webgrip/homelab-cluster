@@ -111,6 +111,14 @@ for policy in "${POLICY_DIR}"/*.yaml; do
         continue
     fi
 
+    if grep -qE '^[[:space:]]*verifyImages:' "${policy}" &&
+        ! grep -q "policies/app/${base}" "${ROOT_DIR}/scripts/verify-image-admission.sh"; then
+        checked=$((checked + 1))
+        echo "FAIL  ${base}: enforcing verifyImages policy is not run by scripts/verify-image-admission.sh (offline CLI tests cannot prove a signature check, ADR-0073)"
+        failures=$((failures + 1))
+        continue
+    fi
+
     if is_known_untested "${base}"; then
         echo "WARN  ${base}: enforce policy with no CLI test (baselined — burn down, see roadmap #83)"
         baselined=$((baselined + 1))

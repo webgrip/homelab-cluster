@@ -42,7 +42,7 @@ workload at admission.** Two structural facts shape everything:
 | `namespace-tenancy` | netpol/quota/labels | SPLIT — netpol-shape rules now; require-* after roadmap #13 |
 | `secrets-observability-ops` | `require-prometheusrule-labels` ~49 (actual: 19 across all three monitor kinds) | DONE — wave 7 enforced after remediating all 19 |
 | `image-verify` | unsigned webgrip | RETIRED 2026-10-09 — deleted, nothing it matched runs |
-| `image-verify-harbor` | — | **Stays Audit** (failurePolicy: Fail → Harbor/OpenBao SPOF) |
+| `image-verify-harbor` | 12 (SBOM size limit, not signatures; 2026-10-18) | **SIGNATURE ENFORCED 2026-10-18** as `image-verify-harbor-enforce` ([ADR-0073](../adr/adr-0073-image-admission-signatures-enforced.md)); SBOM attestation stays Audit |
 | `image-attestations` | — | RETIRED 2026-10-09 — deleted with image-verify |
 
 ### Gated wave sequence
@@ -131,7 +131,8 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 | 12 | `namespace-tenancy` — require-{netpol,quota,labels} | merge→Enforce | **1 fail left.** labels: clean (drawio namespace deleted). quota: clean (`security` got components/resource-quota 2026-08-05 — count-only 60/25 against 47 pods; the Kyverno-generated one caps at 40 and would have rejected pods). netpol: `security` still has none, and it is NOT a drive-by — NetworkPolicy is additive-deny, so needs the staged treatment litellm got in db5b9e91 |
 | 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | **RETIRED 2026-10-09** — policy deleted; nothing in desired state runs `ghcr.io/webgrip/*` ([why](../general/supply-chain-pipeline.md#retired-the-ghcr-verification-policies)) |
 | 14 | `image-attestations` | Enforce | **RETIRED 2026-10-09** — policy deleted with wave 13's |
-| — | approved-registries, image-verify-harbor, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0033 |
+| 15 | `image-verify-harbor` — signature only | split→Enforce | **SHIPPED 2026-10-18** — gate was `scripts/verify-image-admission.sh --live` (7/7 first-party images pass), not a PolicyReport ([ADR-0073](../adr/adr-0073-image-admission-signatures-enforced.md)) |
+| — | approved-registries, image-verify-harbor SBOM attestation, image-cve-budget, image-verify-ploeg-hq, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0033; CVE budget and Ploeg signatures promote on the evidence ADR-0073 lists |
 
 <a name="audit-2026-08-04"></a>
 
@@ -247,8 +248,9 @@ analysis](rfc-attack-path-analysis.md) (the waiver set is only evaluable as a gr
 
 | ADR | Status | Decision |
 |-----|--------|----------|
-| [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md) | Proposed | Gated wave promotion via split + overrides; mandatory test-coverage gate before any Enforce merge. |
-| [ADR-0033](../adr/adr-0033-approved-registries-stays-audit.md) | Proposed | `require-approved-registries` stays Audit; enforce only ever via Harbor proxy + admission mutate-rewrite. |
+| [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md) | Accepted | Gated wave promotion via split + overrides; mandatory test-coverage gate before any Enforce merge. |
+| [ADR-0033](../adr/adr-0033-approved-registries-stays-audit.md) | Accepted | `require-approved-registries` stays Audit; enforce only ever via Harbor proxy + admission mutate-rewrite. |
+| [ADR-0073](../adr/adr-0073-image-admission-signatures-enforced.md) | Accepted | First-party image signatures enforced; SBOM and CVE budget stay Audit until their evidence exists; Ploeg verified keyless. |
 
 ## Out of scope
 

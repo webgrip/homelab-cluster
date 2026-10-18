@@ -6,28 +6,21 @@ metadata:
   name: image-verify-harbor-audit
   annotations:
     pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
-    policies.kyverno.io/title: Harbor Image Signature Verification (Audit)
+    policies.kyverno.io/title: Harbor Image SBOM Attestation (Audit)
     policies.kyverno.io/category: Software Supply Chain
-    policies.kyverno.io/severity: high
+    policies.kyverno.io/severity: medium
     policies.kyverno.io/subject: Pod
-    kyverno.io/kyverno-version: 1.18.1
+    kyverno.io/kyverno-version: 1.19.1
     policies.kyverno.io/description: >-
-      Audit that first-party WebGrip images published to the in-cluster Harbor are
-      signed with cosign using the webgrip OpenBao Transit key (the private key never
-      leaves OpenBao), and carry a CycloneDX SBOM attestation from the same key.
-      The public key is read from the cosign-webgrip-pub ConfigMap (security ns), which
-      holds the Transit public key. Audit mode: surfaces unsigned Harbor images in
-      PolicyReports without blocking. Promote to Enforce once all Harbor images in scope
-      are signed.
+      Audit that first-party WebGrip images in Harbor carry a CycloneDX SBOM attestation
+      signed by the webgrip OpenBao Transit key. The signature itself is enforced by
+      image-verify-harbor-enforce (ADR-0073); this policy only reports SBOM presence and
+      stays Audit, because a large SBOM exceeds Kyverno's context size limit and SBOM
+      analysis belongs to Dependency-Track (ADR-0064).
 spec:
   validationFailureAction: Audit
   background: false # verifyImages requires admission context
   webhookTimeoutSeconds: 30
-  # Ignore (not Fail) while this is Audit: the trusted key comes from the cosign-webgrip-pub
-  # ConfigMap published asynchronously by the cosign-pubkey CronJob, and Harbor is private +
-  # LAN-only. A not-yet-published ConfigMap (fresh cluster), an OpenBao blip, or Harbor being
-  # unreachable must NOT block unrelated pod admissions for an audit-only check. Flip to Fail
-  # when promoting this rule to Enforce (and confirm the ConfigMap is reliably present first).
   failurePolicy: Ignore
   rules:
     - name: verify-webgrip-harbor-images
@@ -57,13 +50,6 @@ spec:
           verifyDigest: true
           # cosign signs with --tlog-upload=false → no Rekor entry; Kyverno verifies the tlog by
           # default, so rekor.ignoreTlog MUST be set or Enforce rejects correctly-signed images.
-          attestors:
-            - count: 1
-              entries:
-                - keys:
-                    publicKeys: '{{ cosignpub.data."cosign.pub" }}'
-                    rekor:
-                      ignoreTlog: true
           attestations:
             - predicateType: https://cyclonedx.org/bom
               attestors:
