@@ -1,0 +1,98 @@
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: admission-deny-promotions
+policies:
+  - ../../policies/rbac-exec-secret-read-enforce.yaml
+  - ../../policies/workload-seccomp-enforce.yaml
+  - ../../policies/sa-token-optout-enforce.yaml
+exceptions:
+  - ../../policies/exception-rbac-pod-exec-cel.yaml
+  - ../../policies/exception-rbac-secret-read-cel.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: restrict-pod-exec-verbs
+    resources:
+      - exec-role
+    kind: ClusterRole
+    result: fail
+  - policy: restrict-pod-exec-verbs
+    resources:
+      - app/portforward-role
+    kind: Role
+    result: fail
+  - policy: restrict-pod-exec-verbs
+    resources:
+      - pod-reader
+    kind: ClusterRole
+    result: pass
+  - policy: restrict-pod-exec-verbs
+    resources:
+      - cloudnative-pg
+    kind: ClusterRole
+    result: skip
+  - policy: restrict-secret-read-verbs
+    resources:
+      - secret-lister
+      - everything-reader
+    kind: ClusterRole
+    result: fail
+  - policy: restrict-secret-read-verbs
+    resources:
+      - custom-resources-reader
+      - secret-getter
+    kind: ClusterRole
+    result: pass
+  - policy: restrict-secret-read-verbs
+    resources:
+      - external-secrets-controller
+      - cloudnative-pg
+    kind: ClusterRole
+    result: skip
+  - policy: workload-seccomp-enforce
+    resources:
+      - app/runtime-default-pod
+      - app/localhost-container-pod
+    kind: Pod
+    result: pass
+  - policy: workload-seccomp-enforce
+    resources:
+      - app/unconfined-container-pod
+      - app/no-profile-pod
+    kind: Pod
+    result: fail
+  - policy: workload-seccomp-enforce
+    resources:
+      - app/privileged-unconfined-pod
+      - forgejo/forgejo-unconfined-pod
+    kind: Pod
+    result: skip
+  - policy: sa-token-optout-enforce
+    resources:
+      - app/default
+      - observability/grafana-sa
+    kind: ServiceAccount
+    result: fail
+  - policy: sa-token-optout-enforce
+    resources:
+      - other/default
+      - app/operator
+    kind: ServiceAccount
+    result: pass
+  - policy: sa-token-optout-enforce
+    resources:
+      - kube-system/default
+    kind: ServiceAccount
+    result: skip
+  - policy: sa-token-optout-enforce
+    resources:
+      - other/default-sa-token-pod
+    kind: Pod
+    result: fail
+  - policy: sa-token-optout-enforce
+    resources:
+      - other/own-sa-token-pod
+    kind: Pod
+    result: pass

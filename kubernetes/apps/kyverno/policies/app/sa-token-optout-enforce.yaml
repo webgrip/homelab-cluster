@@ -1,0 +1,76 @@
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: sa-token-optout-enforce
+  annotations:
+    policies.kyverno.io/title: Keep Unused ServiceAccount Tokens Unmounted
+    policies.kyverno.io/category: Least Privilege, Secrets
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: ServiceAccount, Pod
+    policies.kyverno.io/description: >-
+      Backstop for sa-token-optout-mutate. That mutation sets
+      automountServiceAccountToken=false on the default ServiceAccount and on named
+      data-plane ServiceAccounts that hold no RBAC. This policy refuses turning it back
+      on: a ServiceAccount in that set declaring true, or a new Pod running as the
+      default ServiceAccount that asks for its token itself. Same namespace scope as
+      the mutation (ADR-0074).
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "serviceaccounts"
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+        resources:
+          - "pods"
+  variables:
+    - name: namespace
+      expression: object.metadata.?namespace.orValue('')
+    - name: tokenFreeServiceAccounts
+      expression: >-
+        ['observability/grafana-sa', 'observability/vlsingle-victorialogs',
+        'observability/vmalert-vmalert', 'observability/vmsingle-vmsingle',
+        'observability/vtsingle-victoriatraces',
+        'longhorn-system/longhorn-ui-service-account', 'security/dependency-track']
+    - name: serviceAccountName
+      expression: >-
+        object.kind == 'Pod' ? object.spec.?serviceAccountName.orValue('default') :
+        object.metadata.name
+  matchConditions:
+    - name: outside-bootstrap-namespaces
+      expression: >-
+        !(object.metadata.?namespace.orValue('') in ['cert-manager', 'flux-system',
+        'kube-node-lease', 'kube-public', 'kube-system'])
+  validations:
+    - expression: >-
+        object.kind != 'ServiceAccount' ||
+        !(object.metadata.name == 'default' ||
+        (variables.namespace + '/' + object.metadata.name) in variables.tokenFreeServiceAccounts) ||
+        object.?automountServiceAccountToken.orValue(false) != true
+      message: >-
+        This ServiceAccount holds no RBAC and must keep automountServiceAccountToken
+        false; a workload that needs an API token gets its own ServiceAccount.
+    - expression: >-
+        object.kind != 'Pod' ||
+        variables.serviceAccountName != 'default' ||
+        object.spec.?automountServiceAccountToken.orValue(false) != true
+      message: >-
+        Pods running as the default ServiceAccount must not mount its token; give the
+        workload its own ServiceAccount if it calls the API server.

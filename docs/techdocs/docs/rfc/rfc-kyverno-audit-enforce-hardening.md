@@ -1,6 +1,8 @@
 # RFC: Kyverno audit→enforce hardening
 
-> Status: **Proposed** · Date: 2026-06-21 · Umbrella for [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md), [ADR-0033](../adr/adr-0033-approved-registries-stays-audit.md)
+> Status: **Accepted, in progress** · Date: 2026-06-21, updated 2026-10-18 · Umbrella for [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md), [ADR-0033](../adr/adr-0033-approved-registries-stays-audit.md), [ADR-0073](../adr/adr-0073-image-admission-signatures-enforced.md), [ADR-0074](../adr/adr-0074-audit-to-deny-exec-secrets-seccomp-tokens.md)
+>
+> **Outcome so far (2026-10-18):** waves 1–5, 7, 10, 11 and 15–19 shipped; 6, 13 and 14 retired; 8, 9 and 12 still need remediation. The coverage-gap controls of 2026-08-06 are decided: four deny (ADR-0074), `disallow-secrets-from-env-vars` stays Audit by decision, not by backlog.
 
 > **TL;DR.** 11 Kyverno ClusterPolicies run in `Audit` (observe-only); ~108–114 live FAILs sit
 > unenforced. This RFC sequences their promotion to `Enforce` as **gated, one-at-a-time waves**,
@@ -132,6 +134,11 @@ one admission cycle. One wave per commit, spaced apart (the batched-rollout stor
 | 13 | `image-verify` — `verify-webgrip-images` | merge→Enforce | **RETIRED 2026-10-09** — policy deleted; nothing in desired state runs `ghcr.io/webgrip/*` ([why](../general/supply-chain-pipeline.md#retired-the-ghcr-verification-policies)) |
 | 14 | `image-attestations` | Enforce | **RETIRED 2026-10-09** — policy deleted with wave 13's |
 | 15 | `image-verify-harbor` — signature only | split→Enforce | **SHIPPED 2026-10-18** — gate was `scripts/verify-image-admission.sh --live` (7/7 first-party images pass), not a PolicyReport ([ADR-0073](../adr/adr-0073-image-admission-signatures-enforced.md)) |
+| 16 | `restrict-pod-exec-verbs` | Audit→Deny + exception | **SHIPPED 2026-10-18** — 3 holders excepted by name (CNPG operator, human-operator pair); live RBAC sweep 0 unwaived ([ADR-0074](../adr/adr-0074-audit-to-deny-exec-secrets-seccomp-tokens.md)) |
+| 17 | `restrict-secret-read-verbs` | rule fix → Deny + exception | **SHIPPED 2026-10-18** — 6 of 33 "fails" were a rule bug (wildcard resources in custom API groups); 27 operators excepted by name |
+| 18 | `workload-seccomp-enforce` (backstop for `seccomp-default-mutate`) | new Deny | **SHIPPED 2026-10-18** — 0 Unconfined Pods or templates in scope |
+| 19 | `sa-token-optout-enforce` (backstop for `sa-token-optout-mutate`) | new Deny | **SHIPPED 2026-10-18** — 0 opt-ins on default/data-plane ServiceAccounts or default-SA Pods |
+| — | `disallow-secrets-from-env-vars` | **stays Audit** | 212 findings; `secretKeyRef` and the allowed `envFrom` expose the same value, so denying one form reduces nothing (ADR-0074) |
 | — | approved-registries, image-verify-harbor SBOM attestation, image-cve-budget, image-verify-ploeg-hq, advanced invasive rules, secrets PDB/topology/cm-keys | **stay Audit** | see ADR-0033; CVE budget and Ploeg signatures promote on the evidence ADR-0073 lists |
 
 <a name="audit-2026-08-04"></a>
@@ -251,6 +258,7 @@ analysis](rfc-attack-path-analysis.md) (the waiver set is only evaluable as a gr
 | [ADR-0032](../adr/adr-0032-kyverno-enforce-promotion-policy.md) | Accepted | Gated wave promotion via split + overrides; mandatory test-coverage gate before any Enforce merge. |
 | [ADR-0033](../adr/adr-0033-approved-registries-stays-audit.md) | Accepted | `require-approved-registries` stays Audit; enforce only ever via Harbor proxy + admission mutate-rewrite. |
 | [ADR-0073](../adr/adr-0073-image-admission-signatures-enforced.md) | Accepted | First-party image signatures enforced; SBOM and CVE budget stay Audit until their evidence exists; Ploeg verified keyless. |
+| [ADR-0074](../adr/adr-0074-audit-to-deny-exec-secrets-seccomp-tokens.md) | Accepted | exec, Secret-read, seccomp and default-token controls deny with reviewed exceptions; env-var Secrets stay Audit. |
 
 ## Out of scope
 
