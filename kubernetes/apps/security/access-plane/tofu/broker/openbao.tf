@@ -23,6 +23,8 @@ resource "vault_jwt_auth_backend_role" "default" {
     "http://localhost:8250/oidc/callback",
   ]
   token_policies = ["default"]
+  token_ttl      = 28800
+  token_max_ttl  = 43200
 }
 
 resource "vault_identity_group" "openbao_admins" {

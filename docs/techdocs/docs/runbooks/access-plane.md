@@ -102,6 +102,23 @@ Neither Harbor membership nor a notification rule has a hand-edit path: change t
 the module and let the plan land. A group with no members is normal; it exists so the
 membership is real the day a developer joins.
 
+## How long a login lasts
+
+[ADR-0077](../adr/adr-0077-admins-prove-a-security-key-at-google-and-sessions-end-in-twelve-hours.md)
+bounds how long one Google check carries through the estate:
+
+| What | Lifetime | Where it is set |
+| --- | --- | --- |
+| Google web session for admins | 12 hours | Workspace console, see [Google OAuth clients](google-oauth-clients.md#1-confirm-the-workspace-posture) |
+| Authentik session after a Google login | 12 hours | `webgrip-source-login` stage in `tofu/broker/google.tf` |
+| Refresh tokens for Grafana, Forgejo, OpenBao, Harbor, LiteLLM, Longhorn, Omnigraph Review | 12 hours | `refresh_token_validity` in `tofu/broker/applications.tf` |
+| Refresh tokens for every other application | 30 days | Authentik default |
+| OpenBao token from an OIDC login | 8 hours, renewable to 12 | `vault_jwt_auth_backend_role.default` in `tofu/broker/openbao.tf` |
+
+A person who is asked to sign in again every morning is seeing this, not a fault. If Google
+stops asking for the security key, the Workspace setting has changed. Authentik cannot see the
+factor, so nothing here alerts on it.
+
 ## The audit dashboard
 
 Grafana, folder Security, "Access / Kubernetes API audit". It reads the audit store directly:
