@@ -174,6 +174,16 @@ before it is relied on: another project gets 404 from the route, `webgrip/unfold
 Upstream, the operator could remember a trigger that arrives while a project runs, which would
 remove the repeat.
 
+Decided by the owner on 2026-10-18, after comparing five patterns (registry-following Flux, Flux
+image automation, producer-opened PRs, a promotion tool such as Kargo, an event bus):
+
+| # | Decision |
+| --- | --- |
+| D5 | Ploeg → Unfold: the producer opens the bump PR. Ploeg's release runs each consumer's own update recipe and opens the PR on the consumer's forge with merge-when-checks-succeed. The consumer list is a repository variable, not code, so Ploeg still names no consumer. Renovate stops bumping that pin; a scheduled drift check remains |
+| D6 | The producer's Forgejo token belongs to a dedicated bot with write access to `webgrip/unfold` only. This is an exception to the 2026-09-30 "no new bot accounts" decision, for blast radius |
+| D7 | Unfold → homelab: Harbor's push webhook on the `webgrip` project schedules the Renovate run for `webgrip/homelab-cluster`; the paired PR merges through `platformAutomerge` on the required checks. Exact pins, the tested pair and the homelab's e2e stay. A registry-following Flux deploy without a PR was rejected because it drops the homelab's own checks and pins |
+| D8 | Branch protection requires every check that gates a merge: all seven `e2e /` jobs on homelab `main`, and `ploeg-docs` on Unfold `development`, before any platform automerge is switched on |
+
 Implementation runs in a separate work stream; its first slice is the homelab branch
 `fix/renovate-ploeg-unfold-release`.
 
