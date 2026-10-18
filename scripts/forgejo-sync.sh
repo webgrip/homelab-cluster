@@ -13,26 +13,6 @@
 #              historical GitHub releases never backfill; this only enables the unit for new ones.
 #              Always-on parity.
 #   mirror   — add a Forgejo -> GitHub push-mirror (auto-backup) if none points at github.com
-#   protect  — ADR-0050 delivery contract: protect `main` (+ `development` if the branch exists).
-#              Direct push only for $PUSH_WHITELIST (default `webgrip-ci`: semantic-release commits
-#              the release bump + tag back to the branch, so the old "protection breaks releases"
-#              blocker is solved by the whitelist, not by leaving repos open). Merges only for
-#              $MERGE_WHITELIST (default `ryangr0,renovate`: owner + Renovate automerge).
-#              `agent-builder` is deliberately in NEITHER list — the fleet delivers via PRs
-#              (ADR-0048) and never merges its own work. Existing rules are CONVERGED (PATCH),
-#              not skipped. Still OPT-IN (not in the default set): roll out deliberately — one
-#              repo, verify a real release cuts, then --all. Overrides per run, e.g. the homelab
-#              GitOps repo (owner trunk-pushes, no release bot — ADR-0050):
-#                PUSH_WHITELIST=ryangr0 MERGE_WHITELIST=ryangr0,renovate \
-#                STATUS_CHECK_CONTEXTS='e2e / Validate Renovate config (pull_request),e2e / Lint & static validation (pull_request),e2e / Omnigraph and brain tests (pull_request),e2e / Omnigraph bundle rehearsal (pull_request),e2e / LiteLLM runtime patches (pull_request),e2e / Flux-local render (pull_request),e2e / Kyverno Chainsaw (KinD) (pull_request)' \
-#                  scripts/forgejo-sync.sh --repo homelab-cluster --only protect --apply
-#              NOTE the `renovate` in MERGE_WHITELIST: this override previously read
-#              MERGE_WHITELIST=ryangr0, which would have revoked Renovate's ability to merge its
-#              own PRs on the one repo where automerge does all the dependency work. The owner
-#              trunk-pushes here, but Renovate still merges.
-#              STATUS_CHECK_CONTEXTS is what actually makes CI a gate — see sync_protect().
-#              Deliberately NOT `renovate/stability-days`: that is Renovate's own soak status, and
-#              requiring it would block a human merging during a soak window.
 #   webhook  — register a Forgejo repo webhook -> the renovate-operator receiver so ticking a
 #              Dependency-Dashboard / PR checkbox triggers an immediate Renovate run (not the 6h cron).
 #              Idempotent: matches an existing hook by receiver URL; creates if missing, refreshes if
@@ -42,7 +22,7 @@
 # SAFE BY DEFAULT: prints the intended mutations and exits. Pass --apply to actually write.
 #
 # Requires:
-#   FORGEJO_TOKEN   Forgejo PAT, scope write:repository (+ repo admin for `protect` and `webhook`). Never printed.
+#   FORGEJO_TOKEN   Forgejo PAT, scope write:repository (+ repo admin for `webhook`). Never printed.
 #   gh              GitHub CLI, authenticated (for reading GitHub state).
 #   GH_MIRROR_TOKEN GitHub PAT (classic, scope `repo`) — ONLY needed for `mirror`. Never printed.
 #   RENOVATE_WEBHOOK_AUTH_TOKEN  bearer the hook sends to the receiver — ONLY for `webhook`. Optional:
@@ -53,14 +33,13 @@
 #   scripts/forgejo-sync.sh --repo workflows                 # dry-run, all actions, one repo
 #   scripts/forgejo-sync.sh --repo workflows --apply
 #   scripts/forgejo-sync.sh --all --only actions,mirror --apply
-#   scripts/forgejo-sync.sh --repo renovate-config --only protect --apply
 set -euo pipefail
 
 FORGEJO_API="https://forgejo.webgrip.dev/api/v1"
 GITHUB_HOST="github.com"
 ORG="webgrip"
 APPLY=0
-ONLY="actions,prs,releases,settings,mirror,webhook"   # protect is OPT-IN (deliberate rollout — see header)
+ONLY="actions,prs,releases,mirror,webhook"
 REPOS=()
 # Reusable-workflow LIBRARY repos: their workflows are `on: workflow_call` and run in the *caller*
 # repo, never here. Keep the Forgejo Actions unit OFF for these even though GitHub has it on, so
@@ -87,10 +66,14 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+for retired in protect settings; do
+  have "$retired" && die "--only $retired is retired: branch protection and repository settings are owned by the repo-config Terraform module. Edit kubernetes/apps/repo-config/repo-config/model and let Flux apply it."
+done
+
 [ -n "${FORGEJO_TOKEN:-}" ] || die "FORGEJO_TOKEN not set (Forgejo Settings -> Applications -> generate, scope write:repository)"
-# gh is only needed for GitHub-reading actions (`actions` parity); protect/prs/releases/webhook
+# gh is only needed for GitHub-reading actions (`actions` parity); prs/releases/webhook
 # are pure-Forgejo. Die only when a selected action actually reads GitHub.
-if have actions; then command -v gh >/dev/null || die "gh not found (needed for --only actions; use --only protect,... to skip)"; fi
+if have actions; then command -v gh >/dev/null || die "gh not found (needed for --only actions; use --only prs,... to skip)"; fi
 
 fj()  { curl -fsS -H "Authorization: token $FORGEJO_TOKEN" -H "Content-Type: application/json" "$@"; }
 note() { echo "  $*"; }
@@ -164,35 +147,6 @@ sync_releases() {
   fi
 }
 
-DEFAULT_MERGE_STYLE="${DEFAULT_MERGE_STYLE:-merge}"
-DEFAULT_DELETE_BRANCH_AFTER_MERGE="${DEFAULT_DELETE_BRANCH_AFTER_MERGE:-true}"
-
-sync_settings() {
-  local r="$1" current desired drift merge_style_disabled
-  current=$(fj "$FORGEJO_API/repos/$ORG/$r")
-  desired=$(python3 -c '
-import sys,json
-print(json.dumps({"default_delete_branch_after_merge":sys.argv[1]=="true","default_merge_style":sys.argv[2]}))' \
-    "$DEFAULT_DELETE_BRANCH_AFTER_MERGE" "$DEFAULT_MERGE_STYLE")
-  drift=$(printf '%s' "$current" | python3 -c '
-import sys,json
-cur,want=json.load(sys.stdin),json.loads(sys.argv[1])
-print("; ".join(f"{k}: {json.dumps(cur.get(k))} -> {json.dumps(v)}" for k,v in want.items() if cur.get(k)!=v))' "$desired")
-  merge_style_disabled=$(printf '%s' "$current" | python3 -c '
-import sys,json
-style=sys.argv[1]
-flag={"merge":"allow_merge_commits","rebase":"allow_rebase","rebase-merge":"allow_rebase_explicit","squash":"allow_squash_merge","fast-forward-only":"allow_fast_forward_only_merge"}.get(style)
-print(bool(flag) and json.load(sys.stdin).get(flag) is False)' "$DEFAULT_MERGE_STYLE")
-  if [ "$merge_style_disabled" = "True" ]; then
-    note "settings: WARN $r disallows merge style '$DEFAULT_MERGE_STYLE', so defaulting to it offers a disabled button"
-  fi
-  if [ -z "$drift" ]; then
-    note "settings: already converged (default_delete_branch_after_merge=$DEFAULT_DELETE_BRANCH_AFTER_MERGE default_merge_style=$DEFAULT_MERGE_STYLE)"
-  else
-    mut "converge settings on $r ($drift)" -X PATCH "$FORGEJO_API/repos/$ORG/$r" -d "$desired"
-  fi
-}
-
 sync_mirror() {
   local r="$1"
   local exists
@@ -214,67 +168,6 @@ sync_mirror() {
   else
     note "DRY-RUN would: add push-mirror $r -> $GITHUB_HOST (sync_on_commit, 8h fallback)"
   fi
-}
-
-# ADR-0050 whitelists. Overridable per run; comma-separated usernames. NEVER add agent-builder.
-# development gets the owner too: trunk-based development happens THERE on product repos
-# (main is release-bot-only), and semantic-release RC channels commit version bumps back to it.
-PUSH_WHITELIST="${PUSH_WHITELIST:-webgrip-ci}"
-DEV_PUSH_WHITELIST="${DEV_PUSH_WHITELIST:-webgrip-ci,ryangr0}"
-MERGE_WHITELIST="${MERGE_WHITELIST:-ryangr0,renovate}"
-# Comma-separated required status-check contexts. EMPTY = omit the keys entirely (the historical
-# behaviour, and why other repos' hand-set checks survive a converge PATCH — see sync_protect).
-STATUS_CHECK_CONTEXTS="${STATUS_CHECK_CONTEXTS:-}"
-
-sync_protect() {
-  local r="$1" b body exists push_list
-  for b in main development; do
-    # main always exists; development only on repos that cut RCs from it.
-    push_list="$PUSH_WHITELIST"
-    if [ "$b" = development ]; then
-      fj "$FORGEJO_API/repos/$ORG/$r/branches/$b" >/dev/null 2>&1 || continue
-      push_list="$DEV_PUSH_WHITELIST"
-    fi
-    # Any rule blocks force-push + deletion; the contract lives in the whitelists.
-    # Status checks stay OPT-IN via $STATUS_CHECK_CONTEXTS, because Forgejo check names differ per
-    # repo and several repos have them set by hand. When the var is empty we omit the two keys
-    # ENTIRELY rather than sending false — a converge PATCH carrying enable_status_check:false
-    # would silently wipe those hand-set contexts.
-    #
-    # WHY THIS MATTERS (2026-08-04): required status checks are the ONLY thing in Forgejo that
-    # makes CI a merge gate. Branch-protection rules are what the merge path — including the
-    # background auto-merge job — actually consults. With no contexts required, a red PR is
-    # mergeable and `platformAutomerge` would merge it the moment it is scheduled, without
-    # waiting for e2e. Contexts must match the reported names EXACTLY: forgejo#9288 means a
-    # pattern matching zero tasks counts as MATCHED, so a typo yields a rule that looks correct
-    # in the UI and gates nothing. Always mutation-test both directions after applying.
-    body=$(python3 -c '
-import sys,json
-b,push,merge,checks=sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4]
-rule={
-    "rule_name": b,
-    "enable_push": True,
-    "enable_push_whitelist": True,
-    "push_whitelist_usernames": [u for u in push.split(",") if u],
-    "enable_merge_whitelist": True,
-    "merge_whitelist_usernames": [u for u in merge.split(",") if u],
-}
-ctx=[c.strip() for c in checks.split(",") if c.strip()]
-if ctx:
-    rule["enable_status_check"]=True
-    rule["status_check_contexts"]=ctx
-print(json.dumps(rule))' "$b" "$push_list" "$MERGE_WHITELIST" "$STATUS_CHECK_CONTEXTS")
-    # Listing rules needs repo ADMIN scope; on 403 assume absent (POST; a duplicate 409s harmlessly).
-    exists=$(fj "$FORGEJO_API/repos/$ORG/$r/branch_protections" 2>/dev/null \
-      | python3 -c 'import sys,json;bn=sys.argv[1];print(any((x.get("rule_name") or x.get("branch_name"))==bn for x in json.load(sys.stdin)))' "$b" 2>/dev/null || echo False)
-    if [ "$exists" = "True" ]; then
-      mut "converge protection $r:$b (push={$push_list} merge={$MERGE_WHITELIST} checks={${STATUS_CHECK_CONTEXTS:-none}})" \
-        -X PATCH "$FORGEJO_API/repos/$ORG/$r/branch_protections/$b" -d "$body"
-    else
-      mut "protect $r:$b (push={$push_list} merge={$MERGE_WHITELIST} checks={${STATUS_CHECK_CONTEXTS:-none}})" \
-        -X POST "$FORGEJO_API/repos/$ORG/$r/branch_protections" -d "$body"
-    fi
-  done
 }
 
 # Resolve the receiver bearer token once (env wins; else the in-cluster Secret). Never printed.
@@ -330,9 +223,7 @@ for r in "${REPOS[@]}"; do
   have actions  && sync_actions  "$r"
   have prs      && sync_prs      "$r"
   have releases && sync_releases "$r"
-  have settings && sync_settings "$r"
   have mirror   && sync_mirror   "$r"
-  have protect && sync_protect "$r"
   have webhook && sync_webhook "$r"
 done
 echo "done.${APPLY:+}"

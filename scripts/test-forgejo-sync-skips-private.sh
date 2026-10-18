@@ -8,6 +8,7 @@ mkdir -p "$work/bin"
 cat > "$work/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
 url="${*: -1}"
+[ -n "${CURL_LOG:-}" ] && echo "$url" >>"$CURL_LOG"
 case "$url" in
   *"/orgs/webgrip/repos?limit=50&page=1")
     printf '%s' '[{"name":"public-app","private":false,"mirror":false,"fork":false},{"name":"obsidian-vault","private":true,"mirror":false,"fork":false},{"name":"mirrored","private":false,"mirror":true,"fork":false},{"name":"forked","private":false,"mirror":false,"fork":true}]' ;;
@@ -30,7 +31,18 @@ check yes public-app
 check no obsidian-vault
 check no mirrored
 check no forked
+for retired in protect settings protect,prs; do
+  : >"$work/curl.log"
+  if FORGEJO_TOKEN=test-token CURL_LOG="$work/curl.log" PATH="$work/bin:$PATH" bash "$sync_script" --all --only "$retired" --apply >/dev/null 2>&1; then
+    echo "FAIL: --only $retired must refuse, it exited 0"
+    failures=$((failures + 1))
+  fi
+  if [ -s "$work/curl.log" ]; then
+    echo "FAIL: --only $retired called the Forgejo API before refusing"
+    failures=$((failures + 1))
+  fi
+done
 if [ "$failures" -gt 0 ]; then
   exit 1
 fi
-echo "PASS: forgejo-sync --all manages public-app only; private, mirrored and forked repos are left alone"
+echo "PASS: forgejo-sync --all manages public-app only; private, mirrored and forked repos are left alone; protect and settings refuse"

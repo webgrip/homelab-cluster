@@ -19,7 +19,7 @@ spec:
                 terraform_name="repo-config",
                 type="Ready",
                 status!="True",
-                reason!="TerraformPlannedWithChanges"
+                reason!="TerraformAppliedSucceed"
               }
             ) == 1
           for: 3h
@@ -32,10 +32,10 @@ spec:
             description: |-
               What's happening:
               - The repo-config Terraform object in namespace repo-config has not been Ready for three hourly reconciles.
-              - A plan waiting for approval is excluded: that is the deliberate plan-only state.
+              - Plans apply automatically (approvePlan auto); the hour after an apply reads Ready Unknown with reason TerraformAppliedSucceed and is excluded.
 
               Impact/risk:
-              - Repository settings drift in Forgejo is neither planned nor corrected.
+              - Repository settings and branch protection drift in Forgejo is neither planned nor corrected.
 
               Likely causes:
               - OpenBao login failed (role forgejo-repo-config, secret/forgejo/repo-config missing)
