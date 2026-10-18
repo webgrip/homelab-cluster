@@ -195,3 +195,9 @@ Implementation runs in a separate work stream; its first slice is the homelab br
   the verify layer stand in its way.
 - **Release tokens per forge.** Each adapter needs a write token on its own forge, scoped to one
   repository, stored in OpenBao and delivered through the existing bridge (ADR-0055).
+
+## Reproducibility
+
+- 2026-10-18 — Inventory of every hand-made piece of state the chain needs (28 items, 3 not yet
+  created), the declarative owner for each, the bootstrap floor and the order of work:
+  [Delivery chain: state that git does not hold](../general/delivery-chain-external-state.md).
