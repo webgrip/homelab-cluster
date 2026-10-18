@@ -1,6 +1,18 @@
 # RFC: Runtime detection & response — reinstate deliberately or retire honestly
 
-> Status: **Proposed** · Date: 2026-07-02 · Part of the [decision-landscape gap register](../adr/landscape.md)
+> Status: **Accepted** · Date: 2026-07-02, decided 2026-10-18 · Part of the [decision-landscape gap register](../adr/landscape.md)
+> · Decision: [ADR-0072 — Tetragon alone watches agent pods](../adr/adr-0072-tetragon-watches-agent-pods.md)
+>
+> **Outcome (2026-10-18).** The investigation found no surviving evidence that names a cause: the
+> suspension came in an unrelated commit during the 06-18 Longhorn incident, and metrics, logs and
+> the Talos OOM ledger from June are gone. It did find six properties of the June configuration
+> that could make the agents worsen memory pressure (both agents on the 12 GiB control-plane nodes,
+> unreserved 1 GiB bursts, `system-node-critical` priority with its -997 OOM score and preemption,
+> tolerate-everything, unscoped cluster-wide telemetry, requests far below use under the Talos OOM
+> controller). ADR-0072 removes all six: Tetragon only, on the worker pool, scoped to the agent
+> namespaces, memory request equal to limit, no PriorityClass, observe stage first. Falco is
+> deleted. Detection routing (proposal step 4) is decided there too; the response tier (in-kernel
+> `Sigkill`) stays open.
 
 > **TL;DR.** The cluster ran **two** overlapping eBPF runtime-security agents — Falco *and*
 > Tetragon — until both were disabled on 2026-06-19 ("repeated cluster outages were attributed to
@@ -77,9 +89,10 @@ Sequenced *after* alert delivery exists — detection without delivery is theate
 
 | ADR | Status | Decision |
 | --- | --- | --- |
-| candidate | — | One runtime detector (Tetragon vs Falco vs none), replacing the dual-agent state (new) |
-| candidate | — | Reinstatement gates + resource envelope (new) |
-| candidate | — | Detection routing & response tier (new) |
+| [0072](../adr/adr-0072-tetragon-watches-agent-pods.md) | accepted | One runtime detector: Tetragon, scoped to agent pods on the worker pool; Falco removed |
+| [0072](../adr/adr-0072-tetragon-watches-agent-pods.md) | accepted | Reinstatement gates and resource envelope: request equal to limit, no PriorityClass, staged observe then alert |
+| [0072](../adr/adr-0072-tetragon-watches-agent-pods.md) | accepted | Detection routing: VictoriaLogs, `vmalert-runtime`, Alertmanager, ntfy |
+| candidate | — | Response tier (alert only vs in-kernel `Sigkill`), after the alert stage has run |
 
 ## Out of scope
 

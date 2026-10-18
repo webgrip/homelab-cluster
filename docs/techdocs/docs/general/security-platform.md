@@ -2,7 +2,7 @@
 
 Most Kubernetes security writeups fall into one of two traps: they are either architecture-diagram fantasy with no operational details, or they are so vendor-specific that they stop being useful the moment you leave a managed enterprise platform. This cluster takes a more useful path. The goal is not to cosplay a SOC; it is to build a security platform that is GitOps-native, evidence-driven, and realistic enough that the same patterns could scale from a homelab to a serious production environment.
 
-The result is a layered security stack that combines **Kyverno**, **Trivy Operator**, **Cosign with OpenBao Transit (key-based signing)**, **CycloneDX SBOM attestations**, **Dependency-Track**, **trust-manager**, **Policy Reporter**, **Prometheus alerts**, **Grafana dashboards**, **Renovate**, **cert-manager**, **Flux**, **ESO + OpenBao**, and the cluster’s existing **Cilium** and **Talos** foundations. (**Falco** and **Tetragon** were part of this stack but are **suspended since 2026-06-19** — see §5.) That sounds like a lot, but it maps cleanly to the way security teams actually think: software supply chain, admission control, runtime detection, identity and least privilege, observability, and operational governance.
+The result is a layered security stack that combines **Kyverno**, **Trivy Operator**, **Cosign with OpenBao Transit (key-based signing)**, **CycloneDX SBOM attestations**, **Dependency-Track**, **trust-manager**, **Policy Reporter**, **Prometheus alerts**, **Grafana dashboards**, **Renovate**, **cert-manager**, **Flux**, **ESO + OpenBao**, and the cluster’s existing **Cilium** and **Talos** foundations. (**Tetragon** watches the agent namespaces since 2026-10-18, [ADR-0072](../adr/adr-0072-tetragon-watches-agent-pods.md); Falco was removed.) That sounds like a lot, but it maps cleanly to the way security teams actually think: software supply chain, admission control, runtime detection, identity and least privilege, observability, and operational governance.
 
 This page explains what is actually implemented in the repo today, why each layer exists, where the overlap is, where the gaps still are, and how the controls map to frameworks security professionals already use such as **NIST SSDF**, **SLSA**, **NIST SP 800-190**, **CIS Kubernetes Benchmark**, **NSA/CISA Kubernetes hardening guidance**, and **MITRE ATT&CK for Containers**.
 
@@ -111,37 +111,21 @@ Key operational facts:
 - **DT policy engine**: 10 IaC-managed policies evaluate every SBOM upload.
 - **DT metrics exporter**: Python Deployment in `security` namespace polls DT REST API every 5m, exposes `dt_portfolio_*` Prometheus metrics.
 
-### 5. Falco and Tetragon as the runtime layer — SUSPENDED
+### 5. Tetragon as the runtime layer, on agent pods
 
-> **Suspended 2026-06-19.** Repeated cluster outages were attributed to these runtime-security
-> agents; both are commented out of `kubernetes/apps/security/kustomization.yaml`, so Flux
-> garbage-collected their DaemonSets and **neither runs in the cluster**. All manifests are
-> retained under `./falco` and `./tetragon` — re-add the two `ks.yaml` lines to restore. Until
-> then the cluster has **no runtime-detection layer**; their Grafana dashboards show no data.
+Falco and Tetragon ran on every node until 2026-06-19, when both were suspended after cluster
+outages were attributed to them. [ADR-0072](../adr/adr-0072-tetragon-watches-agent-pods.md)
+brought Tetragon back on 2026-10-18 in a narrower shape and removed Falco:
 
-When enabled, they are intentionally complementary rather than redundant.
+- one DaemonSet, on the worker pool only, never on the control-plane nodes;
+- memory request equal to limit on every container, no PriorityClass, no tolerations;
+- two namespaced TracingPolicies in `ploeg`, `unfold-workspaces` and `unfold-verifier`:
+  credential and environment file opens, and TCP connects outside the cluster;
+- program starts in those namespaces exported to VictoriaLogs through the existing pod-log path;
+- detection alerts evaluated by `vmalert-runtime`, in an observe stage first
+  ([runbook](../runbooks/runtime-detection.md)).
 
-Falco is configured with:
-
-- modern eBPF,
-- containerd metadata collection,
-- Prometheus metrics,
-- ServiceMonitor integration,
-- JSON stdout suitable for Loki,
-- runtime detection alerts.
-
-Tetragon is configured with:
-
-- process and runtime telemetry,
-- Kubernetes metadata enrichment,
-- CRI and cgroup mapping for containerd,
-- redaction filters for common secrets and tokens,
-- Prometheus metrics,
-- ServiceMonitors,
-- stdout export for Loki,
-- Talos-friendly tracing mounts.
-
-If Falco is the high-level detection engine, Tetragon is the low-level runtime and process telemetry fabric.
+Pods that run under Kata are outside its view.
 
 ### 6. Grafana and alerting as the operational layer
 
@@ -157,8 +141,7 @@ Current tool-specific coverage includes:
 - **Cosign / 10 GitHub OIDC Attestations**
 - **Trivy / 10 Vulnerabilities, SBOMs and Compliance**
 - **Trivy / 20 Compliance Frameworks**
-- **Falco / 10 Runtime Detections** *(no data — Falco suspended)*
-- **Tetragon / 10 Runtime Telemetry** *(no data — Tetragon suspended)*
+- **Tetragon / Runtime Enforcement** (agent namespaces only)
 - **cert-manager / Certificates**
 - **Renovate** operator visibility
 
@@ -180,8 +163,7 @@ If we flatten the stack into a practical inventory, the cluster currently has th
 | **Identity and privilege** | New RBAC least-privilege audit policies plus Trivy RBAC assessments | Reduces the chance that a workload compromise becomes a cluster compromise. |
 | **Image and config scanning** | Trivy Operator vulnerability, config, infra, secret, and RBAC scans | Produces structured evidence about workload and platform risk. |
 | **Compliance** | Trivy cluster compliance mapped to CIS, NSA, and PSS specs | Gives a framework-oriented posture view instead of a random list of findings. |
-| **Runtime detection** | Falco — **suspended 2026-06-19** (manifests retained) | Was the runtime detection engine; the cluster currently runs without it. |
-| **Runtime telemetry** | Tetragon — **suspended 2026-06-19** (manifests retained) | Was the low-level process telemetry fabric; suspended alongside Falco. |
+| **Runtime detection** | Tetragon on agent pods (ADR-0072), observe stage; Falco removed | Records program starts, credential-file opens and outbound connects in `ploeg`, `unfold-workspaces`, `unfold-verifier`. |
 | **Observability** | Policy Reporter, VictoriaMetrics, Grafana dashboards, SLO rules via GrafanaAlertRuleGroup | Makes the security controls operational instead of invisible background agents. |
 | **Maintenance** | Renovate | Security posture degrades quickly without dependable update hygiene. |
 | **PKI and trust distribution** | cert-manager, trust-manager | Stable certificate automation plus managed trust-bundle distribution is foundational for secure service exposure and identity. |
@@ -276,10 +258,10 @@ skill**; operational detail lives in the [External Secrets runbook](../runbooks/
 | --- | --- |
 | **NIST SSDF** | Signed artifacts, SBOM generation, vulnerability evidence, policy-driven release gates, dependency maintenance via Renovate, change control via GitOps. |
 | **SLSA** | Key-based signing via OpenBao Transit, immutable digest pinning, admission-time trust policy for internal images (build provenance on the Forgejo path is a known gap). |
-| **NIST SP 800-190** | Image scanning, least privilege, secret hygiene, compliance reporting, admission control (runtime monitoring suspended with Falco/Tetragon). |
+| **NIST SP 800-190** | Image scanning, least privilege, secret hygiene, compliance reporting, admission control, runtime monitoring of agent pods (Tetragon). |
 | **CIS Kubernetes Benchmark** | Trivy compliance specs plus Kyverno hardening policies around privilege escalation, seccomp, capabilities, service accounts, and volume types. |
 | **NSA/CISA Kubernetes Hardening** | RuntimeDefault seccomp, non-root execution, read-only filesystems, capability drops, service-account-token minimization, network exposure control. |
-| **MITRE ATT&CK for Containers** | **Currently unmapped at runtime** — Falco/Tetragon detections are suspended; restoring them restores this row. |
+| **MITRE ATT&CK for Containers** | Partly mapped at runtime: credential access, exfiltration attempts and tool execution in agent pods (Tetragon, ADR-0072). |
 
 That mapping matters because it moves the conversation from “we installed some tools” to “we implemented controls aligned to recognized security objectives.”
 
@@ -339,8 +321,8 @@ gaps:
    [gated wave plan](../rfc/rfc-kyverno-audit-enforce-hardening.md).
 2. **Build provenance on the Forgejo path** — Harbor images carry signature + CycloneDX SBOM but
    no SLSA provenance (no `attest-build-provenance` analog); research item.
-3. **Runtime detection** — decide whether/when to restore Falco/Tetragon (or a lighter
-   replacement) after their 2026-06-19 stability suspension.
+3. **Runtime response** — after the ADR-0072 alert stage, decide whether Tetragon may kill a
+   process in-kernel.
 
 ## Suggested next OSS moves
 
@@ -359,7 +341,7 @@ If we describe the current state honestly, this cluster is now beyond “basic h
 
 - **Foundational controls:** GitOps, ESO + OpenBao, Talos, cert-manager, Renovate
 - **Preventive controls:** Kyverno admission and governance policies
-- **Detective controls:** Trivy posture and findings (Falco/Tetragon runtime detection suspended)
+- **Detective controls:** Trivy posture and findings and Tetragon runtime detection on agent pods
 - **Assurance controls:** Cosign key-based signatures via OpenBao Transit, SBOM attestations
 - **Operational controls:** VictoriaMetrics alerting, Grafana dashboards, Policy Reporter
 
@@ -374,7 +356,7 @@ What has been built here is not a random collection of security toys. It is a co
 - Trivy provides evidence about risk and compliance.
 - Cosign + OpenBao Transit establish artifact identity.
 - SBOM attestations establish software lineage.
-- (Falco and Tetragon watched runtime behavior; suspended until their stability cost is solved.)
+- Tetragon watches agent pods at runtime (ADR-0072).
 - Grafana and VictoriaMetrics make the whole thing operable.
 
 That is the right shape for an enterprise-parity Kubernetes security stack, even in a homelab. The remaining work is mostly not “more tools.” It is finishing the CI side of the supply-chain story, steadily reducing audit findings, and promoting the highest-value checks from visibility to enforcement.

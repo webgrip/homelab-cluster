@@ -1,0 +1,27 @@
+---
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: agent-outbound-connects
+spec:
+  kprobes:
+    - call: tcp_connect
+      syscall: false
+      return: false
+      message: "TCP connection from an agent pod to an address outside the cluster"
+      tags:
+        - runtime-detection
+        - exfiltration
+      args:
+        - index: 0
+          type: sock
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: NotDAddr
+              values:
+                - 127.0.0.0/8
+                - 10.42.0.0/16
+                - 10.43.0.0/16
+                - 10.0.0.27/32
+                - 10.0.0.28/32
