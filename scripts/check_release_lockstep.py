@@ -3,7 +3,9 @@
 
 Each release publishes a chart and images under one version, so its pins must agree.
 With --certified-pair the Ploeg pin must also be the Ploeg release that the pinned
-Unfold release names in its .gitmodules, the pair Unfold tested.
+Unfold release names, the pair Unfold tested: the contract bundle in its
+apps/unfold/ploeg-release.json, or, before Unfold ADR-0039, the submodule branch in
+its .gitmodules.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import argparse
 import re
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +36,8 @@ class Release:
 SEMVER = r"(?P<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)"
 DIGEST = r"@sha256:[a-f0-9]{64}"
 UNFOLD_RELEASE_TAG_PREFIX = "unfold-v"
+UNFOLD_PLOEG_RELEASE_FILE = "apps/unfold/ploeg-release.json"
+PLOEG_CONTRACT_BUNDLE = re.compile(rf'"contract"\s*:\s*"[^"]*/ploeg-contract:v?{SEMVER}{DIGEST}"')
 PLOEG_SUBMODULE_BRANCH = re.compile(
     r'\[submodule\s+"apps/ploeg"\][^\[]*?^\s*branch\s*=\s*v?(?P<version>\S+)\s*$',
     re.MULTILINE,
@@ -145,10 +150,33 @@ def lockstep_failures(root: Path) -> list[str]:
     return failures
 
 
+def release_file(source: str, unfold_version: str, path: str) -> tuple[str, str | None]:
+    url = f"{source.rstrip('/')}/{UNFOLD_RELEASE_TAG_PREFIX}{unfold_version}/{path}"
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            return url, response.read().decode()
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return url, None
+        raise
+    except urllib.error.URLError as error:
+        if isinstance(error.reason, FileNotFoundError):
+            return url, None
+        raise
+
+
 def certified_ploeg_version(source: str, unfold_version: str) -> str:
-    url = f"{source.rstrip('/')}/{UNFOLD_RELEASE_TAG_PREFIX}{unfold_version}/.gitmodules"
-    with urllib.request.urlopen(url, timeout=30) as response:
-        gitmodules = response.read().decode()
+    url, pin = release_file(source, unfold_version, UNFOLD_PLOEG_RELEASE_FILE)
+    if pin is not None:
+        found = PLOEG_CONTRACT_BUNDLE.search(pin)
+        if found is None:
+            raise ValueError(f"{url} names no digest-pinned Ploeg contract bundle")
+        return found.group("version")
+    url, gitmodules = release_file(source, unfold_version, ".gitmodules")
+    if gitmodules is None:
+        raise ValueError(
+            f"Unfold {unfold_version} publishes neither {UNFOLD_PLOEG_RELEASE_FILE} nor .gitmodules"
+        )
     found = PLOEG_SUBMODULE_BRANCH.search(gitmodules)
     if found is None:
         raise ValueError(f"{url} names no branch for the apps/ploeg submodule")
@@ -188,7 +216,7 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--source",
         default="https://forgejo.webgrip.dev/webgrip/unfold/raw/tag",
-        help="base URL that serves unfold-v<version>/.gitmodules",
+        help="base URL that serves the files of tag unfold-v<version>",
     )
     parser.add_argument(
         "--base",
