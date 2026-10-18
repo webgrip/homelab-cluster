@@ -73,16 +73,15 @@ spec:
         operator: NotIn
         values:
           - claude-runner
+          - ploeg-worker
+          - ploeg-sandbox-launcher
   policyTypes:
     - Egress
   egress:
-    # intra-namespace: ploegd -> db, workers -> ploegd, db replication
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: ploeg
-    # OpenHands workers -> LiteLLM (ai ns, in-cluster: proxy /v1 + admin key
-    # mint/revoke on the same port).
     - to:
         - namespaceSelector:
             matchLabels:
@@ -90,7 +89,6 @@ spec:
       ports:
         - protocol: TCP
           port: 4000
-    # OpenHands workers -> Forgejo (clone/push as agent-builder, PR API).
     - to:
         - namespaceSelector:
             matchLabels:
@@ -147,6 +145,78 @@ spec:
           podSelector:
             matchLabels:
               app: omnigraph
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ploeg-worker-egress
+  labels:
+    app.kubernetes.io/part-of: ploeg
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg-worker
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              ploeg.webgrip.dev/component: daemon
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ai
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: litellm
+      ports:
+        - protocol: TCP
+          port: 4000
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: forgejo
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: forgejo
+      ports:
+        - protocol: TCP
+          port: 3000
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: alloy-gateway
+      ports:
+        - protocol: TCP
+          port: 4318
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ploeg-sandbox-launcher-egress
+  labels:
+    app.kubernetes.io/part-of: ploeg
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ploeg-sandbox-launcher
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              ploeg.webgrip.dev/component: daemon
       ports:
         - protocol: TCP
           port: 8080
