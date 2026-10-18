@@ -5060,3 +5060,812 @@ spec:
         }
       ]
     }
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: forgejo-ci-console
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: boards
+  json: |-
+    {
+      "uid": "forgejo-ci-console",
+      "title": "Forgejo CI · console panels",
+      "description": "The panels the CI console at forgejo /-/ci embeds one by one. Panel ids are fixed and published to the console as wg-ci-panels.json, so moving a panel here moves it there.",
+      "tags": [
+        "ci",
+        "forgejo",
+        "embed"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "links": [
+        {
+          "title": "Forgejo CI",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/forgejo-ci",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": [
+          {
+            "name": "repo",
+            "label": "Repository",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "query": "label_values(forgejo_ci_consecutive_failures, repo)",
+            "refresh": 2,
+            "sort": 1,
+            "includeAll": true,
+            "multi": true,
+            "current": {
+              "text": "All",
+              "value": "$$__all"
+            },
+            "options": [],
+            "allValue": ".*",
+            "hide": 2
+          }
+        ]
+      },
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Demand against runner capacity",
+          "description": "Busy tasks, queued jobs, runner pods and Pending pods over the range, against the ScaledJob's ceiling. Waiting above zero while pods sit at the same level for long stretches, with Pending pods under it, is the node pool out of room: the fix is less CI work per push or another node, not a higher maxReplicaCount.",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "busy (Forgejo)"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#56b4e9"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "waiting (KEDA)"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#e69f00"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runner pods"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#898781"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "pending pods"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#d55e00"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ceiling"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#5b5a56"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ceiling"
+                },
+                "properties": [
+                  {
+                    "id": "custom.lineStyle",
+                    "value": {
+                      "fill": "dash",
+                      "dash": [
+                        8,
+                        6
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.lineWidth",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(forgejo_ci_tasks_active{status=\"running\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "busy (Forgejo)"
+            },
+            {
+              "refId": "B",
+              "expr": "max(keda_scaler_metrics_value{scaledObject=\"forgejo-runner\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "waiting (KEDA)"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Running\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "runner pods"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"forgejo\", exported_pod=~\"forgejo-runner-[a-z0-9]{5}-[a-z0-9]{5}\", phase=\"Pending\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "pending pods"
+            },
+            {
+              "refId": "E",
+              "expr": "vector(6)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "ceiling"
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "timeseries",
+          "title": "Runs per hour, by event and outcome",
+          "description": "Finished runs per hour by trigger and outcome. A block of push failures right after a merge is a broken trunk; a block of pull_request failures is somebody iterating, which is what pull requests are for.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 9
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "custom": {
+                "lineWidth": 0,
+                "fillOpacity": 80,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "bars",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "normal",
+                  "group": "A"
+                }
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (event, status) (increase(forgejo_ci_runs_total{repo=~\"$$repo\"}[1h]))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{event}} · {{status}}"
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "timeseries",
+          "title": "Queue wait p50 and p95",
+          "description": "Run queue wait percentiles over a trailing hour, against the same one and five minute lines the first screen uses.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 9
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              },
+              "color": {
+                "mode": "palette-classic"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 60
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 300
+                  }
+                ]
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "p50"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#3987e5"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "p95"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#d95926"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.5, sum by (le) (rate(forgejo_ci_run_queue_seconds_bucket[1h])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "p50"
+            },
+            {
+              "refId": "B",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(forgejo_ci_run_queue_seconds_bucket[1h])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "p95"
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "timeseries",
+          "title": "Run wall-clock p50 and p95",
+          "description": "Run duration percentiles over a trailing six hours, all outcomes and events.",
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 18
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "lineWidth": 2,
+                "fillOpacity": 0,
+                "showPoints": "never",
+                "pointSize": 6,
+                "drawStyle": "line",
+                "lineInterpolation": "linear",
+                "spanNulls": false,
+                "axisSoftMin": 0
+              },
+              "color": {
+                "mode": "palette-classic"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "p50"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#3987e5"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "p95"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#d95926"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.5, sum by (le) (rate(forgejo_ci_run_duration_seconds_bucket{repo=~\"$$repo\"}[6h])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "p50"
+            },
+            {
+              "refId": "B",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(forgejo_ci_run_duration_seconds_bucket{repo=~\"$$repo\"}[6h])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "p95"
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "bargauge",
+          "title": "Repositories with failed jobs, this range",
+          "description": "Failed jobs per repository over the dashboard range, largest first. Open the repository's Actions tab to see which job and why; Forgejo records no failure reason the exporter can read.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 18
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "No job failed in this range.",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#e69f00"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (repo) (increase(forgejo_ci_jobs_total{status=\"failure\", repo=~\"$$repo\"}[$$__range])) > 0",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{repo}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "table",
+          "title": "Slowest jobs: a typical day against a bad one",
+          "description": "Every job the exporter samples, by its median duration, with its 95th percentile and worst run. The top of this list is where CI minutes go; a p95 far above its p50 is a job whose speed depends on the node or a cache, not on the change.",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 27
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Typical (p50)"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "gauge",
+                      "mode": "basic",
+                      "valueDisplayMode": "text"
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "#3987e5"
+                    }
+                  },
+                  {
+                    "id": "min",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Bad day (p95)"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Worst"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Runs"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "repo": "Repository",
+                  "workflow": "Workflow",
+                  "ci_job": "Job",
+                  "Value #A": "Typical (p50)",
+                  "Value #B": "Bad day (p95)",
+                  "Value #C": "Worst",
+                  "Value #D": "Runs"
+                },
+                "indexByName": {
+                  "Repository": 0,
+                  "Workflow": 1,
+                  "Job": 2,
+                  "Typical (p50)": 3,
+                  "Bad day (p95)": 4,
+                  "Worst": 5,
+                  "Runs": 6
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Typical (p50)",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (repo, workflow, ci_job) (forgejo_ci_job_duration_p50_seconds{repo=~\"$$repo\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (repo, workflow, ci_job) (forgejo_ci_job_duration_p95_seconds{repo=~\"$$repo\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (repo, workflow, ci_job) (forgejo_ci_job_duration_max_seconds{repo=~\"$$repo\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "max by (repo, workflow, ci_job) (forgejo_ci_job_runs_sampled{repo=~\"$$repo\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 6
+        }
+      ]
+    }

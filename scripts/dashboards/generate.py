@@ -77,6 +77,7 @@ def render():
             problems.extend(overlaps(board))
             docs.append(dashboard_cr(board, folder=folder))
         outputs[DASHBOARDS / filename] = "".join(docs)
+    outputs[forgejo_ci.CONSOLE_PANELS_ASSET] = forgejo_ci.console_manifest()
     for line in problems:
         print(line, file=sys.stderr)
     if problems:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 from lib import (AMBER, CAT, LOGS, NEUTRAL, REPO, SKY, VERMILLION, alarm_at, bars, col, color_overrides, dashboard,
@@ -242,11 +243,27 @@ def first_screen():
     return panels
 
 
-def row_pipelines():
-    streak = f"max by (repo, workflow, ref) (forgejo_ci_consecutive_failures{{{REPO_SEL}}}) > 0"
+def runs_per_hour():
     by_event = f"sum by (event, status) (increase(forgejo_ci_runs_total{{{REPO_SEL}}}[1h]))"
+    return timeseries("Runs per hour, by event and outcome", [target(by_event, "A", "{{event}} · {{status}}")],
+                      unit="short", draw="bars", stack=True, decimals=0,
+                      desc="Finished runs per hour by trigger and outcome. A block of push failures right after a "
+                           "merge is a broken trunk; a block of pull_request failures is somebody iterating, which is "
+                           "what pull requests are for.")
+
+
+def failing_repositories():
     failing_repos = (f'sum by (repo) (increase(forgejo_ci_jobs_total{{status="failure", {REPO_SEL}}}[$__range])) '
                      f"> 0")
+    return bars("Repositories with failed jobs, this range", [target(failing_repos, "A", "{{repo}}", instant=True)],
+                decimals=0, fixed_color=AMBER, no_value="No job failed in this range.",
+                desc="Failed jobs per repository over the dashboard range, largest first. Open the repository's "
+                     "Actions tab to see which job and why; Forgejo records no failure reason the exporter can "
+                     "read.")
+
+
+def row_pipelines():
+    streak = f"max by (repo, workflow, ref) (forgejo_ci_consecutive_failures{{{REPO_SEL}}}) > 0"
     last_trunk = (f"max by (repo, workflow, ref) (forgejo_ci_last_run_timestamp_seconds{{{REPO_SEL}}}) * 1000")
     last_status = f"max by (repo, workflow, ref, status) (forgejo_ci_last_run_status{{{REPO_SEL}}}) == 1"
     return [
@@ -258,16 +275,8 @@ def row_pipelines():
                desc="Every graded workflow whose latest runs failed, including ones older than the seven days the "
                     "trunk tiles count. A long streak on a scheduled workflow (nightly drift, link rot) is a check "
                     "nobody reads any more: fix it or delete it."), 0, 12, 10),
-        (timeseries("Runs per hour, by event and outcome", [target(by_event, "A", "{{event}} · {{status}}")],
-                    unit="short", draw="bars", stack=True, decimals=0,
-                    desc="Finished runs per hour by trigger and outcome. A block of push failures right after a "
-                         "merge is a broken trunk; a block of pull_request failures is somebody iterating, which is "
-                         "what pull requests are for."), 12, 12, 10),
-        (bars("Repositories with failed jobs, this range", [target(failing_repos, "A", "{{repo}}", instant=True)],
-              decimals=0, fixed_color=AMBER, no_value="No job failed in this range.",
-              desc="Failed jobs per repository over the dashboard range, largest first. Open the repository's "
-                   "Actions tab to see which job and why; Forgejo records no failure reason the exporter can "
-                   "read."), 0, 12, 9),
+        (runs_per_hour(), 12, 12, 10),
+        (failing_repositories(), 0, 12, 9),
         (table("Latest trunk run per workflow",
                [target(last_status, "A", instant=True, fmt="table"), target(last_trunk, "B", instant=True, fmt="table")],
                rename={"repo": "Repository", "workflow": "Workflow", "ref": "Branch", "status": "Status",
@@ -284,36 +293,48 @@ def row_pipelines():
     ]
 
 
-def row_time():
+def slowest_jobs():
     slowest = (f"max by (repo, workflow, ci_job) (forgejo_ci_job_duration_p50_seconds{{{REPO_SEL}}})",
                f"max by (repo, workflow, ci_job) (forgejo_ci_job_duration_p95_seconds{{{REPO_SEL}}})",
                f"max by (repo, workflow, ci_job) (forgejo_ci_job_duration_max_seconds{{{REPO_SEL}}})",
                f"max by (repo, workflow, ci_job) (forgejo_ci_job_runs_sampled{{{REPO_SEL}}})")
+    return table("Slowest jobs: a typical day against a bad one",
+                 [target(e, r, instant=True, fmt="table") for e, r in zip(slowest, "ABCD")],
+                 rename={"repo": "Repository", "workflow": "Workflow", "ci_job": "Job", "Value #A": "Typical (p50)",
+                         "Value #B": "Bad day (p95)", "Value #C": "Worst", "Value #D": "Runs"},
+                 order=["Repository", "Workflow", "Job", "Typical (p50)", "Bad day (p95)", "Worst", "Runs"],
+                 sort_field="Typical (p50)",
+                 overrides=[col("Typical (p50)", unit="s", decimals=0, gauge=True),
+                            col("Bad day (p95)", unit="s", decimals=0), col("Worst", unit="s", decimals=0),
+                            col("Runs", decimals=0)],
+                 desc="Every job the exporter samples, by its median duration, with its 95th percentile and worst "
+                      "run. The top of this list is where CI minutes go; a p95 far above its p50 is a job whose "
+                      "speed depends on the node or a cache, not on the change.")
+
+
+def run_percentiles():
     run_q = "histogram_quantile({q}, sum by (le) (rate(forgejo_ci_run_duration_seconds_bucket{{repo=~\"$repo\"}}[6h])))"
+    return timeseries("Run wall-clock p50 and p95", [target(run_q.format(q=0.5), "A", "p50"),
+                                                     target(run_q.format(q=0.95), "B", "p95")],
+                      unit="s", overrides=color_overrides([("p50", CAT[0]), ("p95", CAT[1])]),
+                      desc="Run duration percentiles over a trailing six hours, all outcomes and events.")
+
+
+def queue_percentiles():
     queue_q = "histogram_quantile({q}, sum by (le) (rate(forgejo_ci_run_queue_seconds_bucket[1h])))"
+    return timeseries("Queue wait p50 and p95", [target(queue_q.format(q=0.5), "A", "p50"),
+                                                 target(queue_q.format(q=0.95), "B", "p95")],
+                      unit="s", thresholds=alarm_at(amber=60, vermillion=300),
+                      overrides=color_overrides([("p50", CAT[0]), ("p95", CAT[1])]),
+                      desc="Run queue wait percentiles over a trailing hour, against the same one and five minute "
+                           "lines the first screen uses.")
+
+
+def row_time():
     return [
-        (table("Slowest jobs: a typical day against a bad one",
-               [target(e, r, instant=True, fmt="table") for e, r in zip(slowest, "ABCD")],
-               rename={"repo": "Repository", "workflow": "Workflow", "ci_job": "Job", "Value #A": "Typical (p50)",
-                       "Value #B": "Bad day (p95)", "Value #C": "Worst", "Value #D": "Runs"},
-               order=["Repository", "Workflow", "Job", "Typical (p50)", "Bad day (p95)", "Worst", "Runs"],
-               sort_field="Typical (p50)",
-               overrides=[col("Typical (p50)", unit="s", decimals=0, gauge=True),
-                          col("Bad day (p95)", unit="s", decimals=0), col("Worst", unit="s", decimals=0),
-                          col("Runs", decimals=0)],
-               desc="Every job the exporter samples, by its median duration, with its 95th percentile and worst run. "
-                    "The top of this list is where CI minutes go; a p95 far above its p50 is a job whose speed "
-                    "depends on the node or a cache, not on the change."), 0, 24, 12),
-        (timeseries("Run wall-clock p50 and p95", [target(run_q.format(q=0.5), "A", "p50"),
-                                                   target(run_q.format(q=0.95), "B", "p95")],
-                    unit="s", overrides=color_overrides([("p50", CAT[0]), ("p95", CAT[1])]),
-                    desc="Run duration percentiles over a trailing six hours, all outcomes and events."), 0, 12, 8),
-        (timeseries("Queue wait p50 and p95", [target(queue_q.format(q=0.5), "A", "p50"),
-                                               target(queue_q.format(q=0.95), "B", "p95")],
-                    unit="s", thresholds=alarm_at(amber=60, vermillion=300),
-                    overrides=color_overrides([("p50", CAT[0]), ("p95", CAT[1])]),
-                    desc="Run queue wait percentiles over a trailing hour, against the same one and five minute "
-                         "lines the first screen uses."), 12, 12, 8),
+        (slowest_jobs(), 0, 24, 12),
+        (run_percentiles(), 0, 12, 8),
+        (queue_percentiles(), 12, 12, 8),
         (heatmap("Job durations", [target(f'sum by (le) (increase(forgejo_ci_job_duration_seconds_bucket{{{REPO_SEL}}}'
                                           f'[$__rate_interval]))', "A", "{{le}}", fmt="heatmap")],
                  desc="How long finished jobs took, per time bucket. Two bands is normal (fast checks and slow image "
@@ -507,5 +528,47 @@ def wall():
         description="The Forgejo CI board's first screen, for a TV.", links=[link("Forgejo CI", f"/d/{UID}")])
 
 
+CONSOLE_UID = "forgejo-ci-console"
+CONSOLE_PANELS_ASSET = REPO / "kubernetes/apps/forgejo/forgejo/app/custom/wg-ci-panels.json"
+CONSOLE_PANELS = (
+    (1, demand_vs_capacity, True),
+    (2, runs_per_hour, False),
+    (3, queue_percentiles, False),
+    (4, run_percentiles, False),
+    (5, failing_repositories, False),
+    (6, slowest_jobs, True),
+)
+
+
+def console_panels():
+    panels, y, x = [], 0, 0
+    for panel_id, build, wide in CONSOLE_PANELS:
+        panel = build()
+        panel["id"] = panel_id
+        width = 24 if wide else 12
+        if x + width > 24:
+            x, y = 0, y + 9
+        panel["gridPos"] = grid_pos(x, y, width, 9)
+        x += width
+        if x >= 24:
+            x, y = 0, y + 9
+        panels.append(panel)
+    return panels
+
+
+def console():
+    return dashboard(
+        CONSOLE_UID, "Forgejo CI · console panels", console_panels(), tags=["ci", "forgejo", "embed"],
+        variables=[{**VARIABLES[0], "hide": 2}], links=[link("Forgejo CI", f"/d/{UID}")], time_from="now-24h",
+        description="The panels the CI console at forgejo /-/ci embeds one by one. Panel ids are fixed and "
+                    "published to the console as wg-ci-panels.json, so moving a panel here moves it there.")
+
+
+def console_manifest():
+    entries = [{"id": panel["id"], "title": panel["title"], "wide": wide}
+               for panel, (_, _, wide) in zip(console_panels(), CONSOLE_PANELS)]
+    return json.dumps({"dashboard": CONSOLE_UID, "panels": entries}, indent=2) + "\n"
+
+
 def boards():
-    return [(desk(), FOLDER), (wall(), "walls")]
+    return [(desk(), FOLDER), (wall(), "walls"), (console(), FOLDER)]
