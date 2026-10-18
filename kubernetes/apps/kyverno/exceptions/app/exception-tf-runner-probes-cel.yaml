@@ -1,0 +1,26 @@
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-tf-runner-probes-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      A tofu-controller runner is a run-to-completion plan or apply that the controller
+      dials over gRPC and deletes afterwards (alwaysCleanupRunnerPod). The Terraform
+      runnerPodTemplate cannot declare container probes, and the pod is owned by no Job,
+      so require-pod-probes-audit would deny every reconcile. Waived only for tf-runner
+      Pods of the forgejo repo-config Terraform object in the forgejo namespace.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: require-pod-probes-audit
+  matchConditions:
+    - name: forgejo-repo-config-tf-runner-pods
+      expression: >-
+        object.kind == 'Pod' &&
+        object.metadata.namespace == 'forgejo' &&
+        object.metadata.?labels[?'app.kubernetes.io/name'].orValue('') == 'tf-runner' &&
+        object.metadata.?labels[?'app.kubernetes.io/part-of'].orValue('') == 'forgejo-repo-config'
