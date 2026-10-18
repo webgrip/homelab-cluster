@@ -1,0 +1,116 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: security-tetragon
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: tetragon
+spec:
+  groups:
+    - name: security.tetragon
+      interval: 1m
+      rules:
+        - alert: TetragonAgentNotReady
+          expr: |
+            max by (daemonset) (kube_daemonset_status_desired_number_scheduled{exported_namespace="security", daemonset="tetragon"})
+            -
+            max by (daemonset) (kube_daemonset_status_number_ready{exported_namespace="security", daemonset="tetragon"})
+            > 0
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: runtime-detection
+          annotations:
+            summary: "Tetragon is not running on {{ $value }} worker node(s) (security/tetragon)"
+            description: |
+              What's happening:
+              - {{ $value }} worker node(s) that should run the Tetragon agent have no ready agent pod for 30m.
+
+              Impact/risk:
+              - Agent pods on those nodes run unobserved: no exec, credential-read or outbound-connect events.
+
+              Likely causes:
+              - The node has no free memory requests; Tetragon never preempts, so its pod waits Pending.
+              - The agent crash-loops or fails its liveness probe after loading BPF programs.
+
+              First actions:
+              - `kubectl -n security get pods -l app.kubernetes.io/name=tetragon -o wide` and describe the Pending or failing pod.
+              - For Pending: free memory requests on that node (runbook), never add a PriorityClass.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/runtime-detection/#agent-not-ready"
+
+        - alert: TetragonEventsLost
+          expr: |
+            sum by (pod) (increase(tetragon_observer_ringbuf_events_lost_total[10m])) > 0
+          labels:
+            severity: warning
+            owner: platform
+            service: runtime-detection
+          annotations:
+            summary: "Tetragon lost kernel events (security/{{ $labels.pod }})"
+            description: |
+              What's happening:
+              - The Tetragon agent {{ $labels.pod }} dropped {{ $value }} ring-buffer events in 10m.
+
+              Impact/risk:
+              - Some process or policy events never reached userspace; an investigation may miss activity.
+
+              Likely causes:
+              - The agent is CPU-throttled at its 500m limit while a burst of execs runs on the node.
+
+              First actions:
+              - Check the agent's CPU throttling on the Tetragon dashboard.
+              - Raise the CPU limit or narrow the policies; confirm the loss returns to zero.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/runtime-detection/#events-lost"
+
+        - alert: TetragonPolicyLoadErrors
+          expr: |
+            sum by (pod, state) (tetragon_tracingpolicy_loaded{state=~"error|load_error"}) > 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: runtime-detection
+          annotations:
+            summary: "Tetragon tracing policy failed to load (security/{{ $labels.pod }}, state={{ $labels.state }})"
+            description: |
+              What's happening:
+              - A TracingPolicy is in state {{ $labels.state }} on {{ $labels.pod }} for 10m.
+
+              Impact/risk:
+              - The detection that policy carries is off on that node.
+
+              Likely causes:
+              - A kernel function or argument type the node's kernel does not offer.
+              - An invalid selector after a policy edit.
+
+              First actions:
+              - `kubectl get tracingpoliciesnamespaced -A` and read the agent log for the policy name.
+              - Revert the policy change; confirm the state returns to enabled.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/runtime-detection/#policy-load-errors"
+
+        - alert: TetragonExportRateLimited
+          expr: |
+            sum by (pod) (increase(tetragon_export_ratelimit_events_dropped_total[15m])) > 0
+          labels:
+            severity: info
+            owner: platform
+            service: runtime-detection
+          annotations:
+            summary: "Tetragon dropped exported events at its rate limit (security/{{ $labels.pod }})"
+            description: |
+              What's happening:
+              - {{ $labels.pod }} dropped {{ $value }} events in 15m because export exceeded 1000 events per minute.
+
+              Impact/risk:
+              - The log record of agent activity on that node has gaps; detection rules may miss events.
+
+              Likely causes:
+              - A build or test run inside an agent pod that starts thousands of processes.
+
+              First actions:
+              - Find the pod with the most exec events in VictoriaLogs for that window.
+              - If this is normal agent work, raise exportRateLimit and recheck VictoriaLogs disk headroom.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/runtime-detection/#export-rate-limited"

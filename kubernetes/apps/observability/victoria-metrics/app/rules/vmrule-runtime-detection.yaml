@@ -1,0 +1,114 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: runtime-detection
+  labels:
+    rules: runtime-detection
+spec:
+  groups:
+    - name: runtime.detection.agents
+      type: vlogs
+      interval: 1m
+      rules:
+        - alert: AgentPodOpenedCredentialFile
+          expr: >-
+            _time:5m {namespace="security", container="export-stdout"}
+            process_kprobe.policy_name:="agent-credential-reads"
+            | extract_regexp `"path": ?"(?P<path>[^"]+)"` from process_kprobe.args
+            | rename process_kprobe.process.pod.namespace as agent_namespace,
+              process_kprobe.process.pod.name as agent_pod,
+              process_kprobe.process.binary as binary
+            | stats by (agent_namespace, agent_pod, binary, path) count() as hits
+          for: 0m
+          labels:
+            severity: info
+            stage: observe
+            owner: platform
+            service: runtime-detection
+          annotations:
+            summary: "Agent pod opened a credential file ({{ $labels.agent_namespace }}/{{ $labels.agent_pod }}, {{ $labels.path }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} in {{ $labels.agent_namespace }}/{{ $labels.agent_pod }} opened {{ $labels.path }} ({{ $value }} times in 5m).
+              - The path is a ServiceAccount token, a credential file, or another process's environment.
+
+              Impact/risk:
+              - An agent holding that file can act as the pod's identity or reuse the secret outside the Run.
+
+              Likely causes:
+              - A tool in the agent image that reads the mounted token by design (add it to the exclusion after review).
+              - An agent following a prompt that tells it to look for credentials.
+
+              First actions:
+              - Read the full event in VictoriaLogs, including the parent process and arguments.
+              - Stop the Run in Unfold if the reader is not a known tool, and rotate whatever the file held.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/runtime-detection/#credential-file-opened"
+
+        - alert: AgentPodConnectedOutsideCluster
+          expr: >-
+            _time:5m {namespace="security", container="export-stdout"}
+            process_kprobe.policy_name:="agent-outbound-connects"
+            | extract_regexp `"daddr": ?"(?P<daddr>[^"]+)"` from process_kprobe.args
+            | extract_regexp `"dport": ?(?P<dport>[0-9]+)` from process_kprobe.args
+            | rename process_kprobe.process.pod.namespace as agent_namespace,
+              process_kprobe.process.pod.name as agent_pod,
+              process_kprobe.process.binary as binary
+            | stats by (agent_namespace, agent_pod, binary, daddr, dport) count() as hits
+          for: 0m
+          labels:
+            severity: info
+            stage: observe
+            owner: platform
+            service: runtime-detection
+          annotations:
+            summary: "Agent pod opened a TCP connection outside the cluster ({{ $labels.agent_namespace }}/{{ $labels.agent_pod }} to {{ $labels.daddr }}:{{ $labels.dport }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} in {{ $labels.agent_namespace }}/{{ $labels.agent_pod }} called connect() to {{ $labels.daddr }}:{{ $labels.dport }} ({{ $value }} times in 5m).
+              - The address is outside the pod, Service and gateway ranges. The kernel saw the attempt; the network policy may still have dropped it.
+
+              Impact/risk:
+              - An agent reaching an arbitrary address can send code or secrets out of the cluster.
+
+              Likely causes:
+              - A package manager or tool that bypasses the gateway.
+              - An agent following instructions to upload data.
+
+              First actions:
+              - Check Hubble drop metrics for the pod to see whether the policy blocked it.
+              - Read the event's process and arguments in VictoriaLogs; stop the Run in Unfold if it is not a known tool.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/runtime-detection/#outbound-connect"
+
+        - alert: AgentPodRanClusterOrNetworkTool
+          expr: >-
+            _time:5m {namespace="security", container="export-stdout"}
+            process_exec.process.pod.namespace:in("ploeg", "unfold-workspaces", "unfold-verifier")
+            process_exec.process.binary:~"/(kubectl|kubeadm|etcdctl|crictl|ctr|runc|docker|nsenter|unshare|chroot|mount|insmod|modprobe|setcap|capsh|socat|nc|ncat|netcat|nmap|masscan|tcpdump)$"
+            | rename process_exec.process.pod.namespace as agent_namespace,
+              process_exec.process.pod.name as agent_pod,
+              process_exec.process.binary as binary
+            | stats by (agent_namespace, agent_pod, binary) count() as hits
+          for: 0m
+          labels:
+            severity: info
+            stage: observe
+            owner: platform
+            service: runtime-detection
+          annotations:
+            summary: "Agent pod ran a cluster or network tool ({{ $labels.agent_namespace }}/{{ $labels.agent_pod }}, {{ $labels.binary }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} started {{ $value }} times in 5m inside {{ $labels.agent_namespace }}/{{ $labels.agent_pod }}.
+
+              Impact/risk:
+              - These tools reach the Kubernetes API, the container runtime, other namespaces or raw sockets; an agent has no task that needs them.
+
+              Likely causes:
+              - A test suite or build script that shells out to one of them.
+              - An agent exploring its sandbox or trying to leave it.
+
+              First actions:
+              - Read the exec event's arguments and parent process in VictoriaLogs.
+              - Stop the Run in Unfold if the parent is the agent harness rather than a build tool.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/runtime-detection/#cluster-or-network-tool"

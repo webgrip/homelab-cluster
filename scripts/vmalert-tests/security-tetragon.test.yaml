@@ -1,0 +1,79 @@
+---
+rule_files:
+  - rules/security-tetragon.yaml
+evaluation_interval: 1m
+tests:
+  - name: an agent pod Pending for 30m fires, a full rollout stays quiet
+    interval: 1m
+    input_series:
+      - series: 'kube_daemonset_status_desired_number_scheduled{exported_namespace="security", daemonset="tetragon"}'
+        values: "3x60"
+      - series: 'kube_daemonset_status_number_ready{exported_namespace="security", daemonset="tetragon"}'
+        values: "3x10 2x50"
+    alert_rule_test:
+      - eval_time: 10m
+        groupname: security.tetragon
+        alertname: TetragonAgentNotReady
+        exp_alerts: []
+      - eval_time: 35m
+        groupname: security.tetragon
+        alertname: TetragonAgentNotReady
+        exp_alerts: []
+      - eval_time: 45m
+        groupname: security.tetragon
+        alertname: TetragonAgentNotReady
+        exp_alerts:
+          - exp_labels:
+              daemonset: tetragon
+              severity: warning
+              owner: platform
+              service: runtime-detection
+            exp_annotations:
+              summary: "Tetragon is not running on 1 worker node(s) (security/tetragon)"
+  - name: lost ring-buffer events fire per agent pod
+    interval: 1m
+    input_series:
+      - series: 'tetragon_observer_ringbuf_events_lost_total{pod="tetragon-abcde"}'
+        values: "0x20 5x20"
+      - series: 'tetragon_observer_ringbuf_events_lost_total{pod="tetragon-fghij"}'
+        values: "0x40"
+    alert_rule_test:
+      - eval_time: 15m
+        groupname: security.tetragon
+        alertname: TetragonEventsLost
+        exp_alerts: []
+      - eval_time: 25m
+        groupname: security.tetragon
+        alertname: TetragonEventsLost
+        exp_alerts:
+          - exp_labels:
+              pod: tetragon-abcde
+              severity: warning
+              owner: platform
+              service: runtime-detection
+            exp_annotations:
+              summary: "Tetragon lost kernel events (security/tetragon-abcde)"
+  - name: a policy in load_error for 10m fires, an enabled policy does not
+    interval: 1m
+    input_series:
+      - series: 'tetragon_tracingpolicy_loaded{pod="tetragon-abcde", state="load_error"}'
+        values: "1x30"
+      - series: 'tetragon_tracingpolicy_loaded{pod="tetragon-abcde", state="enabled"}'
+        values: "2x30"
+    alert_rule_test:
+      - eval_time: 5m
+        groupname: security.tetragon
+        alertname: TetragonPolicyLoadErrors
+        exp_alerts: []
+      - eval_time: 15m
+        groupname: security.tetragon
+        alertname: TetragonPolicyLoadErrors
+        exp_alerts:
+          - exp_labels:
+              pod: tetragon-abcde
+              state: load_error
+              severity: warning
+              owner: platform
+              service: runtime-detection
+            exp_annotations:
+              summary: "Tetragon tracing policy failed to load (security/tetragon-abcde, state=load_error)"

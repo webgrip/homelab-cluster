@@ -58,6 +58,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [Harbor (container registry)](harbor.md)
 - [Authentik OIDC login failures](authentik-oidc-login.md)
 - [agent-sandbox and Ploeg's sandbox executor](agent-sandbox.md)
+- [Runtime detection (Tetragon on agent pods)](runtime-detection.md)
 
 ## Network / DNS / certs
 

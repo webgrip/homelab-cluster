@@ -7,61 +7,72 @@ spec:
   chart:
     spec:
       chart: tetragon
-      version: 1.7.0
+      version: 1.7.1
       sourceRef:
         kind: HelmRepository
         name: cilium
         namespace: security
   interval: 1h
   install:
-    timeout: 15m
+    timeout: 10m
+    disableWait: true
     remediation:
       retries: 3
   upgrade:
-    timeout: 15m
+    timeout: 10m
+    disableWait: true
     cleanupOnFail: true
     remediation:
       retries: 3
-      remediateLastFailure: false
+      remediateLastFailure: true
   values:
-    priorityClassName: system-node-critical
-    podAnnotations:
-      reloader.stakater.com/auto: "true"
-    tolerations:
-      - operator: Exists
+    priorityClassName: ""
+    nodeSelector:
+      node.webgrip.io/pool: worker
+    tolerations: []
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 1
     extraHostPathMounts:
       - name: sys-kernel-tracing
         mountPath: /sys/kernel/tracing
         readOnly: true
 
     tetragon:
+      image:
+        repository: harbor.webgrip.dev/quay/cilium/tetragon
+        # renovate: datasource=docker depName=harbor.webgrip.dev/quay/cilium/tetragon
+        tag: v1.7.1@sha256:afc9458ba4bc3f2795da3df6b03d88ce50e175ac3903027de8036e2046b84a02
       clusterName: homelab-cluster
       debug: false
+      processCacheSize: 32768
       exportFilename: tetragon.log
-      exportFilePerm: "640"
-      exportFileMaxSizeMB: 20
-      exportFileMaxBackups: 10
-      exportRateLimit: 3000
+      exportFilePerm: "600"
+      exportFileMaxSizeMB: 10
+      exportFileMaxBackups: 2
+      exportRateLimit: 1000
       exportAllowList: |-
-        {"event_set":["PROCESS_EXEC","PROCESS_EXIT","PROCESS_KPROBE","PROCESS_UPROBE","PROCESS_TRACEPOINT","PROCESS_LSM"]}
+        {"namespace":["ploeg","unfold-workspaces","unfold-verifier"],"event_set":["PROCESS_EXEC"]}
+        {"event_set":["PROCESS_KPROBE"],"policy_names":["agent-credential-reads","agent-outbound-connects"]}
       exportDenyList: |-
         {"health_check":true}
       redactionFilters: |-
         {"redact":["(?i)(?:--?(?:password|passwd|token|secret|api[-_]?key)(?:\\s+|=))(\\S+)"]}
-        {"redact":["(?i)(?:AWS_SECRET_ACCESS_KEY|GITHUB_TOKEN|GH_TOKEN|NPM_TOKEN)=([^\\s]+)"]}
+        {"redact":["(?i)(?:AWS_SECRET_ACCESS_KEY|GITHUB_TOKEN|GH_TOKEN|NPM_TOKEN|FORGEJO_TOKEN|LITELLM_API_KEY|ANTHROPIC_API_KEY|OPENAI_API_KEY)=([^\\s]+)"]}
+        {"redact":["(?i)authorization:\\s*(?:bearer|token|basic)\\s+(\\S+)"]}
+        {"redact":["(sk-[A-Za-z0-9_-]{16,})"]}
       enableK8sAPI: true
-      enableProcessCred: true
-      enableProcessNs: true
+      enableProcessCred: false
+      enableProcessNs: false
       processAncestors:
-        enabled: base
+        enabled: ""
       prometheus:
         enabled: true
-        metricsLabelFilter: "namespace,workload,pod,binary"
+        metricsLabelFilter: "namespace,workload"
         serviceMonitor:
           enabled: true
-          extraLabels:
-            release: kube-prometheus-stack
-          scrapeInterval: 30s
+          scrapeInterval: 60s
       cri:
         enabled: true
         socketHostPath: /run/containerd/containerd.sock
@@ -69,41 +80,50 @@ spec:
         enabled: true
       resources:
         requests:
-          cpu: 100m
-          memory: 256Mi
+          cpu: 50m
+          memory: 512Mi
         limits:
-          cpu: "1"
-          memory: 1Gi
+          cpu: 500m
+          memory: 512Mi
 
     tetragonOperator:
       replicas: 1
       failoverLease:
         enabled: false
-      priorityClassName: system-cluster-critical
+      priorityClassName: ""
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      image:
+        repository: harbor.webgrip.dev/quay/cilium/tetragon-operator
+        # renovate: datasource=docker depName=harbor.webgrip.dev/quay/cilium/tetragon-operator
+        tag: v1.7.1@sha256:cd8b71f6860e4b969c195baa52ddf337505098157e0123577f2db3328b591379
       prometheus:
         enabled: true
         serviceMonitor:
           enabled: true
-          extraLabels:
-            release: kube-prometheus-stack
           scrapeInterval: 60s
       resources:
         requests:
-          cpu: 25m
-          memory: 64Mi
+          cpu: 10m
+          memory: 128Mi
         limits:
-          cpu: 500m
-          memory: 256Mi
+          cpu: 200m
+          memory: 128Mi
 
     export:
       mode: stdout
       resources:
         requests:
-          cpu: 25m
-          memory: 64Mi
+          cpu: 10m
+          memory: 48Mi
         limits:
           cpu: 200m
-          memory: 256Mi
+          memory: 48Mi
+      stdout:
+        image:
+          repository: harbor.webgrip.dev/quay/cilium/hubble-export-stdout
+          # renovate: datasource=docker depName=harbor.webgrip.dev/quay/cilium/hubble-export-stdout
+          tag: v1.1.1@sha256:cf701f96d1c8de30231792e35733e1ab07451e11751ef4f676f482836759da06
 
     crds:
       installMethod: operator
