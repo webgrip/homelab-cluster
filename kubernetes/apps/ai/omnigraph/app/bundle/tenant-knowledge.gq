@@ -36,3 +36,18 @@ query concept_by_slug($slug: String) @description("One concept by slug; ploegd r
 query put_concept($slug: String, $scope: String, $client: String?, $repository: String?, $type: String, $title: String, $description: String?, $resource: String?, $tags: [String]?, $body: String, $from_note: String?, $accepted_by: String, $accepted_at: DateTime) @description("Write one accepted concept; only the review actor may change this graph") {
   insert Concept { slug: $slug, scope: $scope, client: $client, repository: $repository, type: $type, title: $title, description: $description, resource: $resource, tags: $tags, body: $body, from_note: $from_note, accepted_by: $accepted_by, accepted_at: $accepted_at }
 }
+
+query client_concept_count($client: String) @description("How many concepts one Client still has; a purge is done when it reads zero") {
+  match {
+    $c: Concept { client: $client }
+  }
+  return { count($c) as concepts }
+}
+
+query delete_client_concepts($client: String) @description("Remove every concept of one Client from main, with their edges; only the review actor may change this graph") {
+  delete Concept where client = $client
+}
+
+query delete_repository_concepts($repository: String) @description("Remove every concept of one repository from main, with their edges; a Client purge runs it for each of the Client's repositories") {
+  delete Concept where repository = $repository
+}

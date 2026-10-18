@@ -1,4 +1,4 @@
-node Note @description("A Work Item Note: what one Run, or a person in a session, learned while working on a Work Item. Written without review and read only by later work under the same root Work Item") @instruction("Only ploegd writes notes, through the stored query add_note; scope is enforced by ploegd, not by this graph") {
+node Note @description("A note one Run, a person or ploegd wrote while working on a Work Item, or that a merged pull request or a person promoted to its repository. Every note says who wrote it, from what sources, whether its text is trusted, at which level it is read, when it was observed and when it expires") @instruction("Only ploegd writes notes, through the stored queries add_note and add_note_superseding, conditioned on the graph commit it read. A note is never edited: a newer note supersedes it. Level and Client are enforced by ploegd, not by this graph") {
   key: String @key
   root_work_item: String @index
   work_item: String @index
@@ -13,5 +13,22 @@ node Note @description("A Work Item Note: what one Run, or a person in a session
   suggested_scope: enum(work-item, repository, client, tenant) @index
   written_by: String
   written_at: DateTime @index
+  level: enum(work-item, repository, client, tenant)? @index @description("Who reads the note: the Runs of its root Work Item, or of its repository. Absent means work-item")
+  subject: String? @index @description("What the note is about; two current notes on one subject at one level that disagree are flagged for a person")
+  author_kind: enum(run, person, ploeg)? @index @description("Absent means run")
+  author: String? @description("The Run's trace alias, the person's id, or ploegd")
+  source_refs: [String]? @description("What the note was drawn from: a Run, a pull request, a commit, a check or another note")
+  trust: enum(trusted, untrusted)? @index @description("Untrusted text is shown to agents only as quoted data. Absent means untrusted")
+  observed_at: DateTime? @description("When the fact was observed, which can be earlier than written_at")
+  expires_at: DateTime? @index @description("After this time no Run reads the note")
+  supersedes: String? @index @description("The key of the older note this one replaces")
+  contradicts: [String]? @description("Keys of current notes on the same subject this note disagreed with when it was written")
+  promoted_from: String? @index @description("The key of the narrower note this one promotes")
+  evidence: [String]? @description("Why a promotion was allowed: a merged pull request, a passing check")
+  approved_by: String? @description("The person who approved a promotion or resolved a contradiction")
   embedding: Vector(384)? @embed("body", model="granite-embedding-97m-multilingual-r2")
+}
+
+edge Supersedes: Note -> Note @description("The source note replaces the target note; both stay readable in history") {
+  @key(@src, @dst)
 }

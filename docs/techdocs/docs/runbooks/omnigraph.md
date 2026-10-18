@@ -1,6 +1,6 @@
 # Omnigraph
 
-Omnigraph v0.11 runs one server in namespace `ai` with five graphs: `memory` (shared agent memory), `brain` (Ryan's second brain), `webgrip` (internal company meetings), and Ploeg's Tenant graphs for Webgrip, `webgrip-knowledge` (reviewed knowledge scoped to the Tenant, a Client or a repository) and `webgrip-notes` (Work Item Notes Runs write without review). The two Tenant graphs share the `tenant-knowledge` and `tenant-notes` schemas, so a later Tenant gets its own pair from the same files (Ploeg ADR-0087, ADR-0088). Every graph, schema, stored query and permission rule is declared in the [bundle](../../../../kubernetes/apps/ai/omnigraph/app/bundle/). Push a change to the bundle and the pod applies it on its next start.
+Omnigraph v0.11 runs one server in namespace `ai` with five graphs: `memory` (shared agent memory), `brain` (Ryan's second brain), `webgrip` (internal company meetings), and Ploeg's Tenant graphs for Webgrip, `webgrip-knowledge` (reviewed knowledge scoped to the Tenant, a Client or a repository) and `webgrip-notes` (notes Runs, people and ploegd write about Work Items and repositories, each with its provenance). The two Tenant graphs share the `tenant-knowledge` and `tenant-notes` schemas, so a later Tenant gets its own pair from the same files (Ploeg ADR-0087, ADR-0088). Every graph, schema, stored query and permission rule is declared in the [bundle](../../../../kubernetes/apps/ai/omnigraph/app/bundle/). Push a change to the bundle and the pod applies it on its next start.
 
 ## How it runs
 
@@ -72,7 +72,7 @@ The rehearsal then opens no branch on `brain`. The variable is a statement that 
 | `act-brain-reader` | `brain`: read on any branch, run stored queries. Nothing else. Only [brain-tools](#brain-tools) holds it |
 | `act-brain-scribe` | `brain`: read and write on `main` only. No branch actions, no stored queries, no export. For `brain-tools` `remember` (brain retrieval RFC, P6); it can delete any row on `main`, so the scribe audit is its guard |
 | `act-ploeg-run` | `webgrip-notes`: read on any branch, write `main`, run stored queries. `webgrip-knowledge`: read and run stored queries. No branch actions, no export. Only ploegd holds it, to write Work Item Notes and brief Runs (Ploeg ADR-0087, ADR-0088). |
-| `act-ploeg-review` | `webgrip-knowledge` and `webgrip-notes`: read and write on any branch including `main`, create, delete and merge branches, run stored queries. No export. Only ploegd holds it, to apply an accepted Promotion. |
+| `act-ploeg-review` | `webgrip-knowledge` and `webgrip-notes`: read and write on any branch including `main`, create, delete and merge branches, run stored queries. No export. Only ploegd holds it, to write the Client and Tenant promotions a person accepted and to purge a Client (Ploeg ADR-0122). Not wired into ploegd yet: that waits for the Ploeg release with `knowledgeGraph.reviewTokenSecret`. |
 
 Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecret, pushed to OpenBao at `secret/omnigraph/<actor>` (field `token`), and assembled into the server's `tokens.json` by the `omnigraph-tokens` ExternalSecret.
 
@@ -715,6 +715,29 @@ In the same commit, add `graph.client-<name>` to [approved-deletions](../../../.
 The bootstrap approves exactly that deletion, and apply removes the graph directory. Without the approval line the pod refuses to start: an unapproved apply would drop the policy and keep serving the graph to every token.
 
 Remove the approval line in a later commit. Delete the OpenBao entries by hand. Backups expire after 7 days.
+
+## Ploeg's notes (`webgrip-notes`)
+
+Ploeg ADR-0122 decides what a note carries and who may read it; the [tenant-notes schema](../../../../kubernetes/apps/ai/omnigraph/app/bundle/tenant-notes.pg) stores it. Only ploegd writes, as `act-ploeg-run`; worker pods never hold a graph token.
+
+- Every note records `author_kind` (`run`, `person`, `ploeg`), `author`, `source_refs`, `trust` (`trusted`, `untrusted`), `level` (`work-item`, `repository`), `observed_at` and an optional `expires_at`. Rows written before 2026-10-18 have none of these; ploegd reads them as untrusted Work Item notes a Run wrote.
+- A note is never edited. A newer note names the one it replaces in `supersedes`, and `add_note_superseding` writes the `Supersedes` edge in the same commit. A note that disagreed with current notes on its `subject` lists them in `contradicts`; the open question lives in Ploeg's store, not in the graph.
+- ploegd calls `add_note` and `add_note_superseding` only on the conditional route `POST /graphs/webgrip-notes/queries/<name>/if-graph-commit`, with the commit of its `subject_notes` read. A `412` wrote nothing; ploegd reads again. It never falls back to the plain route, so a bundle without these queries makes notes wait in Ploeg's outbox and fires `PloegWorkItemNotesUnwritten`.
+- `root_notes` and `repository_notes` return every Client's rows; ploegd keeps only the reading Run's Client. Omnigraph cannot filter rows by Client, so this graph must never be readable by anything but ploegd and admins.
+
+Schema changes to this graph are additive (nullable properties, new edges, new queries) and are applied before the Ploeg release that uses them; `add_note` keeps working for the release already running. Like any schema change, one needs the graph drained: on 2026-10-18 `webgrip-notes` had only `main` and 28 notes.
+
+### Forget a Client's notes
+
+Ploeg records no Clients yet, so every note has none and there is nothing to forget. Once it does:
+
+1. As ploegd's run actor, invoke `delete_client_notes` with the Client, then `client_note_count`; it must read `0`. As the review actor, invoke `delete_client_concepts`, `delete_repository_concepts` for each of the Client's repositories, and `client_concept_count` on `webgrip-knowledge`. Remove Ploeg's outbox rows with its `PurgeClientNotes`.
+2. The notes are then gone from `main`, but older commits, snapshots and the change feed still hold them: a delete is a new commit. Commit metadata (ids, actors, times) is never removed.
+3. To destroy the rows, scale the deployment to 0 and run a maintenance pod on the PVC, for both graphs:
+   - `omnigraph optimize --cluster file:///var/lib/omnigraph/state --graph webgrip-notes`
+   - `omnigraph cleanup --keep 1 --older-than 0s --confirm --cluster file:///var/lib/omnigraph/state --graph webgrip-notes`
+   Cleanup works per dataset version, not per Client: it drops every older version, every other Client's history included, and a live branch keeps the versions it needs, so drain branches first. Tested against 0.11 on 2026-10-18: after cleanup a snapshot read of the deleted note's commit answers `historical published dataset version was reclaimed`.
+4. Scale back to 1. Backups keep the content for up to 7 days.
 
 ## Embeddings and recall
 
