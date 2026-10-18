@@ -50,7 +50,11 @@ wait_for_written_notes() {
 check_run() {
   local label=$1 run=$2 want_briefed=$3
   printf '\n%s: Run %s\n' "$label" "$run"
-  sql "select outcome, coalesce(stuck_reason, ''), ploegd_version from agent_runs where id = $run" | while IFS= read -r line; do note "$line"; done
+  local outcome
+  outcome=$(sql "select coalesce(outcome, '') from agent_runs where id = $run")
+  sql "select coalesce(outcome, '-'), coalesce(ploegd_version, '-'), coalesce(summary, '') from agent_runs where id = $run" | while IFS= read -r line; do note "$line"; done
+  if [ "$outcome" = stuck ]; then pass "the canary agent ran and reported stuck"; else fail "Run $run ended '${outcome:-without starting}', not stuck"; return; fi
+  if [ "$(sql "select count(*) from work_item_note_outbox where run_id = $run")" -eq 0 ]; then fail "Run $run queued no notes"; return; fi
   if wait_for_written_notes "$run"; then pass "every note of Run $run reached the notes graph"; else fail "Run $run still has notes waiting in the outbox"; fi
   sql "select note_key, written_by, coalesce(left(graph_commit, 12), ''), coalesce(nullif(last_error, ''), 'ok') from work_item_note_outbox where run_id = $run order by id" | while IFS= read -r line; do note "$line"; done
   local live stop briefed
@@ -65,7 +69,7 @@ check_run() {
 printf 'Ploeg notes canary %s: team copper, exec harness, no model call\n' "$stamp"
 
 path=/api/v1/operator/work-items
-response=$(api -X POST -d "{\"requestId\":\"notes-canary-$stamp\",\"team\":\"copper\",\"target\":\"erfbeeld\",\"title\":\"[canary] notes loop $stamp\",\"description\":\"A canary Work Item. The copper exec harness writes one live note, sleeps and stops on purpose, so the worker writes a stop note. It opens no pull request and calls no model.\",\"budgetUsd\":0.01}")
+response=$(api -X POST -d "{\"requestId\":\"notes-canary-$stamp\",\"team\":\"copper\",\"target\":\"erfbeeld\",\"title\":\"[canary] notes loop $stamp\",\"description\":\"A canary Work Item. The copper exec harness writes one live note, sleeps and stops on purpose, so the worker writes a stop note. It opens no pull request and calls no model.\",\"budgetUsd\":1.00}")
 status=${response##*$'\n'}
 body=${response%$'\n'*}
 if [ "$status" != 201 ] && [ "$status" != 200 ]; then
@@ -80,7 +84,7 @@ first=$(sql "select id from agent_runs where work_item_id = $item and finished_a
 check_run "First Run" "$first" 0
 
 path=/api/v1/operator/work-items/$item/requeue
-response=$(api -X POST -d "{\"commandId\":\"notes-canary-$stamp-requeue\",\"poolUsd\":0.01,\"note\":\"Second canary Run: it must be briefed with the first Run's note.\"}")
+response=$(api -X POST -d "{\"commandId\":\"notes-canary-$stamp-requeue\",\"poolUsd\":1.00,\"note\":\"Second canary Run: it must be briefed with the first Run's note.\"}")
 status=${response##*$'\n'}
 if [ "$status" = 200 ] || [ "$status" = 201 ] || [ "$status" = 202 ]; then
   pass "requeued Work Item $item"
@@ -94,9 +98,14 @@ else
   fail "requeue answered HTTP $status: ${response%$'\n'*}"
 fi
 
-path=/api/v1/operator/work-items/$item/cancel
-response=$(api -X POST -d "{\"commandId\":\"notes-canary-$stamp-cancel\"}")
-note "cleanup: cancel answered HTTP ${response##*$'\n'}; Work Item $item is $(sql "select state from work_items where id = $item")"
+withdraw() {
+  path=/api/v1/operator/work-items/$1/requeue
+  api -X POST -d "{\"commandId\":\"notes-canary-$stamp-withdraw-requeue\",\"poolUsd\":1.00,\"note\":\"Reopened only to withdraw the canary.\"}" >/dev/null
+  path=/api/v1/operator/work-items/$1/cancel
+  api -X POST -d "{\"commandId\":\"notes-canary-$stamp-withdraw\"}" >/dev/null
+  note "cleanup: Work Item $1 is $(sql "select state from work_items where id = $1")"
+}
+withdraw "$item"
 
 printf '\n'
 if [ "$failures" -eq 0 ]; then

@@ -31,7 +31,7 @@ The connection to Vikunja currently uses the existing shared service account on 
 2. Copper's `exec` harness sees the `[canary]` title, appends one note to `PLOEG_NOTES_FILE`, waits 15 seconds and reports `stuck`. Ploeg sends the note while the Run is still working, and the worker adds its stop note. Any other title gets copper's old behavior: it prints the task and changes nothing.
 3. The script checks that both notes left the outbox with an Omnigraph commit in `webgrip-notes`.
 4. It requeues the Work Item. The second Run counts the canary notes in its briefing and must count at least one.
-5. It cancels the Work Item and prints `PASS` or `FAIL` for each check.
+5. It withdraws the Work Item (a cancel only withdraws an open Shift, so it reopens the item first) and prints `PASS` or `FAIL` for each check. Each copper Run reserves US$1 of the item's allotment; the exec harness calls no model, so nothing is spent.
 
 It needs `kubectl` access to the `ploeg` namespace and takes a few minutes, mostly waiting for KEDA to start each copper worker. Run it after a Ploeg release, or whenever `webgrip-notes` looks empty and you need to know whether that is because nothing ran or because the loop is broken.
 
