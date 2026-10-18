@@ -9,8 +9,8 @@ data "authentik_groups" "adopt" {
 }
 
 data "authentik_provider_oauth2_config" "adopt" {
-  for_each = var.adopt_existing ? local.adopted_applications : {}
-  name     = each.value.provider_name
+  for_each = { for key, app in local.adopted_applications : key => app.provider_name if var.adopt_existing }
+  name     = each.value
 }
 
 data "vault_identity_group" "adopt" {
@@ -37,7 +37,7 @@ import {
 }
 
 import {
-  for_each = var.adopt_existing ? local.adopted_applications : {}
+  for_each = { for key, app in local.adopted_applications : key => app.provider_name if var.adopt_existing }
   to       = authentik_application.app[each.key]
   id       = each.key
 }
