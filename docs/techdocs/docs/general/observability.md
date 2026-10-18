@@ -186,6 +186,7 @@ Check arrival on the gateway's own counters: `otelcol_receiver_accepted_log_reco
 `otelcol_receiver_accepted_metric_points_total` on the `alloy-gateway` pod (`:12345/metrics`)
 must rise after a session. The `blackbox-alloy-gateway-otlp-ingest` probe expects 401 without a
 token, so it fails both when the route is gone and when the auth gate is.
+The plan for agent-estate observability is the [agent observability RFC](../rfc/rfc-agent-observability.md).
 
 ## SLOs (Sloth)
 
