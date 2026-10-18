@@ -1,0 +1,17 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./externalsecret.yaml
+  - ./rbac.yaml
+  - ./networkpolicy.yaml
+  - ./cronjob.yaml
+  - ./prometheusrule.yaml
+configMapGenerator:
+  - name: github-secrets-bridge-script
+    files:
+      - ./github_secrets_bridge.py
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled

@@ -1,0 +1,72 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: github-secrets-bridge
+  labels:
+    app.kubernetes.io/name: github-secrets-bridge
+spec:
+  schedule: "41 * * * *"
+  startingDeadlineSeconds: 1800
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: github-secrets-bridge
+            app.kubernetes.io/part-of: github-config
+        spec:
+          serviceAccountName: github-secrets-bridge
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: bridge
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:a1321512d6a287428c50dcdf2ab3857761127e03a23b1f648e9c1c0de59288f8
+              imagePullPolicy: IfNotPresent
+              command:
+                - "python3"
+                - "-I"
+                - "/scripts/github_secrets_bridge.py"
+              env:
+                - {name: GITHUB_OWNER, value: ploeg-hq}
+                - {name: GITHUB_REPOSITORY, value: ploeg}
+                - {name: GITHUB_SECRET_NAME, value: RELEASE_CONSUMER_TOKEN_FORGEJO}
+                - {name: SOURCE_PATH, value: /source/RELEASE_CONSUMER_TOKEN_FORGEJO}
+                - {name: VAULT_ADDR, value: 'http://openbao.security.svc.cluster.local:8200'}
+                - {name: VAULT_ROLE, value: github-secrets-bridge}
+                - {name: APP_SECRET_PATH, value: github/ploeg-hq-app}
+                - {name: NAMESPACE, value: github-config}
+                - {name: STATE_CONFIGMAP, value: github-secrets-bridge-state}
+                - {name: METRICS_URL, value: 'http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=github-secrets-bridge'}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 64Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: script, mountPath: /scripts, readOnly: true}
+                - {name: source, mountPath: /source, readOnly: true}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: script
+              configMap:
+                name: github-secrets-bridge-script
+            - name: source
+              secret:
+                secretName: github-secrets-bridge-source

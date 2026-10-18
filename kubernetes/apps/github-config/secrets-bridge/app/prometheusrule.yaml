@@ -1,0 +1,106 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: github-secrets-bridge
+  labels:
+    app.kubernetes.io/name: github-secrets-bridge
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: github-secrets-bridge.rules
+      rules:
+        - alert: GitHubAppPloegHqPending
+          expr: |
+            max by (owner, repository, secret) (
+              last_over_time(github_secrets_bridge_app_credentials_present{owner="ploeg-hq"}[2h])
+            ) == 0
+          for: 0m
+          labels:
+            severity: info
+            owner: platform
+            service: github-config
+          annotations:
+            summary: "The ploeg-hq GitHub App is not set up yet, so nothing on GitHub is managed (github-config/github-secrets-bridge)"
+            description: |
+              What's happening:
+              - The bridge found no App credentials at OpenBao secret/github/ploeg-hq-app and exited cleanly without touching GitHub.
+              - Info only, routed to no receiver: this is the expected state until the owner does the one UI step.
+
+              Impact/risk:
+              - RELEASE_CONSUMER_TOKEN_FORGEJO is not published on ploeg-hq/ploeg, and the ploeg-hq Terraform object stays suspended.
+              - Unfold bumps keep coming from Unfold's Renovate Ploeg group (unfold#437 interim).
+
+              Likely causes:
+              - The ploeg-hq GitHub App has not been created and installed yet.
+              - The App exists but its id, installation id and key were not stored with bao kv put.
+
+              First actions:
+              - Follow docs/techdocs/docs/runbooks/github-app-ploeg-hq.md, section "Owner steps".
+              - kubectl -n github-config create job --from=cronjob/github-secrets-bridge github-secrets-bridge-manual
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-app-ploeg-hq/"
+        - alert: GitHubSecretsBridgeFailing
+          expr: |
+            (
+              max by (cronjob) (kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-secrets-bridge"})
+              > on (cronjob)
+              max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-secrets-bridge"})
+            )
+            or
+            (
+              max by (cronjob) (kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-secrets-bridge"})
+              unless on (cronjob)
+              max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-secrets-bridge"})
+            )
+          for: 20m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-config
+          annotations:
+            summary: "The GitHub secrets bridge did not converge on its last run (github-config/github-secrets-bridge)"
+            description: |
+              What's happening:
+              - The latest hourly run of the CronJob github-config/github-secrets-bridge has not succeeded for 20 minutes, or it has never succeeded.
+              - The job publishes the Forgejo token of ploeg-release as RELEASE_CONSUMER_TOKEN_FORGEJO on ploeg-hq/ploeg.
+              - Missing App credentials are not a failure: that run exits 0 and raises GitHubAppPloegHqPending instead.
+
+              Impact/risk:
+              - Ploeg's release job may hold a stale or missing Forgejo token, so a Ploeg release opens no Unfold bump.
+
+              Likely causes:
+              - The source Secret github-secrets-bridge-source is empty (ExternalSecret on forgejo/ploeg-release not synced).
+              - OpenBao denied the github-secrets-bridge role (policy or role missing from the bootstrap config).
+              - GitHub refused the App JWT or the installation token (App uninstalled, key revoked, Secrets permission removed).
+              - The state ConfigMap could not be written (RBAC or the apiserver CiliumNetworkPolicy).
+
+              First actions:
+              - kubectl -n github-config logs job/<latest github-secrets-bridge job>; the log names the failing call and never prints a value.
+              - Fix the cause, then kubectl -n github-config create job --from=cronjob/github-secrets-bridge github-secrets-bridge-manual
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-app-ploeg-hq/"
+        - alert: GitHubSecretsBridgeStale
+          expr: |
+            time() - max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-secrets-bridge"}) > 3 * 3600
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-config
+          annotations:
+            summary: "The GitHub secrets bridge has not succeeded in over three hours (github-config/github-secrets-bridge)"
+            description: |
+              What's happening:
+              - The hourly CronJob github-config/github-secrets-bridge last succeeded more than three hours ago.
+
+              Impact/risk:
+              - A rotated ploeg-release token is not republished to ploeg-hq/ploeg, so Ploeg's release hook authenticates with a revoked token.
+
+              Likely causes:
+              - The CronJob is suspended, deleted, or cannot schedule a pod on the worker pool.
+              - Every run fails; GitHubSecretsBridgeFailing names the reason.
+
+              First actions:
+              - kubectl -n github-config get cronjob github-secrets-bridge
+              - kubectl -n github-config get jobs --sort-by=.status.startTime
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-app-ploeg-hq/"

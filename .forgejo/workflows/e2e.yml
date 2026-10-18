@@ -163,6 +163,15 @@ jobs:
           image="$(sed -nE 's#^ +image: (harbor\.webgrip\.dev/dockerhub/alpine/k8s:[^ ]+)$#\1#p' kubernetes/apps/forgejo/forgejo-actions-secrets/app/ploeg-release-provisioner.cronjob.yaml)"
           docker run --rm -v "$ws":/data -w /data "$image" sh scripts/test-ploeg-release-provisioner.sh
 
+      - name: Test the GitHub secrets bridge against a fake GitHub, OpenBao and apiserver (with mutations)
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/github-config/secrets-bridge/app"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          cp "$GITHUB_WORKSPACE/kubernetes/apps/github-config/secrets-bridge/app/github_secrets_bridge.py" "$ws/kubernetes/apps/github-config/secrets-bridge/app/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            sh -ec "pip install --quiet pynacl==1.5.0 cryptography==46.0.3 && sh scripts/test-github-secrets-bridge.sh"
+
       - name: Test the LiteLLM runtime patches on fake modules
         run: bash scripts/test-litellm-runtime-patches.sh
 

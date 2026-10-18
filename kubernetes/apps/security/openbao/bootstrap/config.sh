@@ -32,6 +32,8 @@ bao policy write ci-unfold /scripts/ci-unfold.hcl
 bao policy write ci-twente-dev /scripts/ci-twente-dev.hcl
 bao policy write ci-cloudflare /scripts/ci-cloudflare.hcl
 bao policy write forgejo-repo-config /scripts/forgejo-repo-config.hcl
+bao policy write github-config-ploeg-hq /scripts/github-config-ploeg-hq.hcl
+bao policy write github-secrets-bridge /scripts/github-secrets-bridge.hcl
 
 echo "==> kubernetes roles"
 bao write auth/kubernetes/role/external-secrets \
@@ -56,6 +58,12 @@ bao write auth/kubernetes/role/access-plane \
 bao write auth/kubernetes/role/forgejo-repo-config \
   bound_service_account_names=forgejo-repo-config-runner bound_service_account_namespaces=repo-config \
   policies=forgejo-repo-config ttl=30m >/dev/null
+bao write auth/kubernetes/role/github-config-ploeg-hq \
+  bound_service_account_names=github-config-ploeg-hq-runner bound_service_account_namespaces=github-config \
+  policies=github-config-ploeg-hq ttl=30m >/dev/null
+bao write auth/kubernetes/role/github-secrets-bridge \
+  bound_service_account_names=github-secrets-bridge bound_service_account_namespaces=github-config \
+  policies=github-secrets-bridge ttl=10m >/dev/null
 
 # Forgejo Actions OIDC -> Transit signing (JWT auth). Per-workflow identity: only the
 # release-publish flows of the explicitly listed repos can mint a sign-only token — tighter

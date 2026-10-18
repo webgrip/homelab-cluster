@@ -30,6 +30,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [Level 1 — the vault: seed, name, back up, who may write](secrets-level-1-vault.md)
 - [Level 2 — the cluster: generator or ExternalSecret, and Reloader](secrets-level-2-cluster.md)
 - [Level 3 — bridges: a repo-scoped Forgejo Actions secret, end to end](secrets-level-3-bridge.md)
+- [The ploeg-hq GitHub App: rulesets, settings and Actions secrets from git](github-app-ploeg-hq.md)
 - [Level 4 — short-lived: OIDC roles, dynamic credentials, per-run tokens](secrets-level-4-short-lived.md)
 - [Level 5 — a person: read the vault, cache by name, never an original](secrets-level-5-person.md)
 

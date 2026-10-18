@@ -211,3 +211,32 @@ spec:
       ports:
         - protocol: TCP
           port: 8200
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: security-allow-github-config-openbao
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: openbao
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: github-config
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tf-runner
+              app.kubernetes.io/part-of: github-config
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: github-config
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: github-secrets-bridge
+      ports:
+        - protocol: TCP
+          port: 8200

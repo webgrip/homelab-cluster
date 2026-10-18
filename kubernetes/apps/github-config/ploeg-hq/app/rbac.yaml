@@ -1,0 +1,48 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: github-config-ploeg-hq-runner
+  labels:
+    app.kubernetes.io/name: github-config-ploeg-hq
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+      - "secrets"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+      - "create"
+      - "update"
+      - "patch"
+      - "delete"
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - "leases"
+    verbs:
+      - "get"
+      - "list"
+      - "watch"
+      - "create"
+      - "update"
+      - "patch"
+      - "delete"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-config-ploeg-hq-runner
+  labels:
+    app.kubernetes.io/name: github-config-ploeg-hq
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: github-config-ploeg-hq-runner
+subjects:
+  - kind: ServiceAccount
+    name: github-config-ploeg-hq-runner
+    namespace: github-config

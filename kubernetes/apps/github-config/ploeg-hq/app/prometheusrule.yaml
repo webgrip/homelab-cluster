@@ -1,0 +1,56 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: github-config-ploeg-hq
+  labels:
+    app.kubernetes.io/name: github-config-ploeg-hq
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: github-config-ploeg-hq.rules
+      rules:
+        - alert: GitHubConfigPloegHqNotReady
+          expr: |
+            (
+              max by (terraform_namespace, terraform_name) (
+                tofu_terraform_status_condition{
+                  terraform_namespace="github-config",
+                  terraform_name="ploeg-hq",
+                  type="Ready",
+                  status!="True",
+                  reason!="TerraformPlannedWithChanges"
+                }
+              ) == 1
+            )
+            and on ()
+            (
+              max(last_over_time(github_secrets_bridge_app_credentials_present{owner="ploeg-hq"}[2h])) == 1
+            )
+          for: 3h
+          labels:
+            severity: warning
+            owner: platform
+            service: github-config
+          annotations:
+            summary: "GitHub ploeg-hq Terraform not Ready for 3h (github-config/ploeg-hq)"
+            description: |
+              What's happening:
+              - The ploeg-hq Terraform object in namespace github-config has not been Ready for three hourly reconciles.
+              - It only fires once the ploeg-hq GitHub App credentials exist in OpenBao; before that GitHubAppPloegHqPending (info) is the signal.
+              - A plan waiting for approval is excluded: that is the deliberate plan-only state.
+
+              Impact/risk:
+              - Rulesets, repository settings and the RELEASE_CONSUMERS variable on ploeg-hq/ploeg drift without being planned or corrected.
+
+              Likely causes:
+              - OpenBao login failed (role github-config-ploeg-hq) or secret/github/ploeg-hq-app lacks app_id, installation_id or private_key
+              - The App lost its installation on ploeg-hq/ploeg, or one of its permissions (Administration, Secrets, Variables)
+              - A model edit that fails the provider schema, a precondition, or prevent_destroy
+              - registry.opentofu.org or api.github.com unreachable (FQDN egress policy)
+
+              First actions:
+              - kubectl -n github-config get terraform ploeg-hq -o yaml
+              - kubectl -n github-config logs -l app.kubernetes.io/part-of=github-config,app.kubernetes.io/name=tf-runner
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-app-ploeg-hq/"

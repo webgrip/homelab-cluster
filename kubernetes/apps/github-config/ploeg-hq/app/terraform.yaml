@@ -1,0 +1,32 @@
+---
+apiVersion: infra.contrib.fluxcd.io/v1alpha2
+kind: Terraform
+metadata:
+  name: ploeg-hq
+  labels:
+    app.kubernetes.io/name: github-config-ploeg-hq
+spec:
+  suspend: true
+  interval: 1h
+  retryInterval: 15m
+  path: ./kubernetes/apps/github-config/ploeg-hq/tofu
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  serviceAccountName: github-config-ploeg-hq-runner
+  storeReadablePlan: human
+  alwaysCleanupRunnerPod: true
+  runnerPodTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: github-config
+    spec:
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 1Gi
