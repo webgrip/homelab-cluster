@@ -15,7 +15,7 @@ spec:
           expr: |
             max by (terraform_namespace, terraform_name) (
               tofu_terraform_status_condition{
-                terraform_namespace="forgejo",
+                terraform_namespace="repo-config",
                 terraform_name="repo-config",
                 type="Ready",
                 status!="True",
@@ -28,10 +28,10 @@ spec:
             owner: platform
             service: forgejo
           annotations:
-            summary: "Forgejo repo-config Terraform not Ready for 3h (forgejo/repo-config)"
-            description: |
+            summary: "Forgejo repo-config Terraform not Ready for 3h (repo-config/repo-config)"
+            description: |-
               What's happening:
-              - The repo-config Terraform object in namespace forgejo has not been Ready for three hourly reconciles.
+              - The repo-config Terraform object in namespace repo-config has not been Ready for three hourly reconciles.
               - A plan waiting for approval is excluded: that is the deliberate plan-only state.
 
               Impact/risk:
@@ -44,7 +44,7 @@ spec:
               - registry.opentofu.org unreachable during tofu init
 
               First actions:
-              - kubectl -n forgejo get terraform repo-config -o yaml
-              - kubectl -n forgejo logs -l app.kubernetes.io/part-of=forgejo-repo-config
+              - kubectl -n repo-config get terraform repo-config -o yaml
+              - kubectl -n repo-config logs -l app.kubernetes.io/part-of=forgejo-repo-config
               - kubectl -n forgejo logs job/repo-config-provisioner
-            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/rfc/rfc-forgejo-repo-config-gitops/"
+              - docs/techdocs/docs/rfc/rfc-forgejo-repo-config-gitops.md

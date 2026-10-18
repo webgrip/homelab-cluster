@@ -3,7 +3,7 @@ set -euo pipefail
 
 root="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 validator="${root}/scripts/validate-repo-config-model.sh"
-model="${root}/kubernetes/apps/forgejo/repo-config/model"
+model="${root}/kubernetes/apps/repo-config/repo-config/model"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 failures=0

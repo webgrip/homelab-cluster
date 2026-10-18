@@ -54,7 +54,7 @@ bao write auth/kubernetes/role/access-plane \
   bound_service_account_names=access-plane-runner bound_service_account_namespaces=security \
   policies=access-plane ttl=30m >/dev/null
 bao write auth/kubernetes/role/forgejo-repo-config \
-  bound_service_account_names=forgejo-repo-config-runner bound_service_account_namespaces=forgejo \
+  bound_service_account_names=forgejo-repo-config-runner bound_service_account_namespaces=repo-config \
   policies=forgejo-repo-config ttl=30m >/dev/null
 
 # Forgejo Actions OIDC -> Transit signing (JWT auth). Per-workflow identity: only the

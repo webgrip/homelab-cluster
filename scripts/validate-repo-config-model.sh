@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root="${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-model="${REPO_CONFIG_MODEL_DIR:-${root}/kubernetes/apps/forgejo/repo-config/model}"
+model="${REPO_CONFIG_MODEL_DIR:-${root}/kubernetes/apps/repo-config/repo-config/model}"
 
 for file in profiles repos; do
   check-jsonschema --schemafile "${model}/schema/${file}.schema.json" "${model}/${file}.yaml"

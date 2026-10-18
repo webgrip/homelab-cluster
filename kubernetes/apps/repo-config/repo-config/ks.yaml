@@ -3,23 +3,20 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: forgejo-repo-config
+  name: repo-config
 spec:
   dependsOn:
     - name: tofu-controller
       namespace: flux-system
     - name: forgejo-actions-secrets
+      namespace: forgejo
   interval: 1h
   retryInterval: 2m
-  path: ./kubernetes/apps/forgejo/repo-config/app
-  postBuild:
-    substituteFrom:
-      - kind: Secret
-        name: cluster-secrets
+  path: ./kubernetes/apps/repo-config/repo-config/app
   prune: true
   sourceRef:
     kind: GitRepository
     name: flux-system
     namespace: flux-system
-  targetNamespace: forgejo
+  targetNamespace: repo-config
   wait: false

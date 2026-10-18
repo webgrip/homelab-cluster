@@ -134,7 +134,7 @@ kube_cronjob_status_last_successful_time > 2h`, as `HarborProxyReconcileStale` i
 
 ### B. tofu-controller + the Forgejo OpenTofu provider (recommended)
 
-One module under `kubernetes/apps/forgejo/repo-config/tofu/`, one `Terraform` object reconciled
+One module under `kubernetes/apps/repo-config/repo-config/tofu/`, one `Terraform` object reconciled
 by the tofu-controller that already runs here (`kubernetes/apps/flux-system/tofu-controller`,
 v0.16.5, pod Running on 2026-09-28) and already applies the access plane
 (`kubernetes/apps/security/access-plane/app/terraform-broker.yaml`: `interval: 15m`,
@@ -217,7 +217,7 @@ Wrap the script in a CronJob with the PAT from OpenBao.
 ### 5.1 Layout
 
 ```text
-kubernetes/apps/forgejo/repo-config/
+kubernetes/apps/repo-config/repo-config/
   ks.yaml
   app/terraform.yaml             Terraform object, runner SA, NetworkPolicy
   model/profiles.yaml            profile definitions
