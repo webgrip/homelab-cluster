@@ -1,0 +1,25 @@
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-rbac-pod-exec-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      Waives restrict-pod-exec-verbs for the three ClusterRoles that hold pods/exec by
+      design (ADR-0074): the CloudNativePG operator, whose chart grants pods/exec for
+      managing its instance Pods; and the access plane's human-operator
+      role with the human-operator-actions role it aggregates, the break-glass role a
+      person reaches through their own identity (ADR-0059). Names are exact and
+      ClusterRole-only.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: restrict-pod-exec-verbs
+  matchConditions:
+    - name: reviewed-exec-clusterroles
+      expression: >-
+        object.kind == 'ClusterRole' &&
+        object.metadata.name in ['cloudnative-pg', 'human-operator', 'human-operator-actions']

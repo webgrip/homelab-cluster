@@ -156,6 +156,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | [0064](adr-0064-dependency-track-only-sbom-platform.md) | Dependency-Track is the only SBOM platform; GUAC is removed | accepted | 2026-10-04 |
 | [0072](adr-0072-tetragon-watches-agent-pods.md) | Tetragon alone watches agent pods, on the worker pool, inside a reserved memory budget; Falco is removed | accepted | 2026-10-18 |
 | [0073](adr-0073-image-admission-signatures-enforced.md) | Image admission refuses unsigned first-party images; the CVE budget follows on evidence | accepted | 2026-10-18 |
+| [0074](adr-0074-audit-to-deny-exec-secrets-seccomp-tokens.md) | pods/exec, cluster-wide Secret reads, seccomp opt-outs and default-token opt-ins are denied; Secrets in env vars stay Audit | accepted | 2026-10-18 |
 
 ### 9. Observability
 
