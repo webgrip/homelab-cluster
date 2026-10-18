@@ -208,13 +208,46 @@ spec:
             }
           }
 
+          discovery.kubernetes "self_node" {
+            role = "node"
+            selectors {
+              role  = "node"
+              field = "metadata.name=" + sys.env("NODE_NAME")
+            }
+          }
+
+          discovery.relabel "kube_audit" {
+            targets = discovery.kubernetes.self_node.targets
+
+            rule {
+              source_labels = ["__meta_kubernetes_node_labelpresent_node_role_kubernetes_io_control_plane"]
+              regex         = "true"
+              action        = "keep"
+            }
+
+            rule {
+              target_label = "__path__"
+              replacement  = "/var/log/audit/kube/kube-apiserver.log"
+            }
+
+            rule {
+              target_label = "job"
+              replacement  = "kube-audit"
+            }
+
+            rule {
+              target_label = "cluster"
+              replacement  = "homelab-cluster"
+            }
+
+            rule {
+              source_labels = ["__meta_kubernetes_node_name"]
+              target_label  = "node"
+            }
+          }
+
           local.file_match "kube_audit" {
-            path_targets = [{
-              __path__ = "/var/log/audit/kube/kube-apiserver.log",
-              job      = "kube-audit",
-              cluster  = "homelab-cluster",
-              node     = sys.env("NODE_NAME"),
-            }]
+            path_targets = discovery.relabel.kube_audit.output
           }
 
           loki.source.file "kube_audit" {

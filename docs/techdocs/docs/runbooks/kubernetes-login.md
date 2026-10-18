@@ -87,7 +87,8 @@ the control planes during an apply; the rule excludes those by source and user a
 ## RBAC changed outside GitOps
 
 `KubernetesRBACChangedOutsideGitOps` fires when anything but Flux, the access-plane runner, CNPG
-or the aggregation controller writes an RBAC object. Read the audit event, delete the object if
+and its backup plugin, or the Kubernetes aggregation, garbage and namespace controllers writes an
+RBAC object. Read the audit event, delete the object if
 Git does not declare it, or add the writer to the rule's allow-list if it is a legitimate new
 controller.
 

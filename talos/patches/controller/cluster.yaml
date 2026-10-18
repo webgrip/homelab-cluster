@@ -81,12 +81,54 @@ cluster:
             - group: ""
               resources:
                 - "events"
+            - group: events.k8s.io
+              resources:
+                - "events"
         - level: None
           resources:
             - group: authorization.k8s.io
               resources:
                 - "selfsubjectaccessreviews"
                 - "selfsubjectrulesreviews"
+        - level: None
+          users:
+            - "system:serviceaccount:security:kyverno-reports-controller"
+            - "system:serviceaccount:security:kyverno-admission-controller"
+            - "system:serviceaccount:security:trivy-operator"
+          resources:
+            - group: wgpolicyk8s.io
+              resources:
+                - "policyreports"
+                - "clusterpolicyreports"
+            - group: reports.kyverno.io
+              resources:
+                - "ephemeralreports"
+                - "clusterephemeralreports"
+            - group: aquasecurity.github.io
+        - level: None
+          users:
+            - "system:serviceaccount:longhorn-system:longhorn-service-account"
+          resources:
+            - group: longhorn.io
+        - level: None
+          users:
+            - "system:serviceaccount:kube-system:metrics-server"
+            - "system:serviceaccount:security:kyverno-admission-controller"
+          resources:
+            - group: authorization.k8s.io
+              resources:
+                - "subjectaccessreviews"
+        - level: Metadata
+          verbs:
+            - "watch"
+          namespaces:
+            - "ploeg"
+            - "unfold-workspaces"
+            - "unfold-verifier"
+          resources:
+            - group: ""
+              resources:
+                - "secrets"
         - level: None
           resources:
             - group: ""
@@ -150,10 +192,47 @@ cluster:
                 - "pods/attach"
                 - "pods/portforward"
                 - "pods/proxy"
+                - "pods/ephemeralcontainers"
             - group: ""
               resources:
                 - "nodes/proxy"
                 - "services/proxy"
+        - level: Request
+          verbs:
+            - "create"
+            - "update"
+            - "patch"
+            - "delete"
+            - "deletecollection"
+          resources:
+            - group: cilium.io
+              resources:
+                - "ciliumclusterwidenetworkpolicies"
+        - level: Request
+          verbs:
+            - "create"
+            - "update"
+            - "patch"
+            - "delete"
+            - "deletecollection"
+          namespaces:
+            - "ploeg"
+            - "unfold-workspaces"
+            - "unfold-verifier"
+          resources:
+            - group: ""
+              resources:
+                - "pods"
+                - "serviceaccounts"
+            - group: batch
+              resources:
+                - "jobs"
+            - group: networking.k8s.io
+              resources:
+                - "networkpolicies"
+            - group: cilium.io
+              resources:
+                - "ciliumnetworkpolicies"
         - level: Metadata
   controllerManager:
     extraArgs:

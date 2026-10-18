@@ -40,6 +40,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [The access plane (tofu-controller, the two Terraform objects, plans, drift)](access-plane.md)
 - [Google OAuth clients for the access plane (one-time Google Cloud setup)](google-oauth-clients.md)
 - [Kubernetes login (OIDC as yourself, the three tiers, break-glass)](kubernetes-login.md)
+- [Kubernetes audit trail (what the API server records, where it lands, the agent-plane alerts)](kubernetes-audit-trail.md)
 
 ## Databases (CNPG)
 
