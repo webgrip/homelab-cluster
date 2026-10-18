@@ -156,6 +156,19 @@ spec:
           - namespaceSelector:
               matchLabels:
                 kubernetes.io/metadata.name: network
+    # Unfold ADR 0046: the Run health judge, shadow only, on bronze's Runs.
+    # Each verdict is a Ploeg Ask on Hetzner's free EU inference (#780); it
+    # can raise a running Run's health badge and never acts on the Run.
+    featureFlags:
+      flags:
+        cards.health.judge:
+          targeting:
+            if:
+              - in:
+                  - var: team
+                  - - bronze
+              - "on"
+              - null
     config:
       maxConcurrentSessions: 1
       maxBudgetUsd: 1.00
