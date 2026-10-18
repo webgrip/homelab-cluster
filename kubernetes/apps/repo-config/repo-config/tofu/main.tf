@@ -58,12 +58,12 @@ resource "forgejo_branch_protection" "rule" {
   branch_name   = each.value.branch
 
   enable_push               = true
-  enable_push_whitelist     = true
-  push_whitelist_usernames  = each.value.push
-  enable_merge_whitelist    = true
-  merge_whitelist_usernames = each.value.merge
+  enable_push_whitelist     = try(each.value.push, null) != null
+  push_whitelist_usernames  = try(each.value.push, null)
+  enable_merge_whitelist    = try(each.value.merge, null) != null
+  merge_whitelist_usernames = try(each.value.merge, null)
   enable_status_check       = length(each.value.status_checks) > 0
-  status_check_contexts     = each.value.status_checks
+  status_check_contexts     = length(each.value.status_checks) > 0 ? each.value.status_checks : null
 
   lifecycle {
     prevent_destroy = true
