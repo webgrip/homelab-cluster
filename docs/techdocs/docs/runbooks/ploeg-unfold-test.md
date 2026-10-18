@@ -23,6 +23,18 @@ During a small session, disconnect and reopen Unfold to check that activity rema
 
 The connection to Vikunja currently uses the existing shared service account on the workbench server. That credential is not supplied to an agent workspace. Personal Vikunja account linking is not implemented.
 
+## Check the notes loop for free
+
+`just ploeg-notes-canary` proves, at no model cost, that what a Run learns reaches the next Run:
+
+1. It admits a Work Item titled `[canary] notes loop <time>` to team `copper` through Unfold's operator consumer, against the `erfbeeld` target.
+2. Copper's `exec` harness sees the `[canary]` title, appends one note to `PLOEG_NOTES_FILE`, waits 15 seconds and reports `stuck`. Ploeg sends the note while the Run is still working, and the worker adds its stop note. Any other title gets copper's old behavior: it prints the task and changes nothing.
+3. The script checks that both notes left the outbox with an Omnigraph commit in `webgrip-notes`.
+4. It requeues the Work Item. The second Run counts the canary notes in its briefing and must count at least one.
+5. It cancels the Work Item and prints `PASS` or `FAIL` for each check.
+
+It needs `kubectl` access to the `ploeg` namespace and takes a few minutes, mostly waiting for KEDA to start each copper worker. Run it after a Ploeg release, or whenever `webgrip-notes` looks empty and you need to know whether that is because nothing ran or because the loop is broken.
+
 ## Recorded checks
 
 The first live test on 2026-09-11 reached a real DeepSeek request. Ploeg recorded an observed cost of $0.0004212, blocked the credential after workspace preparation failed, and released the execution lease. This uncovered a Kubernetes request-body framing defect, subsequently reproduced in a regression test. Treat this as failure-handling evidence, not a completed agent task.
