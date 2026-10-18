@@ -216,7 +216,7 @@ spec:
         !(object.metadata.name in ['admin', 'edit', 'view', 'cluster-admin'])
   validations:
     - expression: >-
-        object.?rules.orValue([]).all(r, !r.?verbs.orValue([]).exists(v,
+        (object.?rules.orValue(null) == null ? [] : object.rules).all(r, !r.?verbs.orValue([]).exists(v,
         v in ['escalate', 'bind', 'impersonate']))
       message: >-
         Roles must not grant escalate, bind or impersonate — each allows a
@@ -265,7 +265,7 @@ spec:
         !(object.metadata.name in ['admin', 'edit', 'view', 'cluster-admin'])
   validations:
     - expression: >-
-        object.?rules.orValue([]).all(r, !r.?resources.orValue([]).exists(res,
+        (object.?rules.orValue(null) == null ? [] : object.rules).all(r, !r.?resources.orValue([]).exists(res,
         res in ['nodes/proxy', 'nodes/*']))
       message: >-
         ClusterRoles must not grant nodes/proxy — it reaches the kubelet API
@@ -314,7 +314,7 @@ spec:
         !(object.metadata.name in ['admin', 'edit', 'view', 'cluster-admin'])
   validations:
     - expression: >-
-        object.?rules.orValue([]).all(r,
+        (object.?rules.orValue(null) == null ? [] : object.rules).all(r,
         !(r.?resources.orValue([]).exists(res,
         res in ['endpoints', 'endpointslices']) &&
         r.?verbs.orValue([]).exists(v,
