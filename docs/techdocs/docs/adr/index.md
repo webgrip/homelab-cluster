@@ -169,6 +169,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | [0037](adr-0037-reenable-pyroscope-worker-pool.md) | Re-enable Pyroscope, hard-pinned to the worker pool | deprecated | 2026-10-04 |
 | [0041](adr-0041-victorialogs-logging-backend.md) | VictoriaLogs replaces Loki as the logging backend | accepted | 2026-10-04 |
 | [0042](adr-0042-victoriatraces-tracing-backend.md) | VictoriaTraces replaces Tempo as the tracing backend | accepted | 2026-07-12 |
+| [0075](adr-0075-honeytokens-catch-a-working-prompt-injection.md) | Decoy credentials that grant nothing catch a working prompt injection or an escape within minutes | accepted | 2026-10-18 |
 
 ### 10. Docs & developer portal
 

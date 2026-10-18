@@ -1,0 +1,46 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: honeytokens-read
+  labels:
+    rules: audit
+spec:
+  groups:
+    - name: honeytokens.read
+      type: vlogs
+      interval: 1m
+      rules:
+        - alert: HoneytokenEscapeSecretRead
+          expr: >-
+            _time:5m "objectRef.resource":=secrets
+            "objectRef.namespace":=ploeg "objectRef.name":=forgejo-admin-break-glass
+            verb:~"^(get|update|patch|delete)$"
+            | rename "user.username" as user
+            | filter NOT user:="system:serviceaccount:security:external-secrets"
+            | stats by (user, verb) count() as hits
+          for: 0m
+          labels:
+            severity: critical
+            owner: platform
+            service: honeytokens
+          annotations:
+            summary: "Decoy break-glass Secret read (user {{ $labels.user }})"
+            description: |
+              What's happening:
+              - {{ $labels.user }} called {{ $labels.verb }} on Secret ploeg/forgejo-admin-break-glass {{ $value }} times in five minutes.
+              - That Secret is a decoy. External Secrets writes it; no workload mounts it and nothing else has a reason to read it.
+
+              Impact/risk:
+              - The values inside grant nothing, but whoever read them reached Secrets in the ploeg namespace.
+              - If the user is a ServiceAccount, a workload holds more Kubernetes authority than its task needs, or escaped its pod.
+
+              Likely causes:
+              - An escaped or compromised workload exploring the cluster.
+              - A person reading Secrets by hand, for example while debugging Ploeg.
+              - The post-merge test in the runbook.
+
+              First actions:
+              - Ask the person if the user is `oidc:` or the admin certificate.
+              - If it is a ServiceAccount, find its pods, cordon their node if the pod looks escaped, and follow the runbook.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/honeytokens/#a-decoy-was-read"

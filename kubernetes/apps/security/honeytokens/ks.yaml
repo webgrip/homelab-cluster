@@ -1,0 +1,71 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: honeytokens-decoys
+spec:
+  dependsOn:
+    - name: external-secrets-stores
+      namespace: security
+    - name: forgejo
+      namespace: forgejo
+  force: true
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/security/honeytokens/decoys
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: forgejo
+  wait: false
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: honeytokens-placements
+spec:
+  dependsOn:
+    - name: honeytokens-decoys
+    - name: unfold-workspaces
+      namespace: ploeg
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/security/honeytokens/placements
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  timeout: 5m
+  wait: true
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/kustomize.toolkit.fluxcd.io/kustomization_v1.json
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: honeytokens-alerts
+spec:
+  dependsOn:
+    - name: honeytokens-placements
+    - name: victoria-metrics
+      namespace: observability
+  interval: 1h
+  retryInterval: 5m
+  path: ./kubernetes/apps/security/honeytokens/alerts
+  postBuild:
+    substituteFrom:
+      - kind: Secret
+        name: cluster-secrets
+      - kind: Secret
+        name: honeytoken-fingerprints
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: observability
+  wait: false

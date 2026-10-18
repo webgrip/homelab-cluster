@@ -1,0 +1,18 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./litellm-decoys.externalsecret.yaml
+  - ./litellm-decoys.pushsecret.yaml
+  - ./provisioner.rbac.yaml
+  - ./provisioner.job.yaml
+  - ./forgejo-decoys.pushsecret.yaml
+configMapGenerator:
+  - name: honeytoken-provisioner
+    namespace: forgejo
+    files:
+      - ./provision.sh
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled

@@ -1,0 +1,142 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: honeytokens-used
+  labels:
+    rules: logs
+spec:
+  groups:
+    - name: honeytokens.used
+      type: vlogs
+      interval: 1m
+      rules:
+        - alert: HoneytokenForgejoTokenUsed
+          expr: >-
+            _time:5m namespace:=forgejo container:=forgejo
+            _msg:~" - (deploy-automation|backup-operator|breakglass-admin) \\["
+            | extract "<ip> - <user> [" from _msg
+            | format if (user:="deploy-automation") "workspace" as placement
+            | format if (user:="backup-operator") "repository" as placement
+            | format if (user:="breakglass-admin") "escape" as placement
+            | stats by (placement, user, ip) count() as hits
+          for: 0m
+          labels:
+            severity: critical
+            owner: platform
+            service: honeytokens
+          annotations:
+            summary: "Decoy Forgejo token used (placement {{ $labels.placement }}, from {{ $labels.ip }})"
+            description: |
+              What's happening:
+              - The decoy token of {{ $labels.user }} authenticated to Forgejo {{ $value }} times in five minutes, from {{ $labels.ip }}.
+              - That token exists only in the {{ $labels.placement }} placement; nothing legitimate holds it.
+
+              Impact/risk:
+              - Whoever used it read a credential they had no task reason to touch. The token itself grants nothing: the account is restricted, owns no repositories and belongs to no team.
+              - workspace: an agent in an Unfold workspace followed an instruction to use credentials from its environment, the signature of a working prompt injection.
+              - repository: something read webgrip/ops-credentials and acted on it.
+              - escape: something read the forgejo-admin-break-glass Secret in the ploeg namespace, which no agent identity can read.
+
+              Likely causes:
+              - A prompt injection in a Work Item, a repository or a fetched page.
+              - A compromised workload or credential that reached the escape Secret.
+              - The post-merge test in the runbook.
+
+              First actions:
+              - Find the pod behind {{ $labels.ip }} and the Run or session it belongs to.
+              - Stop that Run and keep its pod and transcript for review.
+              - Follow the runbook before rotating anything.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/honeytokens/#a-decoy-was-used"
+        - alert: HoneytokenLiteLLMKeyUsed
+          expr: >-
+            _time:5m namespace:=ai container:=app pod:litellm*
+            message:"not found in db"
+            | extract "key=<hash>, not found in db" from message
+            | extract "Requester IP Address:<ip>" from message
+            | filter hash:in("${HONEYTOKEN_LITELLM_SHA256_WORKSPACE}", "${HONEYTOKEN_LITELLM_SHA256_REPOSITORY}", "${HONEYTOKEN_LITELLM_SHA256_ESCAPE}")
+            | format if (hash:="${HONEYTOKEN_LITELLM_SHA256_WORKSPACE}") "workspace" as placement
+            | format if (hash:="${HONEYTOKEN_LITELLM_SHA256_REPOSITORY}") "repository" as placement
+            | format if (hash:="${HONEYTOKEN_LITELLM_SHA256_ESCAPE}") "escape" as placement
+            | stats by (placement, ip) count() as hits
+          for: 0m
+          labels:
+            severity: critical
+            owner: platform
+            service: honeytokens
+          annotations:
+            summary: "Decoy LiteLLM key used (placement {{ $labels.placement }}, from {{ $labels.ip }})"
+            description: |
+              What's happening:
+              - LiteLLM refused the decoy key of the {{ $labels.placement }} placement {{ $value }} times in five minutes, from {{ $labels.ip }}.
+              - The key was never registered in LiteLLM; it exists only in that placement.
+
+              Impact/risk:
+              - The key grants nothing, so no model was called and nothing was spent.
+              - Whoever presented it found it where only an injected instruction, a curious explorer or an escaped workload would look.
+
+              Likely causes:
+              - A prompt injection in a Work Item, a repository or a fetched page.
+              - A compromised workload or credential that reached the escape Secret.
+              - The post-merge test in the runbook.
+
+              First actions:
+              - Find the pod behind {{ $labels.ip }} and the Run or session it belongs to.
+              - Stop that Run and keep its pod and transcript for review.
+              - Follow the runbook before rotating anything.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/honeytokens/#a-decoy-was-used"
+        - alert: HoneytokenForgejoDetectorBlind
+          expr: >-
+            _time:30m namespace:=forgejo container:=forgejo
+            _msg:~"^[0-9a-fA-F.:\\[\\]]+ - \\S+ \\["
+            | stats count() as hits
+            | filter hits:=0
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: honeytokens
+          annotations:
+            summary: "Forgejo access log missing, decoy tokens unwatched (forgejo)"
+            description: |
+              What's happening:
+              - VictoriaLogs holds no Forgejo access-log line for thirty minutes.
+
+              Impact/risk:
+              - HoneytokenForgejoTokenUsed reads only the access log; while it is missing, a used decoy token raises nothing.
+
+              Likely causes:
+              - The [log] logger.access.MODE setting was dropped from the Forgejo HelmRelease.
+              - Forgejo is down, or log shipping from the forgejo namespace stopped.
+
+              First actions:
+              - Check that the Forgejo pod logs lines shaped like `10.42.x.y - user [date] "GET ..."`.
+              - Restore `logger.access.MODE: console` under gitea.config.log if it is gone.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/honeytokens/#a-detector-is-blind"
+        - alert: HoneytokenLiteLLMDetectorBlind
+          expr: >-
+            _time:30m namespace:=ai container:=app pod:litellm*
+            | stats count() as hits
+            | filter hits:=0
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: honeytokens
+          annotations:
+            summary: "LiteLLM logs missing, decoy keys unwatched (ai)"
+            description: |
+              What's happening:
+              - VictoriaLogs holds no LiteLLM log line for thirty minutes.
+
+              Impact/risk:
+              - HoneytokenLiteLLMKeyUsed reads only these logs; while they are missing, a used decoy key raises nothing.
+
+              Likely causes:
+              - LiteLLM is down, or log shipping from the ai namespace stopped.
+              - The LiteLLM container was renamed and the rule's selector no longer matches.
+
+              First actions:
+              - Check that `namespace:=ai container:=app pod:litellm*` returns lines in VictoriaLogs.
+              - Fix the selector in this rule if the container changed.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/honeytokens/#a-detector-is-blind"
