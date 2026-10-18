@@ -148,3 +148,31 @@ spec:
                 config.omitEvents but treats the symptom.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/kyverno-violations/kyverno-policy-violations"
+        - alert: KubeAPIServerScrapeDown
+          expr: |
+            up{job="kubernetes"} == 0
+              or on() vector(3) - count(up{job="kubernetes"} == 1) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "A kube-apiserver is not being scraped"
+            description: |
+              What's happening:
+              - At least one of the three kube-apiserver targets has reported
+                up=0, or fewer than three are scraping, for 15 minutes.
+
+              Impact/risk:
+              - Every apiserver dashboard and alert (memory, request latency)
+                silently covers only the remaining instances. soyo-1 was dark
+                this way for over 35 days until 2026-10-18.
+
+              Likely causes:
+              - The target's /metrics outgrew vmagent's promscrape.maxScrapeSize
+                (soyo-1 served 25 MB against the old 16 MiB cap).
+              - The apiserver or its node is down.
+
+              First actions:
+              - vmagent targets: `kubectl -n observability get --raw /api/v1/namespaces/observability/services/vmagent-vmagent:8429/proxy/api/v1/targets` and read lastError for job kubernetes.
+              - Size of a target: `kubectl --server=https://<node-ip>:6443 get --raw /metrics | wc -c`
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
