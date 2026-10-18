@@ -175,6 +175,24 @@ spec:
                   - - bronze
               - "on"
               - null
+        # Unfold ADR-0042: the shadow tripwire scores bronze's tool calls; it never acts on a Run.
+        runs.tripwire:
+          targeting:
+            if:
+              - in:
+                  - var: team
+                  - - bronze
+              - "on"
+              - null
+    # Free EU Qwen through Unfold's own key (Job litellm-key-register-unfold-decider, #811).
+    decider:
+      enabled: true
+      baseUrl: http://litellm.ai.svc.cluster.local:4000/v1
+      model: hetzner-qwen3-8-27b
+      name: Hetzner Qwen
+      requestsPerMinute: 8
+      existingSecret: unfold-decider
+      secretKey: key
     config:
       maxConcurrentSessions: 1
       maxBudgetUsd: 1.00
