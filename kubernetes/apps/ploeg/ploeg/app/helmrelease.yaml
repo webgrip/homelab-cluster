@@ -648,7 +648,20 @@ spec:
           harness:
             name: exec
             args:
-              - "/bin/cat"
+              - "/bin/sh"
+              - "-c"
+              - |
+                set -eu
+                spec="$$1"
+                grep -q '"title": "\[canary\]' "$$spec" || exec cat "$$spec"
+                briefed=0
+                if [ -n "$${PLOEG_KNOWLEDGE_DIR:-}" ]; then
+                  briefed=$$(grep -rl ploeg-canary-note "$$PLOEG_KNOWLEDGE_DIR" | wc -l)
+                fi
+                printf '{"type":"Fact","title":"ploeg-canary-note","description":"Written while a canary Run worked","tags":["ploeg-canary"],"body":"ploeg-canary-note briefed=%s"}\n' "$$briefed" >> "$${PLOEG_NOTES_FILE:?no notes file: live notes are off}"
+                sleep 15
+                printf '{"outcome":"stuck","summary":"ploeg-canary stopped on purpose","stuckReason":"ploeg-canary stops every Run so the stop note is written"}\n' > "$$(dirname "$$spec")/outcome.json"
+              - "ploeg-canary"
               - "{taskspec}"
             dind: false
         # pewter: Ploeg ADR-0084. The worker only logs in as a WebGrip Team

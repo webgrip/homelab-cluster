@@ -54,6 +54,12 @@ reconcile:
     @just _file "${KUBECONFIG}"
     flux --namespace flux-system reconcile kustomization flux-system --with-source
 
+# Prove a Ploeg Run's notes reach the notes graph and the next Run, through team copper at US$0
+[group('cluster')]
+ploeg-notes-canary:
+    @just _file "${KUBECONFIG}"
+    {{ root }}/scripts/ploeg-notes-canary.sh
+
 # --- validation -------------------------------------------------------------
 
 # Validate the Flux manifests your local changes affect (fast; auto-scoped to git diff)
