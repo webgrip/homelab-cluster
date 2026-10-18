@@ -25,6 +25,20 @@ cluster's API, so the API server gets its own client with only `localhost` redir
 2. Enforcement must be **On** for all users. If it is not, turn it on. After this change Google's
    MFA is the only MFA in the estate; Authentik's own authenticators are retired.
 3. Billing → Subscriptions: note the edition. Nothing here needs more than Business Starter.
+4. Admins use a security key ([ADR-0077](../adr/adr-0077-admins-prove-a-security-key-at-google-and-sessions-end-in-twelve-hours.md)).
+   Every person in `homelab-admins` first enrols two keys at `myaccount.google.com` → Security →
+   2-Step Verification: two hardware keys, or one key and one passkey. Then they print fresh
+   backup codes and keep them offline.
+5. Put the admins in their own organisational unit (Directory → Organisational units), for
+   example `Admins`. While the owner is the only admin, the top-level unit works too.
+6. Security → Authentication → 2-Step Verification, select that unit: Enforcement **On**,
+   Methods **Only security key**, Security codes **Don't allow**. Save. Sign in from a private
+   window and check that Google asks for the key and offers nothing else.
+7. Security → Access and data control → Google session control, select the same unit: Web
+   session duration **12 hours**. Save.
+8. Check: Reporting → Reports → User reports → Security lists a security key for every admin.
+   If an admin loses both keys, a super-admin creates backup codes for them in Directory →
+   Users → the user → Security.
 
 ## 2. Create the project
 

@@ -31,17 +31,18 @@ locals {
 
   oauth_applications = {
     grafana = {
-      provider_name = "grafana-oidc"
-      app_name      = "Grafana"
-      description   = "Grafana login via Authentik OIDC."
-      launch_url    = "https://grafana.${var.SECRET_DOMAIN}"
-      client_id     = data.vault_kv_secret_v2.oidc_client["grafana"].data["GF_AUTH_GENERIC_OAUTH_CLIENT_ID"]
-      client_secret = data.vault_kv_secret_v2.oidc_client["grafana"].data["GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET"]
-      client_type   = "confidential"
-      signing_key   = false
-      grant_types   = ["authorization_code", "refresh_token"]
-      redirects     = [{ matching_mode = "strict", url = "https://grafana.${var.SECRET_DOMAIN}/login/generic_oauth" }]
-      extra_scopes  = ["groups"]
+      provider_name          = "grafana-oidc"
+      app_name               = "Grafana"
+      description            = "Grafana login via Authentik OIDC."
+      launch_url             = "https://grafana.${var.SECRET_DOMAIN}"
+      client_id              = data.vault_kv_secret_v2.oidc_client["grafana"].data["GF_AUTH_GENERIC_OAUTH_CLIENT_ID"]
+      client_secret          = data.vault_kv_secret_v2.oidc_client["grafana"].data["GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET"]
+      client_type            = "confidential"
+      signing_key            = false
+      grant_types            = ["authorization_code", "refresh_token"]
+      refresh_token_validity = "hours=12"
+      redirects              = [{ matching_mode = "strict", url = "https://grafana.${var.SECRET_DOMAIN}/login/generic_oauth" }]
+      extra_scopes           = ["groups"]
     }
     backstage = {
       provider_name = "backstage-oidc"
@@ -57,28 +58,30 @@ locals {
       extra_scopes  = []
     }
     forgejo = {
-      provider_name = "forgejo-oidc"
-      app_name      = "Forgejo"
-      description   = "Forgejo git hosting login via Authentik OIDC."
-      launch_url    = "https://forgejo.${var.SECRET_DOMAIN}"
-      client_id     = data.vault_kv_secret_v2.oidc_client["forgejo"].data["key"]
-      client_secret = data.vault_kv_secret_v2.oidc_client["forgejo"].data["secret"]
-      client_type   = "confidential"
-      signing_key   = false
-      grant_types   = ["authorization_code", "refresh_token"]
-      redirects     = [{ matching_mode = "strict", url = "https://forgejo.${var.SECRET_DOMAIN}/user/oauth2/authentik/callback" }]
-      extra_scopes  = ["groups"]
+      provider_name          = "forgejo-oidc"
+      app_name               = "Forgejo"
+      description            = "Forgejo git hosting login via Authentik OIDC."
+      launch_url             = "https://forgejo.${var.SECRET_DOMAIN}"
+      client_id              = data.vault_kv_secret_v2.oidc_client["forgejo"].data["key"]
+      client_secret          = data.vault_kv_secret_v2.oidc_client["forgejo"].data["secret"]
+      client_type            = "confidential"
+      signing_key            = false
+      grant_types            = ["authorization_code", "refresh_token"]
+      refresh_token_validity = "hours=12"
+      redirects              = [{ matching_mode = "strict", url = "https://forgejo.${var.SECRET_DOMAIN}/user/oauth2/authentik/callback" }]
+      extra_scopes           = ["groups"]
     }
     openbao = {
-      provider_name = "openbao-oidc"
-      app_name      = "OpenBao"
-      description   = "OpenBao secrets manager login via Authentik OIDC."
-      launch_url    = "https://openbao.${var.SECRET_DOMAIN}"
-      client_id     = "openbao"
-      client_secret = null
-      client_type   = "confidential"
-      signing_key   = true
-      grant_types   = ["authorization_code", "refresh_token"]
+      provider_name          = "openbao-oidc"
+      app_name               = "OpenBao"
+      description            = "OpenBao secrets manager login via Authentik OIDC."
+      launch_url             = "https://openbao.${var.SECRET_DOMAIN}"
+      client_id              = "openbao"
+      client_secret          = null
+      client_type            = "confidential"
+      signing_key            = true
+      grant_types            = ["authorization_code", "refresh_token"]
+      refresh_token_validity = "hours=12"
       redirects = [
         { matching_mode = "strict", url = "https://openbao.${var.SECRET_DOMAIN}/ui/vault/auth/oidc/oidc/callback" },
         { matching_mode = "strict", url = "http://localhost:8250/oidc/callback" },
@@ -86,17 +89,18 @@ locals {
       extra_scopes = ["groups"]
     }
     harbor = {
-      provider_name = "harbor-oidc"
-      app_name      = "Harbor"
-      description   = "Harbor container registry login via Authentik OIDC."
-      launch_url    = "https://harbor.${var.SECRET_DOMAIN}"
-      client_id     = "harbor"
-      client_secret = data.vault_kv_secret_v2.oidc_client["harbor"].data["client_secret"]
-      client_type   = "confidential"
-      signing_key   = true
-      grant_types   = ["authorization_code", "refresh_token"]
-      redirects     = [{ matching_mode = "strict", url = "https://harbor.${var.SECRET_DOMAIN}/c/oidc/callback" }]
-      extra_scopes  = ["groups"]
+      provider_name          = "harbor-oidc"
+      app_name               = "Harbor"
+      description            = "Harbor container registry login via Authentik OIDC."
+      launch_url             = "https://harbor.${var.SECRET_DOMAIN}"
+      client_id              = "harbor"
+      client_secret          = data.vault_kv_secret_v2.oidc_client["harbor"].data["client_secret"]
+      client_type            = "confidential"
+      signing_key            = true
+      grant_types            = ["authorization_code", "refresh_token"]
+      refresh_token_validity = "hours=12"
+      redirects              = [{ matching_mode = "strict", url = "https://harbor.${var.SECRET_DOMAIN}/c/oidc/callback" }]
+      extra_scopes           = ["groups"]
     }
     vikunja = {
       provider_name = "vikunja-oidc"
@@ -112,17 +116,18 @@ locals {
       extra_scopes  = []
     }
     litellm = {
-      provider_name = "litellm-oidc"
-      app_name      = "LiteLLM"
-      description   = "LiteLLM proxy Admin UI login via Authentik OIDC."
-      launch_url    = "https://litellm.${var.SECRET_DOMAIN}/ui"
-      client_id     = "litellm"
-      client_secret = data.vault_kv_secret_v2.oidc_client["litellm"].data["client_secret"]
-      client_type   = "confidential"
-      signing_key   = true
-      grant_types   = ["authorization_code", "refresh_token"]
-      redirects     = [{ matching_mode = "strict", url = "https://litellm.${var.SECRET_DOMAIN}/sso/callback" }]
-      extra_scopes  = ["litellm-role"]
+      provider_name          = "litellm-oidc"
+      app_name               = "LiteLLM"
+      description            = "LiteLLM proxy Admin UI login via Authentik OIDC."
+      launch_url             = "https://litellm.${var.SECRET_DOMAIN}/ui"
+      client_id              = "litellm"
+      client_secret          = data.vault_kv_secret_v2.oidc_client["litellm"].data["client_secret"]
+      client_type            = "confidential"
+      signing_key            = true
+      grant_types            = ["authorization_code", "refresh_token"]
+      refresh_token_validity = "hours=12"
+      redirects              = [{ matching_mode = "strict", url = "https://litellm.${var.SECRET_DOMAIN}/sso/callback" }]
+      extra_scopes           = ["litellm-role"]
     }
     cloudflare-access = {
       provider_name = "cloudflare-access-oidc"
@@ -173,18 +178,19 @@ locals {
       adopt        = false
     }
     longhorn = {
-      provider_name = "longhorn-oidc"
-      app_name      = "Longhorn"
-      description   = "Block storage administration; deletes volumes and repoints backups."
-      launch_url    = "https://longhorn.${var.SECRET_DOMAIN}"
-      client_id     = "longhorn"
-      client_secret = data.vault_kv_secret_v2.oidc_client["longhorn"].data["client_secret"]
-      client_type   = "confidential"
-      signing_key   = true
-      grant_types   = ["authorization_code", "refresh_token"]
-      redirects     = [{ matching_mode = "strict", url = "https://longhorn.${var.SECRET_DOMAIN}/oauth2/callback" }]
-      extra_scopes  = []
-      adopt         = false
+      provider_name          = "longhorn-oidc"
+      app_name               = "Longhorn"
+      description            = "Block storage administration; deletes volumes and repoints backups."
+      launch_url             = "https://longhorn.${var.SECRET_DOMAIN}"
+      client_id              = "longhorn"
+      client_secret          = data.vault_kv_secret_v2.oidc_client["longhorn"].data["client_secret"]
+      client_type            = "confidential"
+      signing_key            = true
+      grant_types            = ["authorization_code", "refresh_token"]
+      refresh_token_validity = "hours=12"
+      redirects              = [{ matching_mode = "strict", url = "https://longhorn.${var.SECRET_DOMAIN}/oauth2/callback" }]
+      extra_scopes           = []
+      adopt                  = false
     }
     cluster-dashboards = {
       provider_name = "cluster-dashboards-oidc"
@@ -221,18 +227,19 @@ locals {
       adopt         = false
     }
     omnigraph-review = {
-      provider_name = "omnigraph-review-oidc"
-      app_name      = "Omnigraph Review"
-      description   = "Review, merge and reject agent branches on the brain, memory and webgrip graphs."
-      launch_url    = "https://graph-review.${var.SECRET_DOMAIN}"
-      client_id     = "omnigraph-review"
-      client_secret = data.vault_kv_secret_v2.oidc_client["omnigraph-review"].data["client_secret"]
-      client_type   = "confidential"
-      signing_key   = true
-      grant_types   = ["authorization_code", "refresh_token"]
-      redirects     = [{ matching_mode = "strict", url = "https://graph-review.${var.SECRET_DOMAIN}/oauth2/callback" }]
-      extra_scopes  = []
-      adopt         = false
+      provider_name          = "omnigraph-review-oidc"
+      app_name               = "Omnigraph Review"
+      description            = "Review, merge and reject agent branches on the brain, memory and webgrip graphs."
+      launch_url             = "https://graph-review.${var.SECRET_DOMAIN}"
+      client_id              = "omnigraph-review"
+      client_secret          = data.vault_kv_secret_v2.oidc_client["omnigraph-review"].data["client_secret"]
+      client_type            = "confidential"
+      signing_key            = true
+      grant_types            = ["authorization_code", "refresh_token"]
+      refresh_token_validity = "hours=12"
+      redirects              = [{ matching_mode = "strict", url = "https://graph-review.${var.SECRET_DOMAIN}/oauth2/callback" }]
+      extra_scopes           = []
+      adopt                  = false
     }
     open-webui = {
       provider_name = "open-webui-oidc"
@@ -275,16 +282,17 @@ resource "authentik_property_mapping_provider_scope" "app" {
 resource "authentik_provider_oauth2" "app" {
   for_each = local.oauth_applications
 
-  name                  = each.value.provider_name
-  client_id             = each.value.client_id
-  client_secret         = each.value.client_secret
-  client_type           = each.value.client_type
-  grant_types           = each.value.grant_types
-  access_token_validity = lookup(each.value, "access_token_validity", "hours=1")
-  authentication_flow   = var.google_login ? authentik_flow.webgrip_authentication[0].uuid : data.authentik_flow.authentication.id
-  authorization_flow    = data.authentik_flow.authorization_implicit_consent.id
-  invalidation_flow     = data.authentik_flow.invalidation.id
-  signing_key           = each.value.signing_key ? data.authentik_certificate_key_pair.self_signed.id : null
+  name                   = each.value.provider_name
+  client_id              = each.value.client_id
+  client_secret          = each.value.client_secret
+  client_type            = each.value.client_type
+  grant_types            = each.value.grant_types
+  access_token_validity  = lookup(each.value, "access_token_validity", "hours=1")
+  refresh_token_validity = lookup(each.value, "refresh_token_validity", "days=30")
+  authentication_flow    = var.google_login ? authentik_flow.webgrip_authentication[0].uuid : data.authentik_flow.authentication.id
+  authorization_flow     = data.authentik_flow.authorization_implicit_consent.id
+  invalidation_flow      = data.authentik_flow.invalidation.id
+  signing_key            = each.value.signing_key ? data.authentik_certificate_key_pair.self_signed.id : null
 
   allowed_redirect_uris = [for redirect in each.value.redirects : merge({ redirect_uri_type = "authorization" }, redirect)]
 
