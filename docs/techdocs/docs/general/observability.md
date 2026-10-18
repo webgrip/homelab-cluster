@@ -187,6 +187,7 @@ Check arrival on the gateway's own counters: `otelcol_receiver_accepted_log_reco
 must rise after a session. The `blackbox-alloy-gateway-otlp-ingest` probe expects 401 without a
 token, so it fails both when the route is gone and when the auth gate is.
 The plan for agent-estate observability is the [agent observability RFC](../rfc/rfc-agent-observability.md).
+Ploeg Runs: Claude Code harnesses always receive the telemetry setting; OpenHands only with `allowHarnesses: [openhands]` on an agent image whose lmnr is compatible (agent-runner 1.4.0 or later, Ploeg ADR-0113).
 
 ## SLOs (Sloth)
 
