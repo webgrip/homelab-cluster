@@ -1,0 +1,46 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/clusterpolicy_v1.json
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: image-verify-ploeg-hq-audit
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
+    policies.kyverno.io/title: Ploeg Release Signatures (Audit)
+    policies.kyverno.io/category: Software Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.19.1
+    policies.kyverno.io/description: >-
+      Reports Ploeg images, pulled from GHCR directly or through the Harbor proxy, that lack
+      a keyless cosign signature from the ploeg-hq/ploeg release workflow (GitHub Actions
+      OIDC, recorded in the public Rekor log). Audit until a signed Ploeg release runs here;
+      promotion follows ADR-0073.
+spec:
+  validationFailureAction: Audit
+  background: false
+  webhookTimeoutSeconds: 30
+  failurePolicy: Ignore
+  rules:
+    - name: verify-ploeg-release-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "harbor.${SECRET_DOMAIN}/ghcr/ploeg-hq/*"
+            - "ghcr.io/ploeg-hq/*"
+          required: true
+          mutateDigest: false
+          verifyDigest: true
+          useCache: true
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    issuer: https://token.actions.githubusercontent.com
+                    subjectRegExp: '^https://github\.com/ploeg-hq/ploeg/\.github/workflows/release\.yml@refs/(heads/development|heads/main|tags/v0\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?)$'
+                    rekor:
+                      url: https://rekor.sigstore.dev

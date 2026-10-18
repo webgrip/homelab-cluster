@@ -5,12 +5,34 @@ metadata:
   name: image-verification
 policies:
   - ../../policies/image-verify-harbor-audit.yaml
+  - ../../policies/image-verify-harbor-enforce.yaml
+  - ../../policies/image-verify-ploeg-hq-audit.yaml
 resources:
   - resources.yaml
+variables: values.yaml
 results:
   - policy: image-verify-harbor-audit
     rule: verify-webgrip-harbor-images
     resources:
       - app/third-party-digest
+    kind: Pod
+    result: skip
+  - policy: image-verify-harbor-enforce
+    rule: require-webgrip-signature
+    resources:
+      - app/third-party-digest
+    kind: Pod
+    result: skip
+  - policy: image-verify-harbor-enforce
+    rule: require-webgrip-signature
+    resources:
+      - app/first-party-unprovable
+    kind: Pod
+    result: fail
+  - policy: image-verify-ploeg-hq-audit
+    rule: verify-ploeg-release-signature
+    resources:
+      - app/third-party-digest
+      - app/first-party-unprovable
     kind: Pod
     result: skip
