@@ -130,6 +130,50 @@ candidate. From then on the steady-state alerts (`FluxHelmReleaseNotReady`, `Syn
   under one name) or add a dedicated bot (which runs against the no-new-bot-accounts decision). A
   revert PR also waits for the e2e checks, which adds their run time to the rollback.
 
+### P1b events, not schedules
+
+Proposed 2026-10-18. The owner rejected the hourly Renovate schedule as the way a release moves
+along the chain. On 2026-10-18 Ploeg `v0.2.0-rc.27` published itself at 07:08 and then waited for
+the `33 * * * *` run of RenovateJob `webgrip-forgejo`; every hop pays that wait twice, once to
+open the bump and once to merge it, because Renovate merges only while a run is active.
+
+Checked against the deployed renovate-operator 5.2.0, Renovate 44.165.2 and Forgejo 15.0.9:
+
+- `POST /webhook/v1/schedule?job=<job>&namespace=renovate&project=<org%2Frepo>` schedules any
+  project the job already discovered, at priority 1, authenticated by a bearer token or an HMAC
+  of the body. The secret may hold several comma-separated tokens. `webgrip/unfold` and
+  `webgrip/homelab-cluster` are both projects of `webgrip-forgejo`.
+- A trigger for a project that is running is dropped and still answered 200, so each trigger
+  repeats once after 20 minutes. The schedule stays as the backstop.
+- With `platformAutomerge`, Renovate asks Forgejo to merge when checks succeed as it opens the
+  PR, and Forgejo merges on the last required status. Forgejo gates only on the branch's
+  required contexts.
+
+| Hop | Trigger | Latency |
+| --- | --- | --- |
+| Ploeg bundle published → Unfold bump | last step of Ploeg's `contract-bundle.yml` POSTs `/schedule` for `webgrip/unfold` over a public route limited to that path, job and project | minutes |
+| Unfold bump → merged | `platformAutomerge` on Unfold's Ploeg group | on the last required check |
+| Unfold release distributed → homelab bump | a job after Unfold's distribute step POSTs `/schedule` for `webgrip/homelab-cluster` over the LAN route | the running executor, then one run |
+| Homelab bump → merged | `platformAutomerge` on the `ploeg-unfold-release` group | on the last required check |
+
+Prerequisites, in order, because a missing required context would let a red PR merge:
+
+1. Homelab `main` requires all five `e2e /` contexts; on 2026-10-18 it required four, without
+   `e2e / Omnigraph and brain tests`.
+2. Unfold `development` requires `ploeg-docs`, the check that holds a Ploeg bump whose vocabulary
+   clashes with Unfold's; on 2026-10-18 it did not.
+3. Two new trigger tokens in OpenBao `renovate/webhook-auth` (`ploeg_github`, `forgejo_ci`),
+   joined into the operator's secret by its ExternalSecret; the PushSecret that writes back to
+   `token` goes, or the list would grow on every sync. Ploeg holds its token as the repository
+   secret `RENOVATE_TRIGGER_TOKEN` and the URL as the variable `RENOVATE_TRIGGER_URL`, so a fork
+   without them skips the step.
+
+The public route is new exposure: it can only schedule one Renovate run for `webgrip/unfold`.
+Whether Envoy matches the encoded project query before or after decoding is tested both ways
+before it is relied on: another project gets 404 from the route, `webgrip/unfold` gets 200.
+Upstream, the operator could remember a trigger that arrives while a project runs, which would
+remove the repeat.
+
 Implementation runs in a separate work stream; its first slice is the homelab branch
 `fix/renovate-ploeg-unfold-release`.
 
