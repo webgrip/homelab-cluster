@@ -2,9 +2,27 @@ query root_notes($root: String) @description("The notes of one root Work Item, n
   match {
     $n: Note { root_work_item: $root }
   }
-  return { $n.key as key, $n.work_item as work_item, $n.repository as repository, $n.type as type, $n.title as title, $n.description as description, $n.resource as resource, $n.body as body, $n.tags as tags, $n.suggested_scope as suggested_scope, $n.written_by as written_by, $n.written_at as written_at }
+  return { $n.key as key, $n.work_item as work_item, $n.repository as repository, $n.client as client, $n.type as type, $n.title as title, $n.description as description, $n.resource as resource, $n.body as body, $n.tags as tags, $n.suggested_scope as suggested_scope, $n.written_by as written_by, $n.written_at as written_at, $n.level as level, $n.subject as subject, $n.author_kind as author_kind, $n.author as author, $n.source_refs as source_refs, $n.trust as trust, $n.observed_at as observed_at, $n.expires_at as expires_at, $n.supersedes as supersedes, $n.contradicts as contradicts, $n.promoted_from as promoted_from, $n.evidence as evidence, $n.approved_by as approved_by }
   order { $n.written_at desc }
   limit 200
+}
+
+query repository_notes($repository: String) @description("The repository-level notes of one repository, newest first; ploegd keeps only those of the reading Run's Client") {
+  match {
+    $n: Note { repository: $repository, level: "repository" }
+  }
+  return { $n.key as key, $n.work_item as work_item, $n.repository as repository, $n.client as client, $n.type as type, $n.title as title, $n.description as description, $n.resource as resource, $n.body as body, $n.tags as tags, $n.suggested_scope as suggested_scope, $n.written_by as written_by, $n.written_at as written_at, $n.level as level, $n.subject as subject, $n.author_kind as author_kind, $n.author as author, $n.source_refs as source_refs, $n.trust as trust, $n.observed_at as observed_at, $n.expires_at as expires_at, $n.supersedes as supersedes, $n.contradicts as contradicts, $n.promoted_from as promoted_from, $n.evidence as evidence, $n.approved_by as approved_by, $n.root_work_item as root_work_item }
+  order { $n.written_at desc }
+  limit 200
+}
+
+query subject_notes($subject: String) @description("Every note on one subject, newest first; ploegd reads them before it writes a note on that subject, to supersede or flag") {
+  match {
+    $n: Note { subject: $subject }
+  }
+  return { $n.key as key, $n.root_work_item as root_work_item, $n.work_item as work_item, $n.repository as repository, $n.client as client, $n.type as type, $n.title as title, $n.body as body, $n.written_at as written_at, $n.level as level, $n.subject as subject, $n.author_kind as author_kind, $n.author as author, $n.trust as trust, $n.expires_at as expires_at, $n.supersedes as supersedes, $n.promoted_from as promoted_from }
+  order { $n.written_at desc }
+  limit 100
 }
 
 query note_by_key($key: String) @description("One note by key; ploegd reads a write back with it") {
@@ -15,10 +33,26 @@ query note_by_key($key: String) @description("One note by key; ploegd reads a wr
   limit 1
 }
 
-query add_note($key: String, $root: String, $work_item: String, $repository: String, $client: String?, $type: String, $title: String, $description: String?, $resource: String?, $body: String, $tags: [String]?, $suggested_scope: String, $written_by: String, $written_at: DateTime) @description("Write or rewrite one Work Item Note; the key makes a retry an upsert") {
-  insert Note { key: $key, root_work_item: $root, work_item: $work_item, repository: $repository, client: $client, type: $type, title: $title, description: $description, resource: $resource, body: $body, tags: $tags, suggested_scope: $suggested_scope, written_by: $written_by, written_at: $written_at }
+query client_note_count($client: String) @description("How many notes one Client still has; a purge is done when it reads zero") {
+  match {
+    $n: Note { client: $client }
+  }
+  return { count($n) as notes }
+}
+
+query add_note($key: String, $root: String, $work_item: String, $repository: String, $client: String?, $type: String, $title: String, $description: String?, $resource: String?, $body: String, $tags: [String]?, $suggested_scope: String, $written_by: String, $written_at: DateTime, $level: String?, $subject: String?, $author_kind: String?, $author: String?, $source_refs: [String]?, $trust: String?, $observed_at: DateTime?, $expires_at: DateTime?, $contradicts: [String]?, $promoted_from: String?, $evidence: [String]?, $approved_by: String?) @description("Write one note; the key makes a retry an upsert. ploegd invokes it on the if-graph-commit route with the commit it read") {
+  insert Note { key: $key, root_work_item: $root, work_item: $work_item, repository: $repository, client: $client, type: $type, title: $title, description: $description, resource: $resource, body: $body, tags: $tags, suggested_scope: $suggested_scope, written_by: $written_by, written_at: $written_at, level: $level, subject: $subject, author_kind: $author_kind, author: $author, source_refs: $source_refs, trust: $trust, observed_at: $observed_at, expires_at: $expires_at, contradicts: $contradicts, promoted_from: $promoted_from, evidence: $evidence, approved_by: $approved_by }
+}
+
+query add_note_superseding($key: String, $root: String, $work_item: String, $repository: String, $client: String?, $type: String, $title: String, $description: String?, $resource: String?, $body: String, $tags: [String]?, $suggested_scope: String, $written_by: String, $written_at: DateTime, $level: String?, $subject: String?, $author_kind: String?, $author: String?, $source_refs: [String]?, $trust: String?, $observed_at: DateTime?, $expires_at: DateTime?, $contradicts: [String]?, $promoted_from: String?, $evidence: [String]?, $approved_by: String?, $supersedes: String) @description("Write one note that replaces an older one, and the Supersedes edge between them, in one commit") {
+  insert Note { key: $key, root_work_item: $root, work_item: $work_item, repository: $repository, client: $client, type: $type, title: $title, description: $description, resource: $resource, body: $body, tags: $tags, suggested_scope: $suggested_scope, written_by: $written_by, written_at: $written_at, level: $level, subject: $subject, author_kind: $author_kind, author: $author, source_refs: $source_refs, trust: $trust, observed_at: $observed_at, expires_at: $expires_at, supersedes: $supersedes, contradicts: $contradicts, promoted_from: $promoted_from, evidence: $evidence, approved_by: $approved_by }
+  insert Supersedes { from: $key, to: $supersedes }
 }
 
 query delete_root_notes($root: String) @description("Remove the notes of a closed root Work Item (retention)") {
   delete Note where root_work_item = $root
+}
+
+query delete_client_notes($client: String) @description("Remove every note of one Client from main, with their edges. Older commits keep the rows until an offline cleanup reclaims them") {
+  delete Note where client = $client
 }
