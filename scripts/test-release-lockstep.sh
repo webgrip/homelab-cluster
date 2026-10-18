@@ -75,12 +75,19 @@ UNFOLD_VERSION="$(committed_version Unfold)"
 PLOEG_VERSION="$(committed_version Ploeg)"
 
 unfold_release_source() {
-  local certified_ploeg="$1" source
+  local certified_ploeg="$1" layout="${2:-bundle}" source release
   source="$(mktemp -d)"
+  release="${source}/unfold-v${UNFOLD_VERSION}"
   if [[ -n "$certified_ploeg" ]]; then
-    mkdir -p "${source}/unfold-v${UNFOLD_VERSION}"
-    printf '[submodule "apps/ploeg"]\n\tpath = apps/ploeg\n\turl = https://github.com/ploeg-hq/ploeg.git\n\tbranch = v%s\n' \
-      "$certified_ploeg" >"${source}/unfold-v${UNFOLD_VERSION}/.gitmodules"
+    mkdir -p "$release"
+    if [[ "$layout" == "submodule" ]]; then
+      printf '[submodule "apps/ploeg"]\n\tpath = apps/ploeg\n\turl = https://github.com/ploeg-hq/ploeg.git\n\tbranch = v%s\n' \
+        "$certified_ploeg" >"${release}/.gitmodules"
+    else
+      mkdir -p "${release}/apps/unfold"
+      printf '{\n  "contract": "ghcr.io/ploeg-hq/ploeg-contract:%s@sha256:%s"\n}\n' \
+        "$certified_ploeg" "$(printf '0%.0s' {1..64})" >"${release}/apps/unfold/ploeg-release.json"
+    fi
   fi
   echo "$source"
 }
@@ -104,9 +111,9 @@ move_ploeg_pins_to() {
 }
 
 expect_pair() {
-  local want="$1" name="$2" certified_ploeg="$3" ploeg_pin="$4" base="$5" dir source got
+  local want="$1" name="$2" certified_ploeg="$3" ploeg_pin="$4" base="$5" layout="${6:-bundle}" dir source got
   dir="$(committed_repository)"
-  source="$(unfold_release_source "$certified_ploeg")"
+  source="$(unfold_release_source "$certified_ploeg" "$layout")"
   [[ "$ploeg_pin" == "$PLOEG_VERSION" ]] || move_ploeg_pins_to "$dir" "$ploeg_pin"
   local arguments=(--certified-pair --source "file://${source}")
   [[ -z "$base" ]] || arguments+=(--base "$base")
@@ -122,7 +129,9 @@ expect_pair() {
 
 expect_pair pass "Ploeg is the release Unfold pins" "$PLOEG_VERSION" "$PLOEG_VERSION" ""
 expect_pair fail "Ploeg is not the release Unfold pins" "0.0.1-rc.1" "$PLOEG_VERSION" ""
-expect_pair fail "Unfold release publishes no .gitmodules" "" "$PLOEG_VERSION" ""
+expect_pair fail "Unfold release names no Ploeg release" "" "$PLOEG_VERSION" ""
+expect_pair pass "Ploeg is the release an older Unfold names in .gitmodules" "$PLOEG_VERSION" "$PLOEG_VERSION" "" submodule
+expect_pair fail "Ploeg is not the release an older Unfold names in .gitmodules" "0.0.1-rc.1" "$PLOEG_VERSION" "" submodule
 expect_pair pass "uncertified pair unchanged from the base" "0.0.1-rc.1" "$PLOEG_VERSION" HEAD
 expect_pair fail "Ploeg moved ahead of the release Unfold pins" "$PLOEG_VERSION" "9.9.9-rc.1" HEAD
 expect_pair pass "Ploeg moved to the release Unfold pins" "9.9.9-rc.1" "9.9.9-rc.1" HEAD
