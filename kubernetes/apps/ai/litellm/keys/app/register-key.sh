@@ -16,7 +16,8 @@ desired=$(jq -cn \
   --argjson tpm "$TPM_LIMIT" \
   --arg owner "$KEY_OWNER" \
   --arg purpose "$KEY_PURPOSE" \
-  '{key_alias: $alias, models: $models, max_budget: $budget, budget_duration: $duration, rpm_limit: $rpm, tpm_limit: $tpm, object_permission: {mcp_access_groups: $groups}, metadata: {owner: $owner, purpose: $purpose}}')
+  --argjson nofallbacks "${DISABLE_FALLBACKS:-false}" \
+  '{key_alias: $alias, models: $models, max_budget: $budget, budget_duration: $duration, rpm_limit: $rpm, tpm_limit: $tpm, object_permission: {mcp_access_groups: $groups}, metadata: ({owner: $owner, purpose: $purpose} + (if $nofallbacks then {disable_fallbacks: true} else {} end))}')
 self_lookup() {
   curl -sS -o /tmp/self.json -w '%{http_code}' -H "Authorization: Bearer $VIRTUAL_KEY" "$LITELLM_URL/key/info"
 }
@@ -28,7 +29,8 @@ in_spec() {
     and .info.budget_duration == $want.budget_duration
     and .info.rpm_limit == $want.rpm_limit
     and .info.tpm_limit == $want.tpm_limit
-    and ((.info.object_permission.mcp_access_groups // []) | sort) == ($want.object_permission.mcp_access_groups | sort)' /tmp/self.json >/dev/null
+    and ((.info.object_permission.mcp_access_groups // []) | sort) == ($want.object_permission.mcp_access_groups | sort)
+    and (.info.metadata.disable_fallbacks // false) == ($want.metadata.disable_fallbacks // false)' /tmp/self.json >/dev/null
 }
 admin_call() {
   code=$(printf '%s' "$desired" | jq -c --arg key "$VIRTUAL_KEY" '. + {key: $key}' \
