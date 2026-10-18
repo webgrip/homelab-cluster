@@ -40,6 +40,7 @@ Large parts of the chain already rebuild from git. They are listed so the gaps s
 | Harbor projects (`webgrip`, the proxy-cache projects), proxy registries, robots `webgrip+ci` and the Renovate robot, retention, immutability, scanning, GC, webhook policy `unfold-release-renovate` | `kubernetes/apps/harbor/harbor/app/harbor-proxy-config.*` | hourly CronJob against the Harbor API; robot secrets from `password-generator-32`, pushed to OpenBao |
 | Harbor → Renovate trigger | `kubernetes/apps/harbor/release-relay` | Deployment; inbound token from a generator |
 | Forgejo bots `renovate`, `webgrip-ci`, `unfold-reports`, `agent-builder`, `agent-reviewer`, their team memberships and tokens | provisioner Jobs/CronJobs in `kubernetes/apps/renovate/renovate-operator/forgejo-provisioner` and `kubernetes/apps/forgejo/forgejo-actions-secrets/app` | idempotent API calls with the Forgejo admin credential; passwords from generators; tokens written to Secrets and PushSecret to OpenBao |
+| Forgejo producer bot `ploeg-release` (restricted user, Write collaborator on `webgrip/unfold` only, token `ploeg-release-hook` with `write:repository`, `write:issue`, `read:user`) | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/ploeg-release-provisioner.*` | hourly CronJob; password from `password-generator`; token kept while it authenticates with those scopes, else re-minted; PushSecret to OpenBao `forgejo/ploeg-release` property `token`; the run fails, and `DeliveryReleaseBotProvisionerFailing` fires, when the bot can reach any repository but `webgrip/unfold` or holds admin on it |
 | Forgejo org and repo Actions secrets (`WEBGRIP_CI_TOKEN`, `HARBOR_ROBOT_*`, `GHCR_*`, `CLOUDFLARE_*`, `OVSX_PAT`, `TECHDOCS_S3_*`) | `forgejo-actions-secrets.cronjob.yaml` | L3 bridge, hourly, validated against the provider |
 | Forgejo package-to-repo links | `forgejo-package-link-reconciler.cronjob.yaml` | CronJob |
 | OpenBao policies, auth roles (`ci-unfold`, the Forgejo OIDC signing role, `access-plane`) | `kubernetes/apps/security/openbao/bootstrap/` | bootstrap CronJob running `config.sh` |
@@ -80,7 +81,7 @@ Large parts of the chain already rebuild from git. They are listed so the gaps s
 | F7 | Push mirrors Forgejo → GitHub | Forgejo DB | script: `--only mirror` with G10 | no | GitHub copies go stale |
 | F8 | Pull mirror of `ploeg-hq/ploeg` on Forgejo | Forgejo DB | hand, New Migration form | no | read-only copy only; nothing in the chain reads it after D2, so low impact |
 | F9 | Unfold repo Actions variables `UNFOLD_RELEASES_ENABLED`, `UNFOLD_DOCS_PUBLISH_ENABLED` | Forgejo DB | hand, repo settings | no | releases and docs publishing are skipped without an error |
-| F10 | Producer bot `ploeg-release`: user, write collaboration on `webgrip/unfold` only, token (`write:repository`, `write:issue`, `read:user`), merge-whitelist entry on `development` | Forgejo | **does not exist** (anonymous `users/ploeg-release` is 404) | no | D5 cannot start |
+| F10 | Producer bot `ploeg-release`: merge-whitelist entry on `development` (VIK-1311). The user, its collaboration and its token are reconciled since VIK-2222, see above | Forgejo | **does not exist** | no | the producer bot cannot schedule the merge of its Unfold bump |
 
 ### OpenBao provided values (L1, typed once by a person)
 

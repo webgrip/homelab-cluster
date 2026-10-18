@@ -164,3 +164,71 @@ spec:
               - flux -n ploeg get helmrelease
               - kubectl -n observability logs deploy/vmalert-vmalert -c vmalert | grep delivery-verify
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/rfc/rfc-unfold-release-train/#p4-verify"
+
+    - name: delivery-verify.identities
+      interval: 1m
+      rules:
+        - alert: DeliveryReleaseBotProvisionerFailing
+          expr: |
+            (
+              max by (cronjob) (kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="forgejo", cronjob="ploeg-release-provisioner"})
+              > on (cronjob)
+              max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="forgejo", cronjob="ploeg-release-provisioner"})
+            )
+            or
+            (
+              max by (cronjob) (kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="forgejo", cronjob="ploeg-release-provisioner"})
+              unless on (cronjob)
+              max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="forgejo", cronjob="ploeg-release-provisioner"})
+            )
+          for: 20m
+          labels:
+            severity: warning
+            owner: platform
+            service: delivery-verify
+          annotations:
+            summary: "The Ploeg release bot on Forgejo did not converge on its last run (forgejo/ploeg-release-provisioner)"
+            description: |
+              What's happening:
+              - The latest hourly run of the CronJob forgejo/ploeg-release-provisioner has not succeeded for 20 minutes, or the CronJob has never succeeded.
+              - The job owns the Forgejo user ploeg-release, its write collaboration on webgrip/unfold, and the token ploeg-release-hook pushed to OpenBao secret/forgejo/ploeg-release.
+
+              Impact/risk:
+              - Ploeg's release hook may hold a token that no longer authenticates, so a Ploeg release opens no Unfold bump.
+              - When the access guard fails, the bot reaches a repository other than webgrip/unfold, or holds admin on it: a token for it can write where it should not.
+
+              Likely causes:
+              - "access guard failed" in the log: someone added the bot to a team, an org or another repository's collaborators.
+              - The Forgejo admin credential in forgejo-admin-secret was rejected, or Forgejo was down.
+              - The Secret ploeg-release-token could not be written (RBAC or the apiserver CiliumNetworkPolicy).
+
+              First actions:
+              - kubectl -n forgejo logs job/<latest ploeg-release-provisioner job>; the log lists every repository the bot can reach.
+              - Remove the extra access in Forgejo, then kubectl -n forgejo create job --from=cronjob/ploeg-release-provisioner ploeg-release-provisioner-manual
+              - The alert resolves when a run succeeds.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/delivery-chain-external-state/"
+        - alert: DeliveryReleaseBotProvisionerStale
+          expr: |
+            time() - max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="forgejo", cronjob="ploeg-release-provisioner"}) > 3 * 3600
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: delivery-verify
+          annotations:
+            summary: "The Ploeg release bot provisioner has not succeeded in over three hours (forgejo/ploeg-release-provisioner)"
+            description: |
+              What's happening:
+              - The hourly CronJob forgejo/ploeg-release-provisioner last succeeded more than three hours ago.
+
+              Impact/risk:
+              - A deleted ploeg-release user or a revoked token is not recreated, so Ploeg's release hook stops opening Unfold bumps.
+
+              Likely causes:
+              - The CronJob is suspended, deleted, or cannot schedule a pod on the worker pool.
+              - Every run fails; DeliveryReleaseBotProvisionerFailing names the reason.
+
+              First actions:
+              - kubectl -n forgejo get cronjob ploeg-release-provisioner
+              - kubectl -n forgejo get jobs --sort-by=.status.startTime | grep ploeg-release
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/delivery-chain-external-state/"

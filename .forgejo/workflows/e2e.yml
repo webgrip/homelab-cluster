@@ -145,6 +145,15 @@ jobs:
       - name: Test forgejo-sync leaves private repos alone
         run: bash scripts/test-forgejo-sync-skips-private.sh
 
+      - name: Test the ploeg-release provisioner against a fake Forgejo
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/forgejo/forgejo-actions-secrets/app"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          cp "$GITHUB_WORKSPACE/kubernetes/apps/forgejo/forgejo-actions-secrets/app/ploeg-release-provisioner.sh" "$ws/kubernetes/apps/forgejo/forgejo-actions-secrets/app/"
+          image="$(sed -nE 's#^ +image: (harbor\.webgrip\.dev/dockerhub/alpine/k8s:[^ ]+)$#\1#p' kubernetes/apps/forgejo/forgejo-actions-secrets/app/ploeg-release-provisioner.cronjob.yaml)"
+          docker run --rm -v "$ws":/data -w /data "$image" sh scripts/test-ploeg-release-provisioner.sh
+
       - name: Test the LiteLLM runtime patches on fake modules
         run: bash scripts/test-litellm-runtime-patches.sh
 

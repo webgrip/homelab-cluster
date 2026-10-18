@@ -179,3 +179,75 @@ tests:
         exp_samples:
           - labels: 'delivery:release_running_image:info{release="ploeg", image_id="harbor.webgrip.dev/ghcr/ploeg-hq/ploegd@sha256:2511828125cec9a5a88fcb685a8358a8e09bda720b1fe69ab96125558dcacdc0"}'
             value: 1
+
+  - name: the release bot provisioner fires when its last run failed or it never succeeded, not after a success
+    interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="forgejo", cronjob="ploeg-release-provisioner"}'
+        values: "60x60 3600x60 7200x60"
+      - series: 'kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="forgejo", cronjob="ploeg-release-provisioner"}'
+        values: "_x1 90x119 7230x60"
+    alert_rule_test:
+      - eval_time: 0m
+        groupname: delivery-verify.identities
+        alertname: DeliveryReleaseBotProvisionerFailing
+        exp_alerts: []
+      - eval_time: 50m
+        groupname: delivery-verify.identities
+        alertname: DeliveryReleaseBotProvisionerFailing
+        exp_alerts: []
+      - eval_time: 85m
+        groupname: delivery-verify.identities
+        alertname: DeliveryReleaseBotProvisionerFailing
+        exp_alerts:
+          - exp_labels:
+              cronjob: ploeg-release-provisioner
+              severity: warning
+              owner: platform
+              service: delivery-verify
+            exp_annotations:
+              summary: "The Ploeg release bot on Forgejo did not converge on its last run (forgejo/ploeg-release-provisioner)"
+      - eval_time: 150m
+        groupname: delivery-verify.identities
+        alertname: DeliveryReleaseBotProvisionerFailing
+        exp_alerts: []
+
+  - name: a release bot provisioner that has never succeeded fires
+    interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="forgejo", cronjob="ploeg-release-provisioner"}'
+        values: "60x60"
+    alert_rule_test:
+      - eval_time: 30m
+        groupname: delivery-verify.identities
+        alertname: DeliveryReleaseBotProvisionerFailing
+        exp_alerts:
+          - exp_labels:
+              cronjob: ploeg-release-provisioner
+              severity: warning
+              owner: platform
+              service: delivery-verify
+            exp_annotations:
+              summary: "The Ploeg release bot on Forgejo did not converge on its last run (forgejo/ploeg-release-provisioner)"
+
+  - name: the release bot provisioner goes stale after three hours without a success
+    interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="forgejo", cronjob="ploeg-release-provisioner"}'
+        values: "60x300"
+    alert_rule_test:
+      - eval_time: 200m
+        groupname: delivery-verify.identities
+        alertname: DeliveryReleaseBotProvisionerStale
+        exp_alerts: []
+      - eval_time: 240m
+        groupname: delivery-verify.identities
+        alertname: DeliveryReleaseBotProvisionerStale
+        exp_alerts:
+          - exp_labels:
+              cronjob: ploeg-release-provisioner
+              severity: warning
+              owner: platform
+              service: delivery-verify
+            exp_annotations:
+              summary: "The Ploeg release bot provisioner has not succeeded in over three hours (forgejo/ploeg-release-provisioner)"

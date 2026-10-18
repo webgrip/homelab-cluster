@@ -1,0 +1,108 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ploeg-release-provisioner
+  namespace: forgejo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ploeg-release-provisioner
+  namespace: forgejo
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "ploeg-release-token"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ploeg-release-provisioner
+  namespace: forgejo
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: ploeg-release-provisioner}
+subjects:
+  - {kind: ServiceAccount, name: ploeg-release-provisioner, namespace: forgejo}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ploeg-release-provisioner
+  namespace: forgejo
+spec:
+  schedule: "23 * * * *"
+  startingDeadlineSeconds: 1800
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: ploeg-release-provisioner
+        spec:
+          serviceAccountName: ploeg-release-provisioner
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: provision
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4
+              imagePullPolicy: IfNotPresent
+              command:
+                - "/bin/sh"
+                - "/scripts/ploeg-release-provisioner.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: CURL_TIMEOUT, value: "30"}
+                - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+                - {name: NAMESPACE, value: forgejo}
+                - {name: REPO, value: webgrip/unfold}
+                - {name: TOKEN_SECRET, value: ploeg-release-token}
+                - {name: TOKEN_NAME, value: ploeg-release-hook}
+                - {name: BOT_USERNAME, value: ploeg-release}
+                - {name: BOT_EMAIL, value: ploeg-release@webgrip.dev}
+                - name: ADMIN_USERNAME
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+                - name: ADMIN_PASSWORD
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+                - name: BOT_PASSWORD
+                  valueFrom: {secretKeyRef: {name: ploeg-release-password, key: password}}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 64Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: script, mountPath: /scripts, readOnly: true}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: script
+              configMap:
+                name: ploeg-release-provisioner-script
