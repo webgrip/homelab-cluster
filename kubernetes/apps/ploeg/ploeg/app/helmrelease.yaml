@@ -412,6 +412,17 @@ spec:
       harness:
         name: openhands
         dind: false
+        telemetry:
+          endpoint: http://alloy-gateway.observability.svc.cluster.local:4318
+          protocol: http/protobuf
+          signals:
+            - metrics
+            - logs
+            - traces
+          resourceAttributes:
+            service.namespace: ploeg
+            deployment.environment: homelab
+          logToolDetails: true
         # OpenHands prints nothing while it thinks and edits, and the idle watchdog
         # counts only harness output: at the 15m default it killed bronze's #555
         # builder (Run 134, 2026-09-27) mid-work after US$0.24 of model calls.
@@ -452,7 +463,7 @@ spec:
       # forwarding + EXIT-trap revoke, and `product-owner` replacing the
       # consolidated `vikunja-product-owner` in the baked skills. ploeg-worker
       # is statically linked, so the musl move cannot break the init copy.
-      runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.3.0@sha256:ab0a56f12a33b2af542663e0f2079261f5b9aca5596a5d497583f211a284684f
+      runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.4.0@sha256:b072c907e8e77a3f73da782639982e50c214bffb670e616545808d0a63753a9c
       # No dindImage / dindResources: the agent plane is daemonless
       # (ADR-0053). Every team runs dind:false, the ploeg namespace is back at
       # PSA baseline and the privileged Kyverno waiver is deleted — so
