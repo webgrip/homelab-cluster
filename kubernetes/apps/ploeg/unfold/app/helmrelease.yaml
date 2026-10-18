@@ -128,6 +128,9 @@ spec:
       - harbor-pull
     workspaceAgentSecrets:
       - workspace-deploy-credentials
+    workspaceGitRewrites:
+      - url: http://forgejo-http.forgejo.svc.cluster.local:3000/
+        insteadOf: https://forgejo.${SECRET_DOMAIN}/
     workspaceEgress:
       - to:
           - namespaceSelector:
@@ -159,10 +162,6 @@ spec:
         ports:
           - protocol: TCP
             port: 3000
-      - to:
-          - namespaceSelector:
-              matchLabels:
-                kubernetes.io/metadata.name: network
     # Unfold ADR 0046: the Run health judge, shadow only, on bronze's Runs.
     # Each verdict is a Ploeg Ask on Hetzner's free EU inference (#780); it
     # can raise a running Run's health badge and never acts on the Run.
