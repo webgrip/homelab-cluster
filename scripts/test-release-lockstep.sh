@@ -136,6 +136,41 @@ expect_pair pass "uncertified pair unchanged from the base" "0.0.1-rc.1" "$PLOEG
 expect_pair fail "Ploeg moved ahead of the release Unfold pins" "$PLOEG_VERSION" "9.9.9-rc.1" HEAD
 expect_pair pass "Ploeg moved to the release Unfold pins" "9.9.9-rc.1" "9.9.9-rc.1" HEAD
 
+expect_pair_over_http() {
+  local want="$1" name="$2" dir source server port got
+  dir="$(committed_repository)"
+  source="$(unfold_release_source "$PLOEG_VERSION")"
+  python3 -c '
+import functools, http.server, sys
+class RefusePythonUserAgent(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+    def do_GET(self):
+        if self.headers.get("User-Agent", "").startswith("Python-urllib"):
+            self.send_error(403, "error code: 1010")
+            return
+        super().do_GET()
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(RefusePythonUserAgent, directory=sys.argv[1]))
+print(server.server_address[1], flush=True)
+server.serve_forever()
+' "$source" >"${source}.port" &
+  server=$!
+  for _ in $(seq 50); do [[ -s "${source}.port" ]] && break; sleep 0.1; done
+  port="$(head -n 1 "${source}.port")"
+  if python3 "$CHECK" --certified-pair --source "http://127.0.0.1:${port}" "$dir" >/dev/null 2>&1; then got=pass; else got=fail; fi
+  kill "$server" 2>/dev/null || true
+  wait "$server" 2>/dev/null || true
+  if [[ "$got" == "$want" ]]; then
+    echo "ok   ${name}: ${got}"
+  else
+    echo "FAIL ${name}: expected ${want}, got ${got}"
+    failures=$((failures + 1))
+  fi
+  rm -rf "$dir" "$source" "${source}.port"
+}
+
+expect_pair_over_http pass "a forge that refuses Python's default User-Agent still serves the Unfold release"
+
 if (( failures > 0 )); then
   echo "${failures} lockstep case(s) failed"
   exit 1

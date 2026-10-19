@@ -36,6 +36,7 @@ class Release:
 SEMVER = r"(?P<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)"
 DIGEST = r"@sha256:[a-f0-9]{64}"
 UNFOLD_RELEASE_TAG_PREFIX = "unfold-v"
+USER_AGENT = "homelab-cluster-release-lockstep"
 UNFOLD_PLOEG_RELEASE_FILE = "apps/unfold/ploeg-release.json"
 PLOEG_CONTRACT_BUNDLE = re.compile(rf'"contract"\s*:\s*"[^"]*/ploeg-contract:v?{SEMVER}{DIGEST}"')
 PLOEG_SUBMODULE_BRANCH = re.compile(
@@ -153,7 +154,8 @@ def lockstep_failures(root: Path) -> list[str]:
 def release_file(source: str, unfold_version: str, path: str) -> tuple[str, str | None]:
     url = f"{source.rstrip('/')}/{UNFOLD_RELEASE_TAG_PREFIX}{unfold_version}/{path}"
     try:
-        with urllib.request.urlopen(url, timeout=30) as response:
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(request, timeout=30) as response:
             return url, response.read().decode()
     except urllib.error.HTTPError as error:
         if error.code == 404:
@@ -203,7 +205,10 @@ def certified_pair_failures(root: Path, source: str, base: str | None) -> list[s
     if certified != ploeg:
         return [
             f"Ploeg {ploeg} is pinned, but Unfold {unfold} was released and tested with Ploeg {certified}; "
-            "this stays red until both pins name a pair Unfold released"
+            "this stays red until both pins name a pair Unfold released. "
+            f"Unfold releases with Ploeg {ploeg} when its ploeg/{ploeg} pull request merges; "
+            "when Ploeg's release opened none, open it with Unfold's scripts/consume-ploeg-release.sh "
+            "or dispatch Ploeg's Release consumers workflow"
         ]
     print(f"OK pair Unfold {unfold} with Ploeg {ploeg}")
     return []
