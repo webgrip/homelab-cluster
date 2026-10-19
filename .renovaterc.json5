@@ -202,17 +202,6 @@
       depNameTemplate: "{{{registry}}}/{{{repository}}}",
       datasourceTemplate: "docker",
     },
-    {
-      customType: "regex",
-      description: "The ploegd image is pinned as one \"<version>@sha256:<digest>\" tag string. The shared `# renovate:` annotation manager reads that whole string as the version, finds no such version and offers nothing, so this manager splits version and digest and moves both.",
-      managerFilePatterns: [
-        "/(^|/)kubernetes/apps/ploeg/ploeg/app/helmrelease\\.ya?ml$/",
-      ],
-      matchStrings: [
-        "repository:\\s*(?<depName>harbor\\.webgrip\\.dev/ghcr/ploeg-hq/ploegd)\\s*\\n\\s*tag:\\s*[\"']?(?<currentValue>[^@\"'\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})[\"']?",
-      ],
-      datasourceTemplate: "docker",
-    },
   ],
   packageRules: [
     {
@@ -867,13 +856,9 @@
       // prereleases — a docker:*-rc on the dind sidecar of every agent run.
       description: "Ploeg and Unfold images follow 0.x prereleases, with semver versioning for the same reason as their charts.",
       matchFileNames: [
-        "kubernetes/apps/ploeg/**/helmrelease.yaml",
-        "kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml",
-        "kubernetes/apps/ploeg/ploeg/app/claude-runner/deployment.yaml"
+        "kubernetes/apps/ploeg/**/helmrelease.yaml"
       ],
       matchDepNames: [
-        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd",
-        "harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner",
         "harbor.webgrip.dev/webgrip/unfold",
         "harbor.webgrip.dev/webgrip/unfold-agent"
       ],
@@ -882,7 +867,7 @@
       ignoreUnstable: false,
     },
     {
-      description: "Unfold and Ploeg pins are read by exactly one manager each: the Unfold image by the repo-local repository/tag/digest manager, the workspace image by helm-values, ploegd by the repo-local repository/tag@digest manager, the ploeg-mcp image and the claude-runner Deployment by the kubernetes manager, the claude-runner harness image by helm-values. The flux, helm-values, kubernetes and `# renovate:` annotation readings that duplicate them are dropped, so a release never becomes a tag bump that leaves the digest behind.",
+      description: "Unfold pins are read by exactly one manager each: the Unfold image by the repo-local repository/tag/digest manager, the workspace image by helm-values. The flux readings that duplicate them are dropped, so a release never becomes a tag bump that leaves the digest behind.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/helmrelease.yaml"
       ],
@@ -890,40 +875,8 @@
         "flux"
       ],
       matchDepNames: [
-        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd",
         "harbor.webgrip.dev/webgrip/unfold",
         "harbor.webgrip.dev/webgrip/unfold-agent"
-      ],
-      enabled: false,
-    },
-    {
-      description: "The ploeg-mcp and claude-runner Deployments pin their image as one `image: repository:tag@digest` line, which the kubernetes manager reads. helm-values reads the same line again, and the `# renovate:` annotation above it captures the whole string as the version, which is unversioned and only logs \"Could not determine new digest\". Both duplicates are dropped.",
-      matchFileNames: [
-        "kubernetes/apps/ploeg/ploeg/app/mcp/deployment.yaml",
-        "kubernetes/apps/ploeg/ploeg/app/claude-runner/deployment.yaml"
-      ],
-      matchManagers: [
-        "helm-values",
-        "custom.regex"
-      ],
-      matchDepNames: [
-        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd",
-        "harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner"
-      ],
-      enabled: false,
-    },
-    {
-      description: "The claude-environment harness image in the Ploeg HelmRelease is read by helm-values as one `image: repository:tag@digest` value. The flux, kubernetes and `# renovate:` annotation readings of the same line are dropped.",
-      matchFileNames: [
-        "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml"
-      ],
-      matchManagers: [
-        "flux",
-        "kubernetes",
-        "custom.regex"
-      ],
-      matchDepNames: [
-        "harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner"
       ],
       enabled: false,
     },
@@ -961,29 +914,24 @@
       allowedVersions: "/^15\\./",
     },
     {
-      description: "The helm-values readings of the Unfold and ploegd images ignore how their digests are pinned; the repo-local managers own those pins.",
+      description: "The helm-values reading of the Unfold image ignores how its digest is pinned; the repo-local manager owns that pin.",
       matchFileNames: [
-        "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml",
-        "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml"
+        "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml"
       ],
       matchManagers: [
         "helm-values"
       ],
       matchDepNames: [
-        "harbor.webgrip.dev/webgrip/unfold",
-        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd"
+        "harbor.webgrip.dev/webgrip/unfold"
       ],
       enabled: false,
     },
     {
-      description: "One Ploeg and Unfold release pair is one PR that merges itself: the Ploeg chart, ploegd (daemon and ploeg-mcp) and claude-runner images, and the Unfold chart, image and workspace image move in a single branch. e2e fails while a release's own pins disagree (a partial publication) or while the Ploeg pin is not the release the pinned Unfold certifies, so such a PR stays open until the rest lands. Ploeg and Unfold share one branch because Unfold tests only the Ploeg release it pins (Ploeg 0.2.0-rc.20 needed Unfold 0.4.0-rc.77 at once): two automerging groups would merge whichever publishes first, and under rebaseWhen \"conflicted\" a branch red while waiting for the other never re-tests, while a new publication of either rewrites this branch and re-runs e2e. The branch and PR concurrency limits are off for this branch alone (0 on any upgrade means no limit for its branch): the repository-wide limit of 15 was already reached on 2026-10-11, when sixteen renovate/* branches made the run log \"Reached branch limit - skipping branch creation\", and a release must not queue behind unrelated image bumps. platformAutomerge hands the merge to Forgejo, which merges once main's required checks pass (e2e / Lint & static validation among them, which holds the pair check); Renovate's own automerge merges only on its next hourly run, so on 2026-10-19 a green pair waited a run each time a new release arrived.",
+      description: "One Unfold release is one PR that merges itself: the Unfold chart, which carries the Ploeg chart it was tested with and defaults the ploegd and claude-runner images to that release's digests (Unfold ADR-0043), and the Unfold image and workspace image move in a single branch. e2e fails while those pins disagree (a partial publication), so such a PR stays open until the rest lands, and a new publication rewrites the branch and re-runs e2e. The branch and PR concurrency limits are off for this branch alone (0 on any upgrade means no limit for its branch): the repository-wide limit of 15 was already reached on 2026-10-11, when sixteen renovate/* branches made the run log \"Reached branch limit - skipping branch creation\", and a release must not queue behind unrelated image bumps. platformAutomerge hands the merge to Forgejo, which merges once main's required checks pass (e2e / Lint & static validation among them, which holds the lockstep check); Renovate's own automerge merges only on its next hourly run, so on 2026-10-19 a green release waited a run each time a new release arrived.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**"
       ],
       matchDepNames: [
-        "harbor.webgrip.dev/ghcr/ploeg-hq/charts/ploeg",
-        "harbor.webgrip.dev/ghcr/ploeg-hq/ploegd",
-        "harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner",
         "harbor.webgrip.dev/webgrip/charts/unfold",
         "harbor.webgrip.dev/webgrip/unfold",
         "harbor.webgrip.dev/webgrip/unfold-agent"
@@ -1008,6 +956,14 @@
       automerge: true,
       automergeType: "pr",
       platformAutomerge: true,
+    },
+    {
+      description: "The standalone Ploeg HelmRelease and OCIRepository stay in Git suspended until the old Helm release's storage Secret is removed, because deleting them would uninstall the objects the Unfold release now owns (Unfold ADR-0043). Nothing in them runs, so Renovate leaves every pin in them alone: the Ploeg chart, the ploegd and claude-runner images, and the runner, dind and toolchain images that moved into the Unfold HelmRelease.",
+      matchFileNames: [
+        "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml",
+        "kubernetes/apps/ploeg/ploeg/app/ocirepository.yaml"
+      ],
+      enabled: false,
     },
     {
       description: "Group Grafana.com dashboard revision updates into one reviewable PR",

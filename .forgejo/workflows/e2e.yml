@@ -97,19 +97,10 @@ jobs:
           HARBOR_ROBOT_TOKEN: ${{ secrets.HARBOR_ROBOT_TOKEN }}
         run: ./scripts/verify-oci-digests.sh "$GITHUB_WORKSPACE"
 
-      - name: Unfold and Ploeg chart and image pins name one release each
+      - name: Unfold pins name one release and only the Unfold release runs Ploeg
         run: |
           python3 scripts/check_release_lockstep.py "$GITHUB_WORKSPACE"
           bash scripts/test-release-lockstep.sh "$GITHUB_WORKSPACE"
-
-      - name: Ploeg is the release the pinned Unfold was tested with
-        if: github.event_name == 'pull_request'
-        run: |
-          git fetch --no-tags --quiet --depth=1 origin "${{ github.base_ref }}"
-          python3 scripts/check_release_lockstep.py --certified-pair \
-            --base FETCH_HEAD \
-            --source "${GITHUB_SERVER_URL}/webgrip/unfold/raw/tag" \
-            "$GITHUB_WORKSPACE"
 
       - name: Lint YAML (yamllint, relaxed)
         run: |

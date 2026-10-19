@@ -7,14 +7,20 @@ kept in lockstep by the release train).
 
 ## Releases
 
-Renovate moves Ploeg and Unfold together, in one `renovate/ploeg-unfold-release` PR that merges
-itself: the Ploeg chart, the ploegd image (daemon and ploeg-mcp) and the claude-runner image, and
-the Unfold chart, image and workspace image. `scripts/check_release_lockstep.py` keeps that PR red
-while a release's own pins disagree, and, with `--certified-pair` on pull requests, while the Ploeg
-pin is not the release the pinned Unfold names in its `.gitmodules` at tag `unfold-v<version>`
-(the pair Unfold tested). The PR is exempt from the repository's branch and PR concurrency limits.
-The [Unfold release train RFC](../../../docs/techdocs/docs/rfc/rfc-unfold-release-train.md)
-proposes replacing this with a manifest-driven bump.
+Ploeg runs inside the Unfold Helm release (Unfold ADR-0043): the Unfold chart
+(`unfold/app/ocirepository.yaml`) carries the Ploeg chart it was tested with as its `ploeg`
+subchart, and that chart defaults the ploegd and claude-runner images to their release digests.
+`unfold/app/helmrelease.yaml` holds Ploeg's values under `ploeg:`, with `fullnameOverride` and
+`instanceOverride` set to `ploeg` so every object keeps the name and selector labels it had under the
+standalone release. ploeg-mcp, claude-runner and the `pewter-claude-login` PersistentVolumeClaim are
+rendered by the chart; their route, network policies and Secrets stay in `ploeg/app/`.
+
+Renovate moves the Unfold chart, image and workspace image in one `renovate/ploeg-unfold-release`
+PR that merges itself. `scripts/check_release_lockstep.py` keeps that PR red while those pins
+disagree, and fails while the standalone `ploeg/app/helmrelease.yaml` is not suspended. That
+HelmRelease and its OCIRepository stay in Git, suspended and ignored by Renovate, until the old
+release's storage Secret is removed: deleting the HelmRelease earlier would uninstall the objects the
+Unfold release now owns.
 
 ## One-time setup after first deploy (ingest)
 
@@ -74,11 +80,10 @@ Failure-mode drills and the full e2e runbook live in the executor PR description
 
 ## ploeg-mcp over HTTPS
 
-`ploeg-mcp` (`app/mcp/`) serves Ploeg's read-only MCP tools at `https://mcp-ploeg.<domain>/mcp` on
+`ploeg-mcp` (the chart's `mcp` values, with its route and policies in `app/mcp/`) serves Ploeg's read-only MCP tools at `https://mcp-ploeg.<domain>/mcp` on
 envoy-internal, LAN and VPN only. Clients sign in through the Authentik application `ploeg-mcp`
 (public client, PKCE, 10-minute access tokens, scope `ploeg:read`), and only members of
 `ploeg-readers` (capability `ploeg-read`) get in. ploeg-mcp checks the token itself and calls ploegd
 with the `mcp-reader` operator consumer's token from `ploeg/mcp-reader`, never the person's token.
-Its image is the ploegd image and moves with the Ploeg release; `check_release_lockstep.py` fails
-while they differ. Client setup:
+Its image is the ploegd image of the Ploeg release the Unfold chart carries. Client setup:
 [Serve Ploeg's MCP tools over HTTPS](https://github.com/ploeg-hq/ploeg/blob/development/docs/how-to/serve-ploeg-mcp-over-https.md).

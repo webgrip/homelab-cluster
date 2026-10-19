@@ -15,10 +15,431 @@ spec:
     cleanupOnFail: true
     remediation:
       retries: 3
+      remediateLastFailure: true
   values:
     mode: live
     ploeg:
-      enabled: false
+      enabled: true
+      fullnameOverride: ploeg
+      instanceOverride: ploeg
+      imagePullSecrets:
+        - name: harbor-pull
+      image:
+        repository: harbor.webgrip.dev/ghcr/ploeg-hq/ploegd
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      database:
+        existingSecret:
+          name: ploeg-db-app
+      knowledgeGraph:
+        url: http://omnigraph.ai.svc.cluster.local:8080
+        notesGraph: webgrip-notes
+        conceptsGraph: webgrip-knowledge
+        runTokenSecret:
+          name: ploeg-omnigraph-run
+          key: token
+        reviewTokenSecret:
+          name: ploeg-omnigraph-review
+          key: token
+      webhook:
+        existingSecret:
+          name: ploeg-webhook-secret
+          key: PLOEG_VIKUNJA_SECRET
+      monitoring:
+        serviceMonitor:
+          enabled: true
+        prometheusRule:
+          enabled: true
+      operator:
+        consumers:
+          - name: unfold
+            teams:
+              - unfold
+              - bronze
+              - silver
+              - copper
+              - pewter
+            execute: true
+            maxBudgetUsd: 1.00
+            tokenSecret:
+              name: unfold-operator
+              key: PLOEG_OPERATOR_UNFOLD_TOKEN
+          - name: mcp-reader
+            execute: false
+            tokenSecret:
+              name: ploeg-mcp-reader
+              key: token
+          - name: mcp-operator
+            teams:
+              - unfold
+              - bronze
+              - silver
+              - copper
+              - pewter
+            execute: true
+            maxBudgetUsd: 1.00
+            tokenSecret:
+              name: ploeg-mcp-operator
+              key: token
+          - name: unfold-verifier
+            teams:
+              - unfold
+            execute: false
+            verify: true
+            tokenSecret:
+              name: unfold-verifier
+              key: token
+        deliveryPolicies:
+          - repositoryId: twente-dev
+            policySha256: 879fc94d7927c4917f94740afc9ba8f3d60211ab04ff8df4a74f088dd86611e4
+            verifierId: unfold-kubernetes-v1
+            minTests: 3
+            publicationEnabled: true
+      config:
+        targets:
+          unfold:
+            repo: webgrip/unfold
+            branch: development
+            forge: forgejo
+          homelab-cluster:
+            repo: webgrip/homelab-cluster
+            branch: main
+            forge: forgejo
+          twente.dev:
+            repo: webgrip/twente.dev
+            branch: main
+            forge: forgejo
+          erfbeeld:
+            repo: webgrip/erfbeeld
+            branch: main
+            forge: forgejo
+          nuala-nalatenschap:
+            repo: webgrip/erfbeeld
+            branch: main
+            forge: forgejo
+        trackers:
+          vikunja:
+            projects:
+              - name: "Ploeg Test"
+                id: "11"
+                team: unfold
+                repo: webgrip/unfold
+                branch: development
+                forge: forgejo
+              - name: "Unfold"
+                id: "10"
+                default: unfold
+                allow:
+                  - homelab-cluster
+              - name: "Erfbeeld"
+                repo: webgrip/erfbeeld
+                branch: main
+                forge: forgejo
+              - name: "Homelab Roadmap"
+                repo: webgrip/homelab-cluster
+                branch: main
+                forge: forgejo
+              - name: "CI/CD"
+                repo: webgrip/homelab-cluster
+                branch: main
+                forge: forgejo
+              - name: "twente.dev"
+                repo: webgrip/twente.dev
+                branch: main
+                forge: forgejo
+              - name: "Omnigraph Explorer"
+                repo: webgrip/omnigraph-explorer
+                branch: main
+                forge: forgejo
+              - name: "Ploeg Bench"
+                id: "49"
+                repo: webgrip/ploeg-bench-world
+                branch: bench/pb01-base
+                forge: forgejo
+        teams:
+          bronze:
+            assignees:
+              - bronze
+            forgeFollowUps:
+              reworkOnChangesRequested: true
+              repairFailedChecks: true
+              maxRepairs: 2
+            premiseCheck:
+              model: hetzner-qwen3-8-27b
+          silver:
+            assignees:
+              - silver
+            forgeFollowUps:
+              reworkOnChangesRequested: true
+              repairFailedChecks: true
+              maxRepairs: 2
+          copper:
+            assignees: []
+          pewter:
+            assignees:
+              - copper
+          unfold:
+            assignees: []
+      tracker:
+        url: https://vikunja.${SECRET_DOMAIN}/api/v1
+        tokenSecret:
+          name: ploeg-vikunja-bot
+          key: VIKUNJA_API_TOKEN
+      env:
+        PLOEG_DEFAULT_TEAM: copper
+        PLOEG_LEASE_TTL: 15m
+      executor:
+        enabled: true
+        nodeSelector:
+          node.webgrip.io/pool: worker
+        dindImage: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:1e08cdb63405ca788aea94ef35b792d1e299607c667d33d7bcbcae1fd2611ced
+        forge: forgejo
+        forgeTokenIsolation: proxy
+        litellm:
+          baseUrl: http://litellm.ai.svc.cluster.local:4000/v1
+          adminUrl: http://litellm.ai.svc.cluster.local:4000
+          keyIsolation: proxy
+        forgejo:
+          url: http://forgejo-http.forgejo.svc.cluster.local:3000
+          readTokenSecret:
+            name: agent-reviewer-token
+            key: FORGEJO_TOKEN
+          botPasswordSecret:
+            name: agent-builder-password
+            key: FORGEJO_BOT_PASSWORD
+          webhookSecret:
+            name: ploeg-forge-webhook
+            key: PLOEG_FORGEJO_SECRET
+        workerAuth:
+          mode: managed
+          signingKeySecret:
+            name: ploeg-worker-signing
+            key: key
+          bootstrapSecret:
+            name: ploeg-worker-bootstrap
+            registryKey: registry.json
+          additionalLLMPolicies:
+            - team: unfold
+              role: operator
+              budgetUsd: 0.25
+              models:
+                - fireworks-deepseek-v4p1-flash
+              ttl: 10m
+            - team: unfold
+              role: ask
+              budgetUsd: 0.02
+              models:
+                - fireworks-glm-5p3-flash
+              ttl: 2m
+            - team: bronze
+              role: ask
+              budgetUsd: 0.02
+              models:
+                - fireworks-glm-5p3-flash
+                - hetzner-qwen3-8-27b
+                - hetzner-qwen3-6-35b-a3b
+              ttl: 2m
+            - team: silver
+              role: ask
+              budgetUsd: 0.02
+              models:
+                - fireworks-glm-5p3-flash
+              ttl: 2m
+            - team: copper
+              role: ask
+              budgetUsd: 0.02
+              models:
+                - fireworks-glm-5p3-flash
+              ttl: 2m
+        harness:
+          name: openhands
+          dind: false
+          telemetry:
+            endpoint: http://alloy-gateway.observability.svc.cluster.local:4318
+            protocol: http/protobuf
+            signals:
+              - metrics
+              - logs
+              - traces
+            resourceAttributes:
+              service.namespace: ploeg
+              deployment.environment: homelab
+            logToolDetails: true
+          idleTimeout: 45m
+          toolchains:
+            - name: go
+              image: harbor.webgrip.dev/dockerhub/library/golang:1.25.0-alpine@sha256:f18a072054848d87a8077455f0ac8a25886f2397f88bfdd222d6fafbb5bba440
+              path:
+                - /usr/local/go/bin
+              env: {GOTOOLCHAIN: local}
+          verify:
+            - 'if [ -f apps/ploeg/go.mod ]; then test -z "$(gofmt -l apps/ploeg)"; fi'
+        runnerImage: harbor.webgrip.dev/webgrip/agent-runner:1.4.1@sha256:3649001200acbc7708f628403183ce1af93f90a2de339e55dfc70abb2f51f57b
+        workerSecurityContext: null
+        workerResources:
+          requests: {cpu: 100m, memory: 768Mi}
+          limits: {cpu: "1", memory: 768Mi}
+        scaler:
+          host: ploeg-db-rw.ploeg.svc.cluster.local
+        pollingInterval: 5
+        teams:
+          - name: bronze
+            model: litellm_proxy/fireworks-deepseek-v4p1-flash
+            budget: "9.20"
+            repoOwner: webgrip
+            repoName: erfbeeld
+            baseBranch: main
+            maxReplicaCount: 1
+            maxFixRounds: 2
+            litellmTeamId: ploeg-crews
+            executorType: sandbox
+            sandbox:
+              runtimeClassName: kata
+            harness:
+              name: acp
+              dind: false
+              acp:
+                profile: openhands
+                idleTimeout: 10m
+                promptTimeout: 90m
+            plan:
+              - roles:
+                  - {name: builder, writes: true, cap: "2.00"}
+              - roles:
+                  - name: reviewer
+                    writes: false
+                    cap: "0.40"
+                    model: litellm_proxy/fireworks-glm-5p3-flash
+                    harness: {name: acp, dind: false, acp: {profile: openhands, idleTimeout: 10m, promptTimeout: 90m}}
+                    workerResources:
+                      requests: {cpu: 100m, memory: 768Mi}
+                      limits: {cpu: 500m, memory: 768Mi}
+                  - name: shadow-reviewer
+                    writes: false
+                    shadow: true
+                    cap: "0.40"
+                    model: litellm_proxy/claude-haiku-5-5
+                    harness: {name: acp, dind: false, acp: {profile: openhands, idleTimeout: 10m, promptTimeout: 90m}}
+                    workerResources:
+                      requests: {cpu: 100m, memory: 768Mi}
+                      limits: {cpu: 500m, memory: 768Mi}
+          - name: silver
+            model: litellm_proxy/fireworks-deepseek-v4p1-flash
+            budget: "6"
+            repoOwner: webgrip
+            repoName: unfold
+            baseBranch: development
+            maxReplicaCount: 1
+            maxFixRounds: 1
+            plan:
+              - roles:
+                  - name: builder
+                    writes: true
+                    cap: "2.50"
+                    harness: {name: acp, dind: false, acp: {profile: opencode, idleTimeout: 10m, promptTimeout: 90m}}
+              - roles:
+                  - name: reviewer
+                    writes: false
+                    cap: "0.40"
+                    model: litellm_proxy/fireworks-glm-5p3-flash
+                    harness: {name: acp, dind: false, acp: {profile: opencode, idleTimeout: 10m, promptTimeout: 90m}}
+                    workerResources:
+                      requests: {cpu: 100m, memory: 768Mi}
+                      limits: {cpu: 500m, memory: 768Mi}
+          - name: copper
+            model: litellm_proxy/fireworks-deepseek-v4p1-flash
+            budget: "1"
+            repoOwner: webgrip
+            repoName: erfbeeld
+            baseBranch: main
+            maxReplicaCount: 1
+            executorType: sandbox
+            sandbox:
+              runtimeClassName: kata
+            harness:
+              name: exec
+              args:
+                - "/bin/sh"
+                - "-c"
+                - |
+                  set -eu
+                  spec="$$1"
+                  grep -q '"title": "\[canary\]' "$$spec" || exec cat "$$spec"
+                  briefed=0
+                  if [ -n "$${PLOEG_KNOWLEDGE_DIR:-}" ]; then
+                    briefed=$$(grep -rl ploeg-canary-note "$$PLOEG_KNOWLEDGE_DIR" | wc -l)
+                  fi
+                  printf '{"type":"Fact","title":"ploeg-canary-note","description":"Written while a canary Run worked","tags":["ploeg-canary"],"body":"ploeg-canary-note briefed=%s"}\n' "$$briefed" >> "$${PLOEG_NOTES_FILE:?no notes file: live notes are off}"
+                  sleep 15
+                  printf '{"outcome":"stuck","summary":"ploeg-canary stopped on purpose","stuckReason":"ploeg-canary stops every Run so the stop note is written"}\n' > "$$(dirname "$$spec")/outcome.json"
+                - "ploeg-canary"
+                - "{taskspec}"
+              dind: false
+          - name: pewter
+            model: litellm_proxy/fireworks-deepseek-v4p1-flash
+            budget: "0.10"
+            repoOwner: webgrip
+            repoName: erfbeeld
+            baseBranch: main
+            maxReplicaCount: 1
+            harness:
+              name: claude-environment
+              dind: false
+              timeout: 100m
+              claudeEnvironment:
+                environmentId: ccpool_017SvGpGv1jLfduyvyWMRh3F
+                loginVolume: pewter-claude-login
+      mcp:
+        enabled: true
+        name: ploeg-mcp
+        ploegUrl: http://ploeg.ploeg.svc.cluster.local:8080
+        annotations:
+          reloader.stakater.com/auto: "true"
+        env:
+          PLOEG_MCP_RESOURCE: https://mcp-ploeg.${SECRET_DOMAIN}/mcp
+          PLOEG_MCP_ISSUER: https://authentik.${SECRET_DOMAIN}/application/o/ploeg-mcp/
+          PLOEG_MCP_CLIENT_IDS: ploeg-mcp
+          PLOEG_MCP_SCOPE: ploeg:read
+          PLOEG_MCP_REQUEST_SCOPES: openid ploeg:read offline_access
+          PLOEG_MCP_GROUPS: '[{"group":"ploeg-operators","tokenEnv":"PLOEG_MCP_TOKEN_OPERATORS","execute":true},{"group":"ploeg-readers","tokenEnv":"PLOEG_MCP_TOKEN_READERS"}]'
+          PLOEG_MCP_SUBJECT_NAMESPACE: https://authentik.${SECRET_DOMAIN}/application/o/vloer/
+        extraEnv:
+          - name: PLOEG_MCP_TOKEN_OPERATORS
+            valueFrom:
+              secretKeyRef:
+                name: ploeg-mcp-operator
+                key: token
+        envFrom:
+          - secretRef:
+              name: ploeg-mcp-consumers
+      claudeRunner:
+        enabled: true
+        name: claude-runner
+        image:
+          repository: harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner
+        environmentSecret:
+          name: claude-runner-environment
+        ploegUrl: http://ploeg.ploeg.svc.cluster.local:8080
+        runtimeClassName: kata
+        extraArgs:
+          - --git-host-rewrite
+          - forgejo-http.forgejo.svc.cluster.local:3000=forgejo.${SECRET_DOMAIN}
+        env:
+          DISABLE_ERROR_REPORTING: "1"
+          CLAUDE_CODE_ENABLE_TELEMETRY: "1"
+          OTEL_METRICS_EXPORTER: otlp
+          OTEL_LOGS_EXPORTER: otlp
+          OTEL_TRACES_EXPORTER: otlp
+          CLAUDE_CODE_ENHANCED_TELEMETRY_BETA: "1"
+          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+          OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy-gateway.observability.svc.cluster.local:4318
+          OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: cumulative
+          OTEL_LOG_TOOL_DETAILS: "1"
+          OTEL_RESOURCE_ATTRIBUTES: service.namespace=ai,deployment.environment=homelab,client=claude-runner,ploeg.team=pewter
+        loginVolumes:
+          - name: pewter-claude-login
+            size: 1Gi
+            storageClassName: longhorn-general
     baseUrl: https://unfold.${SECRET_DOMAIN}
     image:
       repository: harbor.webgrip.dev/webgrip/unfold

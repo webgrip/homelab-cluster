@@ -77,3 +77,28 @@ patches:
               name: unfold
               annotations:
                 secret.reloader.stakater.com/reload: unfold-reports-token
+  - target:
+      kind: HelmRelease
+      name: unfold
+    patch: |-
+      - op: add
+        path: /spec/postRenderers/0/kustomize/patches/-
+        value:
+          target:
+            kind: Deployment
+            name: ploeg
+          patch: |-
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: ploeg
+            spec:
+              template:
+                spec:
+                  containers:
+                    - name: ploegd
+                      env:
+                        - name: PLOEG_FORGEJO_URL
+                          value: https://forgejo.${SECRET_DOMAIN}
+                        - name: PLOEG_CLAUDE_ENVIRONMENTS
+                          value: "true"
