@@ -33,6 +33,8 @@ run_case fail homelab-push-without-owner "python3 -c 'import pathlib; p=pathlib.
 run_case fail homelab-cluster-branch-override "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"  homelab-cluster:\n    profile: homelab\n\", \"  homelab-cluster:\n    profile: homelab\n    branches:\n      main:\n        push: []\n        merge: []\n        status_checks: []\n\"))'"
 run_case fail branch-rule-unknown-key "sed -i '0,/^        status_checks: \\[\\]$/s//        status_checks: []\\n        required_approvals: 1/' repos.yaml"
 run_case fail status-check-unescaped-glob-bracket "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"\\\\\\\\[Workflow\\\\\\\\]\", \"[Workflow]\", 1))'"
+run_case fail homelab-main-drops-the-pair-gate "sed -i '/^          - \"e2e \/ Lint & static validation (pull_request)\"$/d' profiles.yaml"
+run_case fail homelab-main-requires-nothing "python3 -c 'import re,pathlib; p=pathlib.Path(\"profiles.yaml\"); p.write_text(re.sub(r\"(          - renovate\\n        status_checks:)\\n(          - .*\\n)+\", r\"\\1 []\\n\", p.read_text(), count=1))'"
 run_case fail baseline-missing-field "sed -i '/^      allow_fast_forward_only_merge: true$/d' profiles.yaml"
 
 if [ "$failures" -ne 0 ]; then
