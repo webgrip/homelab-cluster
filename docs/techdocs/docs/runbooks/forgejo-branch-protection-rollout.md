@@ -16,7 +16,7 @@ Nothing scheduled ever ran the script.
 | --- | --- |
 | **Push whitelist** | Identities allowed to push the branch directly — everyone else must open a PR. `push` in the model; absent means no whitelist. |
 | **Merge whitelist** | Identities allowed to merge PRs into the branch. `merge` in the model; absent means no whitelist. |
-| **Status checks** | `status_checks` in the model: contexts that must be green before a merge. |
+| **Status checks** | `status_checks` in the model: contexts that must be green before a merge. Forgejo reads each entry as a glob pattern, so a literal `[` or `]` must be escaped (`"\\[Workflow\\] On Pull Request / checks (pull_request)"` in YAML). Unescaped, `[Workflow]` is a character class, the context never matches, and "merge when checks succeed" waits forever; the schema refuses it. |
 
 The rules owned today:
 
