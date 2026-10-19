@@ -28,6 +28,8 @@ EXPECTED_UNTAGGED=(
   "GRIP|dormant .NET experiment, last commit 2023-03; archive to retire this entry"
   "Tenants|dormant .NET experiment, last commit 2023-03; archive to retire this entry"
   "agentic-workflows|dormant, last commit 2025-09; archive to retire this entry"
+  "compyutah|parked by the owner 2026-10-19; tag it when work resumes"
+  "erfbeeld|not deployed anywhere yet; tag it when it ships"
 )
 
 command -v jq >/dev/null || { echo "FATAL: jq missing"; exit 1; }
