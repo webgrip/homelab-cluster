@@ -163,7 +163,7 @@ does not know it, and updates it when alias, models, limits or
 
 | Team | Models | Budget and limits | MCP groups | Consumer |
 |---|---|---|---|---|
-| `ploeg-crews` | all (each key carries its own model list) | none: ploegd mints every Run key with its own budget and TTL | `observability` | Ploeg executor teams that set `litellmTeamId: ploeg-crews`, today only `bronze`, whose `acp` harness passes the gateway's `/mcp` to OpenHands; `openhands`, `exec` and `claude-environment` Runs load no gateway MCP server ([Ploeg ADR-0078](https://github.com/ploeg-hq/ploeg/blob/main/docs/adrs/0078-runs-reach-read-only-mcp-tools-only-through-the-gateway-bounded-by-a-litellm-team.md)) |
+| `ploeg-crews` | all (each key carries its own model list) | none: ploegd mints every Run key with its own budget and TTL | `observability` | Ploeg executor teams that set `litellmTeamId: ploeg-crews`, today only `bronze`, whose `acp` harness passes the gateway's `/mcp` to OpenHands; `openhands`, `exec` and `claude-environment` Runs load no gateway MCP server ([Ploeg ADR-0078](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0078-runs-reach-read-only-mcp-tools-only-through-the-gateway-bounded-by-a-litellm-team.md)) |
 
 A key minted into a team may only request MCP groups that team allows; LiteLLM refuses the mint
 with HTTP 403 otherwise, so the team is the ceiling on what Ploeg's master key can grant a Run.

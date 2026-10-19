@@ -50,7 +50,7 @@ Garage returns no error and no warning. It ignores the headers completely. The
 marks `PutObject` as "✅ Implemented" with no caveat, so the gap is only visible in the known-issues
 page (below) or by testing. The off-site Garage runs v2.1.0 and has the same code path. An
 independent project hit the same wall on v2.3.0 four days earlier
-([Studio81Labs/taven#251](https://github.com/Studio81Labs/taven/issues/251), 2026-09-24): they
+(Studio81Labs/taven#251, 2026-09-24; the repository has since been deleted): they
 halted two PRs and opened a backend decision.
 
 ## What the Garage project has said
