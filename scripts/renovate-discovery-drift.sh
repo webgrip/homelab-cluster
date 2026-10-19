@@ -19,7 +19,16 @@ FORGEJO="${FORGEJO_URL:-https://forgejo.webgrip.dev}"
 ORG="${FORGEJO_ORG:-webgrip}"
 TOPIC="${RENOVATE_TOPIC:-renovate}"
 
-EXPECTED_UNTAGGED=()
+EXPECTED_UNTAGGED=(
+  ".profile-private|profile page, no dependencies"
+  "obsidian-vault|personal notes, no dependencies"
+  "ploeg-bench|benchmark fixture; Renovate PRs would perturb trials"
+  "ploeg-bench-world|benchmark fixture; Renovate PRs would perturb trials"
+  "previews|generated preview output pushed by release trains"
+  "GRIP|dormant .NET experiment, last commit 2023-03; archive to retire this entry"
+  "Tenants|dormant .NET experiment, last commit 2023-03; archive to retire this entry"
+  "agentic-workflows|dormant, last commit 2025-09; archive to retire this entry"
+)
 
 command -v jq >/dev/null || { echo "FATAL: jq missing"; exit 1; }
 
@@ -52,7 +61,7 @@ while read -r repo; do
   fi
 done < "${tmp}/actual"
 
-printf '%s\n' ${EXPECTED_UNTAGGED[@]+"${EXPECTED_UNTAGGED[@]}"} | sort -u > "${tmp}/expected"
+printf '%s\n' "${EXPECTED_UNTAGGED[@]}" | cut -d'|' -f1 | sort -u > "${tmp}/expected"
 sort -u "${tmp}/untagged" -o "${tmp}/untagged"
 comm -23 "${tmp}/untagged" "${tmp}/expected" > "${tmp}/drift"
 
@@ -66,7 +75,7 @@ if [ -s "${tmp}/drift" ]; then
     echo "      -d '{\"topics\":[\"${TOPIC}\"]}' ${FORGEJO}/api/v1/repos/${ORG}/${r}/topics"
   done < "${tmp}/drift"
   echo
-  echo "  Deliberately excluded? Add it to EXPECTED_UNTAGGED in this script, with a reason."
+  echo "  Deliberately excluded? Add \"<repo>|<reason>\" to EXPECTED_UNTAGGED in this script."
   exit 1
 fi
 
