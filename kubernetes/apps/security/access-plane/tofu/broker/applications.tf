@@ -27,6 +27,15 @@ locals {
         }
       EOT
     }
+    unfold-mcp = {
+      scope_name  = "unfold:mcp"
+      description = "Use Unfold's MCP tools as yourself; carries the groups Unfold maps to a role."
+      expression  = <<-EOT
+        return {
+            "groups": [group.name for group in request.user.ak_groups.all()],
+        }
+      EOT
+    }
   }
 
   oauth_applications = {
@@ -175,6 +184,27 @@ locals {
         { matching_mode = "strict", url = "http://localhost:8787/callback" },
       ]
       extra_scopes = ["ploeg-read", "groups"]
+      adopt        = false
+    }
+    unfold-mcp = {
+      provider_name         = "unfold-mcp-oauth"
+      app_name              = "Unfold MCP"
+      description           = "Unfold's MCP tools for Claude Code, VS Code and Cursor, as the signed-in person."
+      launch_url            = null
+      client_id             = "unfold-mcp"
+      client_secret         = null
+      client_type           = "public"
+      signing_key           = true
+      grant_types           = ["authorization_code", "refresh_token"]
+      access_token_validity = "minutes=10"
+      redirects = [
+        { matching_mode = "regex", url = "^http://(localhost|127\\.0\\.0\\.1):[0-9]+/callback$" },
+        { matching_mode = "strict", url = "http://127.0.0.1:33418" },
+        { matching_mode = "strict", url = "http://127.0.0.1:33418/" },
+        { matching_mode = "strict", url = "https://vscode.dev/redirect" },
+        { matching_mode = "strict", url = "http://localhost:8787/callback" },
+      ]
+      extra_scopes = ["unfold-mcp", "groups"]
       adopt        = false
     }
     longhorn = {
