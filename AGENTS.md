@@ -65,7 +65,7 @@ roadmap file in git — see
   ticket's `repo/*` label names the repo its work lands in; ploegd routes by that label (ADR-0038,
   live since 2026-10-10, f06c40cb): no label → `webgrip/unfold`, `repo/homelab-cluster` →
   homelab-cluster; any other `repo/*` is refused with a comment, never misrouted. Registered
-  targets live under `config.targets` in `kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml`
+  targets live under `ploeg.config.targets` in `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml`
 - Fixture boards, never backlogs: `Ploeg Test` (id 11, Unfold's test task source and the `unfold`
   team's route) and `Ploeg Bench` (id 49, benchmark trials, one fresh ticket per trial; id 48 is
   an archived empty duplicate). Pinned by id in the ploegd routing config

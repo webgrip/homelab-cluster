@@ -15,7 +15,7 @@ The [deployment settings](../../../../kubernetes/apps/ploeg/unfold/app/helmrelea
 3. In Unfold, select the **Ploeg Test** ticket source, preview the ticket, and import it.
 4. Choose the model and budget, then start the work. Follow its activity and inspect the resulting changes and checks.
 
-The [Ploeg settings](../../../../kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml) pin the Ploeg Test board to the `unfold` team, and Unfold's operator consumer is scoped to that team alone. `unfold` is in the roster but not under `executor.teams`, so the chart renders no ScaledJob for it and no unattended worker can claim a Ploeg Test ticket before Unfold imports it. Bronze, silver and copper keep their unattended behavior on every other routed board. Previously executed tickets cannot be imported as fresh work. Create a new ticket for another trial.
+The [Ploeg settings](../../../../kubernetes/apps/ploeg/unfold/app/helmrelease.yaml) (under `ploeg:`) pin the Ploeg Test board to the `unfold` team, and Unfold's operator consumer is scoped to that team alone. `unfold` is in the roster but not under `executor.teams`, so the chart renders no ScaledJob for it and no unattended worker can claim a Ploeg Test ticket before Unfold imports it. Bronze, silver and copper keep their unattended behavior on every other routed board. Previously executed tickets cannot be imported as fresh work. Create a new ticket for another trial.
 
 ## Exercise the controls
 
