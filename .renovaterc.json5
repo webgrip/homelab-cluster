@@ -976,7 +976,7 @@
       enabled: false,
     },
     {
-      description: "One Ploeg and Unfold release pair is one PR that merges itself: the Ploeg chart, ploegd (daemon and ploeg-mcp) and claude-runner images, and the Unfold chart, image and workspace image move in a single branch. e2e fails while a release's own pins disagree (a partial publication) or while the Ploeg pin is not the release the pinned Unfold certifies, so such a PR stays open until the rest lands. Ploeg and Unfold share one branch because Unfold tests only the Ploeg release it pins (Ploeg 0.2.0-rc.20 needed Unfold 0.4.0-rc.77 at once): two automerging groups would merge whichever publishes first, and under rebaseWhen \"conflicted\" a branch red while waiting for the other never re-tests, while a new publication of either rewrites this branch and re-runs e2e. The branch and PR concurrency limits are off for this branch alone (0 on any upgrade means no limit for its branch): the repository-wide limit of 15 was already reached on 2026-10-11, when sixteen renovate/* branches made the run log \"Reached branch limit - skipping branch creation\", and a release must not queue behind unrelated image bumps.",
+      description: "One Ploeg and Unfold release pair is one PR that merges itself: the Ploeg chart, ploegd (daemon and ploeg-mcp) and claude-runner images, and the Unfold chart, image and workspace image move in a single branch. e2e fails while a release's own pins disagree (a partial publication) or while the Ploeg pin is not the release the pinned Unfold certifies, so such a PR stays open until the rest lands. Ploeg and Unfold share one branch because Unfold tests only the Ploeg release it pins (Ploeg 0.2.0-rc.20 needed Unfold 0.4.0-rc.77 at once): two automerging groups would merge whichever publishes first, and under rebaseWhen \"conflicted\" a branch red while waiting for the other never re-tests, while a new publication of either rewrites this branch and re-runs e2e. The branch and PR concurrency limits are off for this branch alone (0 on any upgrade means no limit for its branch): the repository-wide limit of 15 was already reached on 2026-10-11, when sixteen renovate/* branches made the run log \"Reached branch limit - skipping branch creation\", and a release must not queue behind unrelated image bumps. platformAutomerge hands the merge to Forgejo, which merges once main's required checks pass (e2e / Lint & static validation among them, which holds the pair check); Renovate's own automerge merges only on its next hourly run, so on 2026-10-19 a green pair waited a run each time a new release arrived.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**"
       ],
@@ -1007,6 +1007,7 @@
       prConcurrentLimit: 0,
       automerge: true,
       automergeType: "pr",
+      platformAutomerge: true,
     },
     {
       description: "Group Grafana.com dashboard revision updates into one reviewable PR",
