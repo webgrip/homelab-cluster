@@ -27,8 +27,14 @@ spec:
           env:
             - name: FORGEJO_URL
               value: http://forgejo-http.forgejo.svc.cluster.local:3000
-            - name: REPOSITORY
-              value: webgrip/unfold
+            - name: REPOSITORIES
+              value: >-
+                webgrip/unfold
+                webgrip/homelab-cluster
+                webgrip/twente.dev
+                webgrip/erfbeeld
+                webgrip/omnigraph-explorer
+                webgrip/ploeg-bench-world
             - name: TARGET_URL
               value: http://ploeg.ploeg.svc.cluster.local:8080/webhooks/forge/forgejo
             - name: EVENTS
@@ -55,20 +61,33 @@ spec:
               fj() {
                 curl -fsS --max-time 45 -u "$ADMIN_USERNAME:$ADMIN_PASSWORD" -H 'Content-Type: application/json' "$@"
               }
-              api="$FORGEJO_URL/api/v1/repos/$REPOSITORY/hooks"
-              hook="$(fj "$api?limit=50" | jq -r --arg u "$TARGET_URL" '[.[] | select(.config.url == $u) | .id][0] // empty')"
               body="$(jq -nc --arg u "$TARGET_URL" --arg s "$WEBHOOK_SECRET" --argjson e "$EVENTS" \
                 '{type:"forgejo", active:true, branch_filter:"*", events:$e, config:{url:$u, content_type:"json", http_method:"post", secret:$s}}')"
-              if [ -z "$hook" ]; then
-                hook="$(printf '%s' "$body" | fj -X POST --data-binary @- "$api" | jq -r '.id')"
-                echo "created webhook $hook on $REPOSITORY"
-              else
-                printf '%s' "$body" | jq -c 'del(.type)' | fj -X PATCH --data-binary @- "$api/$hook" >/dev/null
-                echo "updated webhook $hook on $REPOSITORY"
-              fi
-              fj "$api/$hook" | jq -e '.active == true and (.events | index("pull_request")) != null and (.events | any(startswith("pull_request_review")))' >/dev/null \
-                || { echo "webhook $hook on $REPOSITORY does not carry the expected events"; exit 1; }
-              echo "webhook $hook on $REPOSITORY delivers $EVENTS to $TARGET_URL"
+              failed=0
+              for repository in $REPOSITORIES; do
+                api="$FORGEJO_URL/api/v1/repos/$repository/hooks"
+                if ! hooks="$(fj "$api?limit=50")"; then
+                  echo "could not read the webhooks of $repository"
+                  failed=1
+                  continue
+                fi
+                hook="$(printf '%s' "$hooks" | jq -r --arg u "$TARGET_URL" '[.[] | select(.config.url == $u) | .id][0] // empty')"
+                if [ -z "$hook" ]; then
+                  hook="$(printf '%s' "$body" | fj -X POST --data-binary @- "$api" | jq -r '.id // empty')"
+                  [ -n "$hook" ] || { echo "could not create a webhook on $repository"; failed=1; continue; }
+                  echo "created webhook $hook on $repository"
+                else
+                  printf '%s' "$body" | jq -c 'del(.type)' | fj -X PATCH --data-binary @- "$api/$hook" >/dev/null || { echo "could not update webhook $hook on $repository"; failed=1; continue; }
+                  echo "updated webhook $hook on $repository"
+                fi
+                if fj "$api/$hook" | jq -e '.active == true and (.events | index("pull_request")) != null and (.events | any(startswith("pull_request_review")))' >/dev/null; then
+                  echo "webhook $hook on $repository delivers $EVENTS to $TARGET_URL"
+                else
+                  echo "webhook $hook on $repository does not carry the expected events"
+                  failed=1
+                fi
+              done
+              exit "$failed"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
