@@ -9,7 +9,7 @@ Technical Story: [RFC: Access plane](../rfc/rfc-access-plane.md) (D7 made the ad
 evidential through an audit policy, Alloy and VictoriaLogs) and
 [RFC: Security hardening](../rfc/rfc-security-hardening.md). Decided by Ryan Grippeling on
 2026-10-18 ("fix it all") as part of hardening the agent plane next to
-ADR-0071 to ADR-0075.
+ADR-0071 to ADR-0074.
 
 ## Context and Problem Statement
 

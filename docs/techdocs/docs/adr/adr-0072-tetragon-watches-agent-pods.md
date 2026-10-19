@@ -227,9 +227,5 @@ which only brings back the audit rules' existing errors.
   Related: [RFC: security hardening](../rfc/rfc-security-hardening.md) (detect and respond),
   [RFC: agent observability](../rfc/rfc-agent-observability.md),
   [runbook: runtime detection](../runbooks/runtime-detection.md).
-* Honeytokens (ADR-0075, written in parallel): a decoy file path can join
-  the `Prefix` or `Postfix` list of `agent-credential-reads`, and its opens then arrive on the same
-  stream and rule. A decoy needs no baseline, so its rule can be `critical` from the start; that is
-  the honeytoken record's call.
 * 2026-06-19 — Falco and Tetragon suspended (commented out of the security kustomization).
 * 2026-10-18 — accepted by Ryan Grippeling: Tetragon reinstated in observe stage, Falco removed.

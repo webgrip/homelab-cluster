@@ -53,7 +53,6 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [Off-site Garage (garage-fsn1): capacity, emergency relief, bucket deletion, LMDB compaction, lost blocks](garage-offsite.md)
 - [Synthetic probes (blackbox, incl. Garage S3)](synthetic-probes-blackbox.md)
 - [k6 canaries](k6-canaries.md)
-- [Honeytokens (decoy credentials: a decoy was used or read, post-merge test)](honeytokens.md)
 
 ## Apps
 
