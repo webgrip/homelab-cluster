@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var WG_RUN_LIST_VERSION = '4.0.0';
+  var WG_RUN_LIST_VERSION = '4.1.0';
   var REQUEST_CONCURRENCY = 3;
   var CONFIRM_WINDOW_MS = 4000;
   var CONFIRM_ARM_GUARD_MS = 400;
@@ -21,8 +21,8 @@
   var ICON_RERUN = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/></svg>';
   var ICON_CLOSE = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>';
   var ACTIONS = {
-    cancel: { endpoint: 'cancel', verb: 'Stop', icon: ICON_STOP, eligible: CANCELLABLE, pastTense: 'Stopped', confirmsBulk: true },
-    rerun: { endpoint: 'rerun', verb: 'Re-run', icon: ICON_RERUN, eligible: RERUNNABLE, pastTense: 'Re-running', confirmsBulk: false },
+    cancel: { endpoint: 'cancel', verb: 'Stop', icon: ICON_STOP, eligible: CANCELLABLE, pastTense: 'Stopped', confirmsBulk: true, confirmsSingle: true },
+    rerun: { endpoint: 'rerun', verb: 'Re-run', icon: ICON_RERUN, eligible: RERUNNABLE, pastTense: 'Re-running', confirmsBulk: false, confirmsSingle: false },
   };
   var ICON_CARET = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="m4.427 7.427 3.396 3.396a.25.25 0 0 0 .354 0l3.396-3.396A.25.25 0 0 0 11.396 7H4.604a.25.25 0 0 0-.177.427Z"/></svg>';
   var QUICK = [
@@ -32,6 +32,7 @@
     { key: 'cancelled', label: 'Cancelled', test: function (r) { return r.status === 'cancelled'; } },
     { key: 'finished', label: 'All finished', test: function (r) { return !!RERUNNABLE[r.status]; } },
   ];
+  var BULK_TARGET = 'bulk';
   var OWN_NODES = '.wg-run-check, .wg-run-slot, .wg-run-tools, .wg-row-error';
 
   var selected = new Set();
@@ -133,13 +134,17 @@
       button.type = 'button';
       slot.appendChild(button);
     }
-    if (button.dataset.wgAction !== kind) {
-      var label = ACTIONS[kind].verb + ' run #' + runNumberOf(row.path);
+    var armed = isArmed(kind, row.path);
+    var rendered = kind + (armed ? ':armed' : '');
+    if (button.dataset.wgRendered !== rendered) {
+      var verb = armed ? ACTIONS[kind].verb + ' run?' : ACTIONS[kind].verb;
+      button.dataset.wgRendered = rendered;
       button.dataset.wgAction = kind;
-      button.innerHTML = ACTIONS[kind].icon + '<span class="wg-row-action-label">' + ACTIONS[kind].verb + '</span>';
-      button.setAttribute('aria-label', label);
+      button.innerHTML = ACTIONS[kind].icon + '<span class="wg-row-action-label">' + verb + '</span>';
+      button.setAttribute('aria-label', armed ? 'Click again to stop run #' + runNumberOf(row.path) : ACTIONS[kind].verb + ' run #' + runNumberOf(row.path));
       button.setAttribute('data-wg-focus', 'action:' + row.path);
     }
+    setAttrIfChanged(button, 'data-wg-confirming', armed ? '1' : null);
     button.dataset.wgPath = row.path;
     setAttrIfChanged(button, 'aria-busy', busy.has(row.path) ? 'true' : null);
   }
@@ -288,7 +293,7 @@
     Object.keys(ACTIONS).forEach(function (kind) {
       var button = bar.querySelector('[data-wg-bulk="' + kind + '"]');
       var n = eligibleSelection(rows, kind).length;
-      var confirming = !!(pendingConfirm && pendingConfirm.kind === kind);
+      var confirming = isArmed(kind, BULK_TARGET);
       anyEligible = anyEligible || n > 0;
       button.querySelector('span').textContent = confirming
         ? ACTIONS[kind].verb + ' ' + plural(n, 'run') + '?'
@@ -407,6 +412,28 @@
     });
   }
 
+  function isArmed(kind, target) {
+    return !!(pendingConfirm && pendingConfirm.kind === kind && pendingConfirm.target === target);
+  }
+
+  function armOrPerform(kind, target, paths, needsConfirm) {
+    var armed = isArmed(kind, target);
+    if (armed && Date.now() - pendingConfirm.armedAt < CONFIRM_ARM_GUARD_MS) return;
+    if (needsConfirm && !armed) {
+      clearConfirm();
+      pendingConfirm = {
+        kind: kind,
+        target: target,
+        armedAt: Date.now(),
+        timer: window.setTimeout(function () { pendingConfirm = null; queueDecorate(); }, CONFIRM_WINDOW_MS),
+      };
+      queueDecorate();
+      return;
+    }
+    clearConfirm();
+    perform(kind, paths);
+  }
+
   function clearConfirm() {
     if (pendingConfirm) window.clearTimeout(pendingConfirm.timer);
     pendingConfirm = null;
@@ -424,19 +451,8 @@
     if (!button) return;
     var kind = button.dataset.wgBulk;
     var targets = eligibleSelection(readRows(), kind).map(function (r) { return r.path; });
-    if (pendingConfirm && pendingConfirm.kind === kind && Date.now() - pendingConfirm.armedAt < CONFIRM_ARM_GUARD_MS) return;
-    if (ACTIONS[kind].confirmsBulk && targets.length > 1 && !(pendingConfirm && pendingConfirm.kind === kind)) {
-      clearConfirm();
-      pendingConfirm = {
-        kind: kind,
-        armedAt: Date.now(),
-        timer: window.setTimeout(function () { pendingConfirm = null; queueDecorate(); }, CONFIRM_WINDOW_MS),
-      };
-      queueDecorate();
-      return;
-    }
-    clearConfirm();
-    perform(kind, targets);
+    var needsConfirm = ACTIONS[kind].confirmsSingle || (ACTIONS[kind].confirmsBulk && targets.length > 1);
+    armOrPerform(kind, BULK_TARGET, targets, needsConfirm);
   }
 
   function toggleRange(rows, fromPath, toPath, checked) {
@@ -486,7 +502,8 @@
     var action = e.target.closest('.run-list .wg-run-slot button');
     if (action && action.getAttribute('aria-busy') !== 'true') {
       e.preventDefault();
-      perform(action.dataset.wgAction, [action.dataset.wgPath]);
+      var kind = action.dataset.wgAction;
+      armOrPerform(kind, action.dataset.wgPath, [action.dataset.wgPath], ACTIONS[kind].confirmsSingle);
     }
   }
 
