@@ -92,10 +92,11 @@ data:
     # Per-run wall-clock keyed by the litellm-joinable alias, carrying the source
     # ticket so PromQL can attribute LLM spend to a ticket without a cross-datasource
     # SQL join:  litellm_run_spend * on(key_alias) group_left(ticket) ploeg_run_*.
-    # duration uses now() for still-running rows. 30d cap bounds cardinality.
+    # duration uses now() for still-running rows. A 7d window plus unfinished
+    # runs bounds cardinality; trace_alias keeps run_token (a Run credential) unread.
     ploeg_run:
       query: |
-        SELECT 'ploeg-' || left(r.run_token, 12) AS key_alias,
+        SELECT r.trace_alias AS key_alias,
                COALESCE(NULLIF(r.team,''),'none') AS team,
                CASE WHEN r.finished_at IS NULL THEN 'running'
                     ELSE COALESCE(NULLIF(r.outcome,''),'unknown') END AS outcome,
@@ -105,9 +106,10 @@ data:
                EXTRACT(EPOCH FROM r.started_at) AS started_epoch
         FROM agent_runs r
         JOIN work_items w ON w.id = r.work_item_id
-        WHERE r.started_at >= now() - interval '30 days'
+        WHERE r.started_at >= now() - interval '7 days'
+           OR (r.started_at IS NOT NULL AND r.finished_at IS NULL)
       metrics:
-        - key_alias: {usage: "LABEL", description: "ploeg-<run_token[:12]> — joins to litellm_run_spend{key_alias}"}
+        - key_alias: {usage: "LABEL", description: "agent_runs.trace_alias (ploeg-<run_token[:12]>) — joins to litellm_run_spend{key_alias}"}
         - team: {usage: "LABEL", description: "Team"}
         - outcome: {usage: "LABEL", description: "Run outcome (pr_opened/failed/running)"}
         - provider: {usage: "LABEL", description: "Tracker that sourced the work item (e.g. vikunja)"}
