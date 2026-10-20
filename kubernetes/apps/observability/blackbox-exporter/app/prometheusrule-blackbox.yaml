@@ -262,6 +262,34 @@ spec:
               - kubectl -n security get terraform access-broker; read the last plan for flow or brand changes
               - Open /if/flow/homelab-authentication/ directly; it is the break-glass flow and must still render
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/authentik-oidc-login/"
+        - alert: UnfoldAvailabilityLow
+          expr: |
+            avg_over_time(probe_success{endpoint="unfold"}[5m]) < 0.8
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: unfold
+          annotations:
+            summary: "Unfold answers fewer than 80% of probes through the gateway (endpoint {{ $labels.endpoint }})"
+            description: |
+              What's happening:
+              - The 15s blackbox probe of unfold /healthz through envoy-internal succeeded on only {{ $value | humanizePercentage }} of attempts over the last 5m, for 5m.
+
+              Impact/risk:
+              - People cannot reliably open Unfold to follow, review or approve agent work; the agent host and MCP clients lose their sessions.
+
+              Likely causes:
+              - The unfold pod is restarting or was evicted from a failed node and is waiting for its Longhorn volume to attach elsewhere
+              - Its readiness check fails on a dependency such as Ploeg or its own storage
+              - envoy-internal or the unfold HTTPRoute is flapping
+
+              First actions:
+              - kubectl -n ploeg get pods -l app.kubernetes.io/name=unfold -o wide; check restarts and the node
+              - kubectl -n ploeg describe pod -l app.kubernetes.io/name=unfold; look for volume attach or eviction events
+              - kubectl -n observability exec deploy/blackbox-exporter -- wget -qO- 'http://127.0.0.1:9115/probe?debug=true&module=http_unfold_gateway&target={{ $labels.instance }}'
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/synthetic-probes-blackbox/#route-probes"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/synthetic-blackbox/synthetic-blackbox"
         - alert: SyntheticRouteDown
           expr: |
             probe_success{synthetic="route"} == 0
