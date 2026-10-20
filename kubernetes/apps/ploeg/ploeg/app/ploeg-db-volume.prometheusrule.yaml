@@ -1,0 +1,76 @@
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ploeg-db-volume
+  labels:
+    app.kubernetes.io/name: ploeg-db
+    app.kubernetes.io/part-of: ploeg
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: ploeg-db.volume
+      rules:
+        - alert: PloegDbVolumeFillingUp
+          expr: |
+            100 * (
+              1 - kubelet_volume_stats_available_bytes{namespace="ploeg", persistentvolumeclaim=~"ploeg-db-[0-9]+"}
+                  / kubelet_volume_stats_capacity_bytes{namespace="ploeg", persistentvolumeclaim=~"ploeg-db-[0-9]+"}
+            ) > 70
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: ploeg
+          annotations:
+            summary: "Ploeg dispatch DB data volume >70% full ({{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }})"
+            description: |
+              What's happening:
+              - The ploeg-db data volume {{ $labels.persistentvolumeclaim }} is {{ $value | humanize }}% full and has been over 70% for 30m.
+
+              Impact/risk:
+              - Postgres stops accepting writes when the data volume fills: claims, spend settlement and audit rows fail, and every Work Item stalls.
+
+              Likely causes:
+              - audit_log and run_transcript_entries grow without retention; they are the largest tables
+              - Uploaded Work Item context (work_item_context) kept after the item ends
+              - Table bloat after heavy updates that autovacuum has not reclaimed
+
+              First actions:
+              - Check table sizes on the replica: SELECT relname, pg_size_pretty(pg_total_relation_size(oid)) FROM pg_class WHERE relkind = 'r' ORDER BY pg_total_relation_size(oid) DESC LIMIT 10
+              - Raise spec.storage.size in kubernetes/apps/ploeg/ploeg/app/database/cluster.yaml (resizeInUseVolumes expands it online)
+              - Decide on retention for transcripts and audit rows before the volume is critical
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/cnpg-backups/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"
+
+        - alert: PloegDbVolumeCritical
+          expr: |
+            100 * (
+              1 - kubelet_volume_stats_available_bytes{namespace="ploeg", persistentvolumeclaim=~"ploeg-db-[0-9]+"}
+                  / kubelet_volume_stats_capacity_bytes{namespace="ploeg", persistentvolumeclaim=~"ploeg-db-[0-9]+"}
+            ) > 85
+          for: 10m
+          labels:
+            severity: critical
+            owner: platform
+            service: ploeg
+          annotations:
+            summary: "Ploeg dispatch DB data volume >85% full ({{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }})"
+            description: |
+              What's happening:
+              - The ploeg-db data volume {{ $labels.persistentvolumeclaim }} is {{ $value | humanize }}% full and has been over 85% for 10m.
+
+              Impact/risk:
+              - Postgres is close to refusing writes. When it does, ploegd cannot claim, settle or audit, and the whole agent pipeline stops.
+
+              Likely causes:
+              - Growth that PloegDbVolumeFillingUp already warned about was not acted on
+              - A burst of transcripts or uploaded context from many concurrent Runs
+
+              First actions:
+              - Raise spec.storage.size in kubernetes/apps/ploeg/ploeg/app/database/cluster.yaml now; Longhorn expands the volume online
+              - Confirm the PVC capacity changed: kubectl -n ploeg get pvc -l cnpg.io/cluster=ploeg-db
+              - Then find the growth driver with the table-size query from PloegDbVolumeFillingUp
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/cnpg-backups/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn"
