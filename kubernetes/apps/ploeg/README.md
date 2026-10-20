@@ -16,11 +16,12 @@ standalone release. ploeg-mcp, claude-runner and the `pewter-claude-login` Persi
 rendered by the chart; their route, network policies and Secrets stay in `ploeg/app/`.
 
 Renovate moves the Unfold chart, image and workspace image in one `renovate/ploeg-unfold-release`
-PR that merges itself. `scripts/check_release_lockstep.py` keeps that PR red while those pins
-disagree, and fails while the standalone `ploeg/app/helmrelease.yaml` is not suspended. That
-HelmRelease and its OCIRepository stay in Git, suspended and ignored by Renovate, until the old
-release's storage Secret is removed: deleting the HelmRelease earlier would uninstall the objects the
-Unfold release now owns.
+PR that merges itself: Forgejo merges it once `main`'s required `e2e /` checks pass. Renovate finds a
+new release on its hourly run. `scripts/check_release_lockstep.py` keeps that PR red while those pins
+disagree, and fails if a standalone `ploeg/app/helmrelease.yaml` comes back, because two Helm releases
+would then fight over Ploeg's objects. The standalone release was retired on 2026-10-20: its Flux
+finalizer was removed before the HelmRelease and its Helm storage Secrets were deleted, so nothing was
+uninstalled.
 
 ## One-time setup after first deploy (ingest)
 
@@ -142,7 +143,7 @@ the chart puts on ploegd alone.
 - One entry per board, without a `team:` key, so the board decides the repository whoever is
   assigned. When the team picked the repository instead, a ticket asking for an erfbeeld README
   change was assigned to silver and the agent edited the wrong repository's README
-  ([webgrip/ploeg#30](https://forgejo.webgrip.dev/webgrip/ploeg/pulls/30), 2026-07-30). Ploeg Test
+  (webgrip/ploeg#30 (that repository is gone; Ploeg moved to ploeg-hq/ploeg), 2026-07-30). Ploeg Test
   is the exception: it pins its tickets to the `unfold` team (see the
   [Ploeg ↔ Unfold test runbook](../../../docs/techdocs/docs/runbooks/ploeg-unfold-test.md)).
 - Boards are resolved by name at boot: ploegd logs what it resolved and refuses to start when a
@@ -269,7 +270,7 @@ the board is just not updated.
   readers at once do not fit the worker pool. The fan-out to reviewer and devops came off on
   2026-07-30 after both readers failed; the real causes were in ploegd (a reader got a shallow
   clone of the base, was not told about the pull request, and held a full push credential), fixed
-  in 0.2.0-rc.14 ([webgrip/ploeg#32](https://forgejo.webgrip.dev/webgrip/ploeg/pulls/32)).
+  in 0.2.0-rc.14 (webgrip/ploeg#32).
 - `harness.name: acp` with the `openhands` profile: over ACP the adapter sees every step as a
   protocol message, so its idle timer resets while the agent works and only a silent agent is
   stopped. Native headless OpenHands printed nothing until done, and the 45m watchdog killed 12

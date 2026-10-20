@@ -2,8 +2,8 @@
 """Fail when the Unfold pins do not name one release, or when a second Helm release could own Ploeg.
 
 Each Unfold release publishes a chart and images under one version, so its pins must agree.
-The Unfold chart carries the Ploeg chart it was tested with (Unfold ADR-0043), so the
-standalone Ploeg HelmRelease that remains in Git must stay suspended.
+The Unfold chart carries the Ploeg chart it was tested with (Unfold ADR-0043), so no standalone
+Ploeg HelmRelease may come back next to it.
 """
 
 from __future__ import annotations
@@ -30,8 +30,7 @@ class Release:
 
 SEMVER = r"(?P<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)"
 DIGEST = r"@sha256:[a-f0-9]{64}"
-SUSPENDED_PLOEG_HELMRELEASE = "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml"
-SUSPEND_TRUE = re.compile(r"^  suspend:\s*true\s*$")
+STANDALONE_PLOEG_HELMRELEASE = "kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml"
 
 UNFOLD = Release(
     "Unfold",
@@ -83,24 +82,10 @@ def lockstep_failures(root: Path) -> list[str]:
     return failures
 
 
-def is_suspended(manifest: str) -> bool:
-    in_spec = False
-    for line in manifest.splitlines():
-        if line and not line[0].isspace():
-            in_spec = line.rstrip() == "spec:"
-        elif in_spec and SUSPEND_TRUE.match(line):
-            return True
-    return False
-
-
 def single_ploeg_owner_failures(root: Path) -> list[str]:
-    file = root / SUSPENDED_PLOEG_HELMRELEASE
-    if not file.is_file():
-        print("OK Ploeg runs only in the Unfold release")
-        return []
-    if not is_suspended(file.read_text()):
+    if (root / STANDALONE_PLOEG_HELMRELEASE).exists():
         return [
-            f"{SUSPENDED_PLOEG_HELMRELEASE} is not suspended, but the Unfold release owns Ploeg's objects; "
+            f"{STANDALONE_PLOEG_HELMRELEASE} exists, but the Unfold release owns Ploeg's objects; "
             "two Helm releases would fight over them"
         ]
     print("OK Ploeg runs only in the Unfold release")

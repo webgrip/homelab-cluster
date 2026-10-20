@@ -3,11 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="${1:-$(git rev-parse --show-toplevel)}"
 CHECK="${ROOT_DIR}/scripts/check_release_lockstep.py"
-SUSPENDED_PLOEG=kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml
+STANDALONE_PLOEG=kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml
 PINS=(
   kubernetes/apps/ploeg/unfold/app/ocirepository.yaml
   kubernetes/apps/ploeg/unfold/app/helmrelease.yaml
-  "$SUSPENDED_PLOEG"
 )
 failures=0
 
@@ -51,11 +50,12 @@ expect() {
   rm -rf "$dir"
 }
 
-expect_without_suspended_ploeg() {
+expect_with_standalone_ploeg() {
   local dir
   dir="$(fresh_copy)"
-  rm "${dir}/${SUSPENDED_PLOEG}"
-  record pass "the standalone Ploeg HelmRelease is gone" "$(run_check "$dir")"
+  mkdir -p "${dir}/$(dirname "$STANDALONE_PLOEG")"
+  printf 'apiVersion: helm.toolkit.fluxcd.io/v2\nkind: HelmRelease\nmetadata:\n  name: ploeg\nspec:\n  suspend: true\n' >"${dir}/${STANDALONE_PLOEG}"
+  record fail "a standalone Ploeg HelmRelease comes back" "$(run_check "$dir")"
   rm -rf "$dir"
 }
 
@@ -68,13 +68,7 @@ expect fail "Unfold workspace image ahead of its chart" \
   kubernetes/apps/ploeg/unfold/app/helmrelease.yaml 's/(unfold-agent:)[^@]+@/\19.9.9-rc.1@/'
 expect fail "Unfold image without a digest" \
   kubernetes/apps/ploeg/unfold/app/helmrelease.yaml '/repository: harbor\.webgrip\.dev\/webgrip\/unfold$/{n;n;/digest:/d}'
-expect fail "standalone Ploeg HelmRelease resumed" \
-  "$SUSPENDED_PLOEG" 's/^(  suspend: )true$/\1false/'
-expect fail "standalone Ploeg HelmRelease without suspend" \
-  "$SUSPENDED_PLOEG" '/^  suspend: true$/d'
-expect pass "suspend placed after other spec fields" \
-  "$SUSPENDED_PLOEG" '/^  suspend: true$/d; s/^(  interval: 30m)$/\1\n  suspend: true/'
-expect_without_suspended_ploeg
+expect_with_standalone_ploeg
 
 if (( failures > 0 )); then
   echo "${failures} lockstep case(s) failed"

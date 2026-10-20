@@ -19,7 +19,7 @@ import re
 import sys
 from pathlib import Path
 
-PLOEG = Path("kubernetes/apps/ploeg/ploeg/app/helmrelease.yaml")
+PLOEG = Path("kubernetes/apps/ploeg/unfold/app/helmrelease.yaml")
 LITELLM = Path("kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml")
 
 RE_PROXY_MODEL = re.compile(r"^\s*model:\s*litellm_proxy/(?P<name>[A-Za-z0-9._-]+)")

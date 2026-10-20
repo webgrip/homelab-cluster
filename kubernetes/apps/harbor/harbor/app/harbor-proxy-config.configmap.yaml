@@ -308,31 +308,14 @@ data:
         && log "sbom-on-push enabled on $$_proj" || log "WARN: sbom-on-push enable failed on $$_proj (needs Harbor >= 2.11)"
     }
 
-    ensure_release_webhook() {
+    remove_release_webhook() {
       _proj="$$1"; _name="unfold-release-renovate"
-      [ -n "$${RELEASE_RELAY_TOKEN:-}" ] && [ -n "$${RELEASE_RELAY_URL:-}" ] || {
-        log "no release relay token or url (secret harbor-release-relay-inbound) — skipping release webhook"; return 0; }
       _pid="$$(hc GET "/projects?name=$$_proj" 2>/dev/null | jq -r ".[] | select(.name==\"$$_proj\") | .project_id" 2>/dev/null | head -n1)"
-      [ -n "$$_pid" ] && [ "$$_pid" != "null" ] || { log "WARN: $$_proj project id not found; skipping release webhook"; return 0; }
-      _body="$$(jq -nc --arg name "$$_name" --arg address "$$RELEASE_RELAY_URL" --arg auth "Bearer $$RELEASE_RELAY_TOKEN" \
-        '{name: $$name, description: "Unfold release pushes -> harbor-release-relay -> Renovate run for webgrip/homelab-cluster (managed)", enabled: true, event_types: ["PUSH_ARTIFACT"], targets: [{type: "http", address: $$address, auth_header: $$auth, skip_cert_verify: false, payload_format: "Default"}]}')"
+      [ -n "$$_pid" ] && [ "$$_pid" != "null" ] || { log "WARN: $$_proj project id not found; skipping release webhook removal"; return 0; }
       _wid="$$(hc GET "/projects/$$_pid/webhook/policies?page_size=100" 2>/dev/null | jq -r --arg name "$$_name" '.[]? | select(.name == $$name) | .id' 2>/dev/null | head -n1)"
-      if [ -z "$$_wid" ] || [ "$$_wid" = "null" ]; then
-        hc POST "/projects/$$_pid/webhook/policies" "$$_body" >/dev/null 2>&1 \
-          && log "created webhook policy '$$_name' on $$_proj" || log "WARN: webhook policy create failed on $$_proj"
-      else
-        _upd="$$(printf '%s' "$$_body" | jq -c --argjson id "$$_wid" '. + {id: $$id}')"
-        hc PUT "/projects/$$_pid/webhook/policies/$$_wid" "$$_upd" >/dev/null 2>&1 \
-          && log "webhook policy '$$_name' (id=$$_wid) converged on $$_proj" || log "WARN: webhook policy update failed on $$_proj (id=$$_wid)"
-      fi
-      _live="$$(hc GET "/projects/$$_pid/webhook/policies?page_size=100" 2>/dev/null \
-        | jq -c --arg name "$$_name" '[.[]? | select(.name == $$name) | {id, enabled, event_types, targets: [.targets[]? | {type, address, payload_format, auth_header_set: ((.auth_header // "") != "")}]}] | first // empty' 2>/dev/null)"
-      if printf '%s' "$$_live" | jq -e --arg address "$$RELEASE_RELAY_URL" \
-          '.enabled == true and (.event_types | index("PUSH_ARTIFACT")) != null and any(.targets[]; .address == $$address)' >/dev/null 2>&1; then
-        log "webhook policy '$$_name' verified on $$_proj: $$_live"
-      else
-        log "ERROR: webhook policy '$$_name' on $$_proj does not read back as desired: $${_live:-absent}"
-        HEALTH_FAILED=1
+      if [ -n "$$_wid" ] && [ "$$_wid" != "null" ]; then
+        hc DELETE "/projects/$$_pid/webhook/policies/$$_wid" >/dev/null 2>&1 \
+          && log "removed webhook policy '$$_name' (id=$$_wid) from $$_proj" || { log "ERROR: webhook policy removal failed on $$_proj (id=$$_wid)"; HEALTH_FAILED=1; }
       fi
     }
 
@@ -413,10 +396,10 @@ data:
     ensure_retention webgrip
     ensure_project_scanning webgrip
     ensure_immutable_semver webgrip
-    ensure_release_webhook webgrip
+    remove_release_webhook webgrip
 
     if [ "$$HEALTH_FAILED" != "0" ]; then
-      log "reconcile finished but a credentialed upstream or the release webhook failed its check — exiting 1 (HarborProxyReconcileStale will fire)"
+      log "reconcile finished but a credentialed upstream or the release webhook removal failed its check — exiting 1 (HarborProxyReconcileStale will fire)"
       exit 1
     fi
     log "reconcile complete"

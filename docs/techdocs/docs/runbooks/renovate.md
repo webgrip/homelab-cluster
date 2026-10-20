@@ -48,33 +48,17 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 Note: editing a dashboard issue on Forgejo fires a webhook run near-instantly, but that run can read the **pre-click** issue body — checkbox ticks are honored by the *next* run.
 
-## Unfold releases trigger a homelab run
+## Unfold releases reach the homelab
 
-An Unfold release does not wait for the hourly run. The path is:
-
-1. Harbor project `webgrip` holds webhook policy `unfold-release-renovate` (event `PUSH_ARTIFACT`),
-   written every hour by the `harbor-proxy-config` CronJob. Its target is
-   `http://harbor-release-relay.harbor.svc.cluster.local:8080/harbor`, authenticated with the
-   generated token in Secret `harbor-release-relay-inbound` (key `RELAY_TOKEN`).
-2. `harbor-release-relay` (namespace `harbor`, `kubernetes/apps/harbor/release-relay`) keeps only
-   pushes to `webgrip/unfold`, `webgrip/unfold-agent` and `webgrip/charts/unfold` whose tag is a
-   version (`0.4.0`, `v0.4.0`, `0.4.0-rc.77`); `cache`, `sha256-….sig` and untagged pushes are
-   ignored. Harbor policies cannot filter by repository, so the relay does it.
-3. For each release push it schedules `webgrip/homelab-cluster` on RenovateJob `webgrip-forgejo`
-   at once, and once more 20 minutes after the **last** release push. The operator drops a
-   trigger for a project that is already running (still answering 200); the trailing trigger is
-   the run that sees the complete release. The hourly schedule stays as the backstop.
-4. The `ploeg-unfold-release` group has `platformAutomerge: true`: Forgejo merges the PR on its
-   last required `e2e /` status. That is safe only while homelab `main` requires every e2e
-   context ([branch protection runbook](forgejo-branch-protection-rollout.md), step 3).
-
-Evidence, in order: `kubectl -n harbor logs job/<latest harbor-proxy-config>` shows
-`webhook policy 'unfold-release-renovate' verified`; `kubectl -n harbor logs deploy/harbor-release-relay`
-shows `harbor event … outcome: release` then `renovate schedule sent … status: 200`. Metrics:
-`harbor_release_relay_events_total{outcome}` and `harbor_release_relay_schedules_total{reason,result}`;
-alerts `HarborReleaseRelayScheduleFailing`, `HarborReleaseRelayUnconfigured`, `HarborReleaseRelayDown`.
-The relay authenticates to the operator with the first entry of OpenBao `renovate/webhook-auth`
-`token` (Secret `harbor-release-relay-renovate`).
+An Unfold release is one chart that carries the Ploeg chart it was tested with
+([Unfold ADR-0043](https://forgejo.webgrip.dev/webgrip/unfold/src/branch/development/docs/adr/adr-0043-an-unfold-release-is-one-chart-that-carries-the-ploeg-it-was-tested-with.md)),
+published only after all its images. The hourly `webgrip-forgejo` run opens or updates the
+`ploeg-unfold-release` PR, and that group's `platformAutomerge: true` lets Forgejo merge it on its last
+required `e2e /` status. That is safe only while homelab `main` requires the `e2e / Lint & static
+validation` context; `scripts/validate-repo-config-model.sh` fails when it stops doing so. For a
+faster pickup, force a run (above). The Harbor release relay that triggered runs on each push was
+removed on 2026-10-20; the `harbor-proxy-config` CronJob deletes its webhook policy
+`unfold-release-renovate` from Harbor project `webgrip`.
 
 ## All PRs red at once: OCI digest drift
 
