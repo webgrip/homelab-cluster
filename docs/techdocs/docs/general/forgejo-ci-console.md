@@ -56,6 +56,11 @@ cookie. Forgejo 15 checks these with Go's cross-origin protection (`Sec-Fetch-Si
 a same-origin page passes, and authorises each one against your write access to that
 repository. The read token cannot stop or re-run anything.
 
+A successful stop or re-run flips the row at once (cancelled, or queued) instead of waiting
+for the next poll. When a row's button changes between Stop and Re-run, clicks on it are
+ignored for 1.5 seconds with a notice, so a click aimed at one action cannot land on the
+other.
+
 ### Polling budget
 
 The run list endpoint returns about 13 KB per run (it embeds the repository and the event

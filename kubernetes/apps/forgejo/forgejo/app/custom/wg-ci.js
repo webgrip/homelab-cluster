@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var WG_CI_VERSION = '1.0.1';
+  var WG_CI_VERSION = '1.1.0';
   var CONSOLE_PATH = '/-/ci';
   var OAUTH_CONFIG_URL = '/assets/wg/wg-ci-oauth.json';
   var PANELS_URL = '/assets/wg/wg-ci-panels.json';
@@ -30,6 +30,7 @@
   var LANES = 6;
   var CONFIRM_MS = 4000;
   var CONFIRM_ARM_GUARD_MS = 400;
+  var ACTION_FLIP_GUARD_MS = 1500;
   var TOAST_MS = 4500;
   var STRIP_LENGTH = 20;
   var MAX_QUEUE_SAMPLE_MS = 6 * 3600 * 1000;
@@ -102,6 +103,7 @@
     selected: new Set(),
     busy: new Set(),
     failures: new Map(),
+    actionShown: new Map(),
     confirm: null,
     focusKey: null,
     tab: 'runs',
@@ -664,6 +666,7 @@
         else {
           state.selected.delete(run.key);
           state.jobs.delete(run.key);
+          applyOptimisticStatus(run, kind);
           wakeRepo(run.repo, run.id);
         }
         return result;
@@ -853,8 +856,33 @@
     return '<span class="wg-ci-time-main">' + (run.duration > 0 ? formatDuration(run.duration) : '') + '</span>';
   }
 
+  function noteShownAction(key, kind) {
+    var shown = state.actionShown.get(key);
+    if (!shown || shown.kind !== kind) state.actionShown.set(key, { kind: kind, at: shown ? Date.now() : 0 });
+  }
+
+  function actionJustFlipped(key) {
+    var shown = state.actionShown.get(key);
+    return !!shown && Date.now() - shown.at < ACTION_FLIP_GUARD_MS;
+  }
+
+  function applyOptimisticStatus(run, kind) {
+    var now = Date.now();
+    if (kind === 'cancel') {
+      run.status = 'cancelled';
+      run.stopped = now;
+    } else {
+      run.status = 'waiting';
+      run.started = 0;
+      run.stopped = 0;
+      run.duration = 0;
+    }
+    run.updated = now;
+  }
+
   function rowAction(run) {
     var kind = actionFor(run);
+    noteShownAction(run.key, kind);
     if (!kind) return '';
     var busy = state.busy.has(run.key);
     var armed = state.confirm && state.confirm.key === run.key && state.confirm.until > Date.now();
@@ -1344,6 +1372,13 @@
   function handleRunAction(button) {
     var kind = button.getAttribute('data-wg-act');
     var key = button.getAttribute('data-wg-key');
+    var confirmPending = state.confirm && state.confirm.key === key && state.confirm.until > Date.now();
+    if (actionJustFlipped(key) || (confirmPending && kind !== 'cancel')) {
+      state.confirm = null;
+      toast('That run changed state as you clicked. Check it and click again.', true);
+      scheduleRender();
+      return;
+    }
     if (kind === 'cancel') {
       var armed = state.confirm && state.confirm.key === key && state.confirm.until > Date.now();
       if (!armed) {
