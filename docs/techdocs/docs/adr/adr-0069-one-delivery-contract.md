@@ -104,3 +104,7 @@ with machinery that already runs here, and confines forge differences to one ada
   (private artifact, shared by the owner).
 * Implementation runs in a separate work stream; the first slice is the homelab branch
   `fix/renovate-ploeg-unfold-release` ("deploy Ploeg and Unfold releases as one tested pair").
+* 2026-10-22 — P0, P2 and P3 are done and P4's detection is live; phase status and evidence are in
+  the RFC's "Status on 2026-10-22". Unfold ADR-0043 makes one Unfold chart, carrying Ploeg, the
+  release a cluster consumes, which this contract's consumption layer allows: the registry still
+  carries it and Renovate still reads it.

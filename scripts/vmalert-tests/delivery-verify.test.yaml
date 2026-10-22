@@ -6,12 +6,10 @@ tests:
   - name: a candidate that never becomes Ready fires with its revision
     interval: 1m
     input_series:
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="ploeg", suspended="False", ready="True", revision="0.2.0-rc.25"}'
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.106"}'
         values: "1x119"
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="ploeg", suspended="False", ready="Unknown", revision="0.2.0-rc.26"}'
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="Unknown", revision="0.4.0-rc.107"}'
         values: "_x119 1x60"
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.84"}'
-        values: "1x180"
     alert_rule_test:
       - eval_time: 115m
         groupname: delivery-verify.alerts
@@ -26,14 +24,14 @@ tests:
         alertname: DeliveryCandidateUnhealthy
         exp_alerts:
           - exp_labels:
-              release: ploeg
-              revision: 0.2.0-rc.26
+              release: unfold
+              revision: 0.4.0-rc.107
               signal: release_not_ready
               severity: warning
               owner: platform
               service: delivery-verify
             exp_annotations:
-              summary: "Release candidate 0.2.0-rc.26 is unhealthy after deploy (ploeg/ploeg)"
+              summary: "Release candidate 0.4.0-rc.107 is unhealthy after deploy (ploeg/unfold)"
       - eval_time: 145m
         groupname: delivery-verify.alerts
         alertname: DeliveryVerifySignalMissing
@@ -42,46 +40,37 @@ tests:
       - expr: delivery:release_candidate:fresh
         eval_time: 145m
         exp_samples:
-          - labels: 'delivery:release_candidate:fresh{release="ploeg", revision="0.2.0-rc.26"}'
-            value: 1
-      - expr: delivery:release_deployed:info
-        eval_time: 145m
-        exp_samples:
-          - labels: 'delivery:release_deployed:info{release="unfold", revision="0.4.0-rc.84"}'
+          - labels: 'delivery:release_candidate:fresh{release="unfold", revision="0.4.0-rc.107"}'
             value: 1
 
   - name: a candidate that turns Ready within the rollout window does not fire and is recorded as deployed
     interval: 1m
     input_series:
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="ploeg", suspended="False", ready="True", revision="0.2.0-rc.25"}'
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.106"}'
         values: "1x119"
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="ploeg", suspended="False", ready="Unknown", revision="0.2.0-rc.26"}'
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="Unknown", revision="0.4.0-rc.107"}'
         values: "_x119 1x5"
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="ploeg", suspended="False", ready="True", revision="0.2.0-rc.26"}'
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.107"}'
         values: "_x125 1x60"
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.84"}'
-        values: "1x185"
     alert_rule_test:
       - eval_time: 150m
         groupname: delivery-verify.alerts
         alertname: DeliveryCandidateUnhealthy
         exp_alerts: []
     metricsql_expr_test:
-      - expr: delivery:release_deployed:info{release="ploeg"}
+      - expr: delivery:release_deployed:info
         eval_time: 150m
         exp_samples:
-          - labels: 'delivery:release_deployed:info{release="ploeg", revision="0.2.0-rc.26"}'
+          - labels: 'delivery:release_deployed:info{release="unfold", revision="0.4.0-rc.107"}'
             value: 1
 
-  - name: a crash-looping candidate fires, the same restarts on a release older than an hour do not
+  - name: a crash-looping ploegd or workbench in a fresh Unfold release fires per workload, worker pods and an old release do not
     interval: 1m
     input_series:
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.84"}'
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.106"}'
         values: "1x119"
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.85"}'
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.107"}'
         values: "_x119 1x60"
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="ploeg", suspended="False", ready="True", revision="0.2.0-rc.25"}'
-        values: "1x180"
       - series: 'kube_pod_container_status_restarts_total{exported_namespace="ploeg", exported_pod="unfold-54784b5f5f-9w4zs", exported_container="workbench"}'
         values: "0x120 1+1x60"
       - series: 'kube_pod_container_status_restarts_total{exported_namespace="ploeg", exported_pod="ploeg-f9d9c95bc-8ckg8", exported_container="ploegd"}'
@@ -95,33 +84,57 @@ tests:
         exp_alerts:
           - exp_labels:
               release: unfold
-              revision: 0.4.0-rc.85
+              revision: 0.4.0-rc.107
               signal: container_restarting
+              workload: ploeg
               severity: warning
               owner: platform
               service: delivery-verify
             exp_annotations:
-              summary: "Release candidate 0.4.0-rc.85 is unhealthy after deploy (ploeg/unfold)"
+              summary: "Release candidate 0.4.0-rc.107 is unhealthy after deploy (ploeg/unfold)"
+          - exp_labels:
+              release: unfold
+              revision: 0.4.0-rc.107
+              signal: container_restarting
+              workload: unfold
+              severity: warning
+              owner: platform
+              service: delivery-verify
+            exp_annotations:
+              summary: "Release candidate 0.4.0-rc.107 is unhealthy after deploy (ploeg/unfold)"
 
-  - name: a candidate with unavailable replicas or a failing route probe fires, a healthy one does not
+  - name: the same restarts on a release older than an hour do not fire
     interval: 1m
     input_series:
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.85"}'
-        values: "_x119 1x60"
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="ploeg", suspended="False", ready="True", revision="0.2.0-rc.26"}'
-        values: "_x119 1x60"
-      - series: 'kube_deployment_spec_replicas{exported_namespace="ploeg", deployment="unfold"}'
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.106"}'
         values: "1x180"
-      - series: 'kube_deployment_status_replicas_available{exported_namespace="ploeg", deployment="unfold"}'
+      - series: 'kube_pod_container_status_restarts_total{exported_namespace="ploeg", exported_pod="ploeg-f9d9c95bc-8ckg8", exported_container="ploegd"}'
+        values: "0x120 1+1x60"
+    alert_rule_test:
+      - eval_time: 145m
+        groupname: delivery-verify.alerts
+        alertname: DeliveryCandidateUnhealthy
+        exp_alerts: []
+
+  - name: unavailable ploeg-mcp replicas or a failing route probe fire, a healthy deployment does not
+    interval: 1m
+    input_series:
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.107"}'
+        values: "_x119 1x60"
+      - series: 'kube_deployment_spec_replicas{exported_namespace="ploeg", deployment="ploeg-mcp"}'
+        values: "1x180"
+      - series: 'kube_deployment_status_replicas_available{exported_namespace="ploeg", deployment="ploeg-mcp"}'
         values: "1x120 0x60"
       - series: 'kube_deployment_spec_replicas{exported_namespace="ploeg", deployment="ploeg"}'
         values: "1x180"
       - series: 'kube_deployment_status_replicas_available{exported_namespace="ploeg", deployment="ploeg"}'
         values: "1x180"
+      - series: 'kube_deployment_spec_replicas{exported_namespace="ploeg", deployment="ploeg-work-items-exporter"}'
+        values: "1x180"
+      - series: 'kube_deployment_status_replicas_available{exported_namespace="ploeg", deployment="ploeg-work-items-exporter"}'
+        values: "1x120 0x60"
       - series: 'probe_success{job="probe/observability/blackbox-unfold", endpoint="unfold"}'
         values: "1x120 0x60"
-      - series: 'kube_pod_container_status_restarts_total{exported_namespace="ploeg", exported_pod="ploeg-worker-copper-vgsr6-j25wr", exported_container="ploegd"}'
-        values: "0x120 1+1x60"
     alert_rule_test:
       - eval_time: 145m
         groupname: delivery-verify.alerts
@@ -129,29 +142,29 @@ tests:
         exp_alerts:
           - exp_labels:
               release: unfold
-              revision: 0.4.0-rc.85
+              revision: 0.4.0-rc.107
               signal: replicas_unavailable
+              workload: ploeg-mcp
               severity: warning
               owner: platform
               service: delivery-verify
             exp_annotations:
-              summary: "Release candidate 0.4.0-rc.85 is unhealthy after deploy (ploeg/unfold)"
+              summary: "Release candidate 0.4.0-rc.107 is unhealthy after deploy (ploeg/unfold)"
           - exp_labels:
               release: unfold
-              revision: 0.4.0-rc.85
+              revision: 0.4.0-rc.107
               signal: route_probe_failing
+              workload: unfold
               severity: warning
               owner: platform
               service: delivery-verify
             exp_annotations:
-              summary: "Release candidate 0.4.0-rc.85 is unhealthy after deploy (ploeg/unfold)"
+              summary: "Release candidate 0.4.0-rc.107 is unhealthy after deploy (ploeg/unfold)"
 
-  - name: the verify layer reports when it loses sight of a release
+  - name: the verify layer reports when it loses sight of the Unfold release, and the retired Ploeg release does not count
     interval: 1m
     input_series:
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="ploeg", suspended="False", ready="True", revision="0.2.0-rc.25"}'
-        values: "1x120"
-      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.84"}'
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.106"}'
         values: "1x40"
       - series: 'kube_pod_container_info{exported_namespace="ploeg", exported_pod="ploeg-f9d9c95bc-8ckg8", exported_container="ploegd", image_id="harbor.webgrip.dev/ghcr/ploeg-hq/ploegd@sha256:2511828125cec9a5a88fcb685a8358a8e09bda720b1fe69ab96125558dcacdc0"}'
         values: "1x120"
@@ -177,7 +190,7 @@ tests:
       - expr: delivery:release_running_image:info
         eval_time: 100m
         exp_samples:
-          - labels: 'delivery:release_running_image:info{release="ploeg", image_id="harbor.webgrip.dev/ghcr/ploeg-hq/ploegd@sha256:2511828125cec9a5a88fcb685a8358a8e09bda720b1fe69ab96125558dcacdc0"}'
+          - labels: 'delivery:release_running_image:info{release="unfold", workload="ploeg", image_id="harbor.webgrip.dev/ghcr/ploeg-hq/ploegd@sha256:2511828125cec9a5a88fcb685a8358a8e09bda720b1fe69ab96125558dcacdc0"}'
             value: 1
 
   - name: the release bot provisioner fires when its last run failed or it never succeeded, not after a success

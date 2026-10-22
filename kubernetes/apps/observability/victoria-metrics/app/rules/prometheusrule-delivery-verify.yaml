@@ -17,7 +17,7 @@ spec:
           expr: |
             max by (release, revision) (
               label_replace(
-                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name=~"ploeg|unfold", suspended="False"},
+                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False"},
                 "release", "$$1", "name", "(.+)"
               )
             )
@@ -25,30 +25,33 @@ spec:
           expr: |
             max by (release, revision) (
               label_replace(
-                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name=~"ploeg|unfold", ready="True", suspended="False"},
+                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", ready="True", suspended="False"},
                 "release", "$$1", "name", "(.+)"
               )
             )
         - record: delivery:release_running_image:info
           expr: |
-            max by (release, image_id) (
+            max by (release, workload, image_id) (
               label_replace(
-                kube_pod_container_info{exported_namespace="ploeg", exported_container=~"ploegd|workbench", exported_pod=~"(ploeg|unfold)-[a-z0-9]+-[a-z0-9]{5}"},
-                "release", "$$1", "exported_pod", "(ploeg|unfold)-.+"
+                label_replace(
+                  kube_pod_container_info{exported_namespace="ploeg", exported_container=~"ploegd|ploeg-mcp|runner|workbench", exported_pod=~"(ploeg|ploeg-mcp|claude-runner|unfold)-[a-z0-9]+-[a-z0-9]{5}"},
+                  "workload", "$$1", "exported_pod", "(ploeg|ploeg-mcp|claude-runner|unfold)-[a-z0-9]+-[a-z0-9]{5}"
+                ),
+                "release", "unfold", "", ""
               )
             )
         - record: delivery:release_candidate:fresh
           expr: |
             max by (release, revision) (
               label_replace(
-                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name=~"ploeg|unfold", suspended="False"},
+                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False"},
                 "release", "$$1", "name", "(.+)"
               )
             )
             unless on (release, revision)
             max by (release, revision) (
               label_replace(
-                last_over_time(flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name=~"ploeg|unfold"}[10m] offset 1h),
+                last_over_time(flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold"}[10m] offset 1h),
                 "release", "$$1", "name", "(.+)"
               )
             )
@@ -62,7 +65,7 @@ spec:
           expr: |
             max by (release) (
               label_replace(
-                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name=~"ploeg|unfold", ready!="True", suspended="False"},
+                flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", ready!="True", suspended="False"},
                 "release", "$$1", "name", "(.+)"
               )
             )
@@ -70,33 +73,42 @@ spec:
           labels:
             signal: replicas_unavailable
           expr: |
-            max by (release) (
+            max by (release, workload) (
               label_replace(
-                (
-                  kube_deployment_spec_replicas{exported_namespace="ploeg", deployment=~"ploeg|unfold"}
-                  - kube_deployment_status_replicas_available{exported_namespace="ploeg", deployment=~"ploeg|unfold"}
-                ) > 0,
-                "release", "$$1", "deployment", "(.+)"
+                label_replace(
+                  (
+                    kube_deployment_spec_replicas{exported_namespace="ploeg", deployment=~"ploeg|ploeg-mcp|claude-runner|unfold"}
+                    - kube_deployment_status_replicas_available{exported_namespace="ploeg", deployment=~"ploeg|ploeg-mcp|claude-runner|unfold"}
+                  ) > 0,
+                  "workload", "$$1", "deployment", "(.+)"
+                ),
+                "release", "unfold", "", ""
               )
             )
         - record: delivery:release_unhealthy:signal
           labels:
             signal: container_restarting
           expr: |
-            max by (release) (
+            max by (release, workload) (
               label_replace(
-                increase(kube_pod_container_status_restarts_total{exported_namespace="ploeg", exported_container=~"ploegd|workbench", exported_pod=~"(ploeg|unfold)-[a-z0-9]+-[a-z0-9]{5}"}[15m]) >= 2,
-                "release", "$$1", "exported_pod", "(ploeg|unfold)-.+"
+                label_replace(
+                  increase(kube_pod_container_status_restarts_total{exported_namespace="ploeg", exported_container=~"ploegd|ploeg-mcp|runner|workbench", exported_pod=~"(ploeg|ploeg-mcp|claude-runner|unfold)-[a-z0-9]+-[a-z0-9]{5}"}[15m]) >= 2,
+                  "workload", "$$1", "exported_pod", "(ploeg|ploeg-mcp|claude-runner|unfold)-[a-z0-9]+-[a-z0-9]{5}"
+                ),
+                "release", "unfold", "", ""
               )
             )
         - record: delivery:release_unhealthy:signal
           labels:
             signal: route_probe_failing
           expr: |
-            max by (release) (
+            max by (release, workload) (
               label_replace(
-                (1 - probe_success{job="probe/observability/blackbox-unfold"}) > 0,
-                "release", "$$1", "endpoint", "(.+)"
+                label_replace(
+                  (1 - probe_success{job="probe/observability/blackbox-unfold"}) > 0,
+                  "workload", "unfold", "", ""
+                ),
+                "release", "unfold", "", ""
               )
             )
 
@@ -105,7 +117,7 @@ spec:
       rules:
         - alert: DeliveryCandidateUnhealthy
           expr: |
-            max by (release, signal) (delivery:release_unhealthy:signal)
+            max by (release, signal, workload) (delivery:release_unhealthy:signal)
             * on (release) group_left (revision)
             topk by (release) (1, delivery:release_candidate:fresh)
           for: 15m
@@ -117,7 +129,8 @@ spec:
             summary: "Release candidate {{ $labels.revision }} is unhealthy after deploy (ploeg/{{ $labels.release }})"
             description: |
               What's happening:
-              - Flux moved ploeg/{{ $labels.release }} to {{ $labels.revision }} less than an hour ago, and the verify signal {{ $labels.signal }} has held for 15 minutes.
+              - Flux moved ploeg/{{ $labels.release }} to {{ $labels.revision }} less than an hour ago, and the verify signal {{ $labels.signal }} has held for 15 minutes on workload {{ $labels.workload }}.
+              - The Unfold release carries Ploeg (Unfold ADR-0043), so ploeg, ploeg-mcp, claude-runner and unfold all report under release unfold.
               - Signals: release_not_ready (HelmRelease not Ready), replicas_unavailable (Deployment below spec), container_restarting (two or more restarts in 15 minutes), route_probe_failing (the Unfold gateway probe).
 
               Impact/risk:
@@ -130,15 +143,13 @@ spec:
               - Ploeg and Unfold moved apart: Unfold expects a Ploeg API version the homelab does not run.
 
               First actions:
-              - flux -n ploeg get helmrelease {{ $labels.release }} and kubectl -n ploeg describe deployment {{ $labels.release }}
-              - kubectl -n ploeg logs deploy/{{ $labels.release }} --previous
+              - flux -n ploeg get helmrelease {{ $labels.release }} and kubectl -n ploeg describe deployment {{ $labels.workload }}
+              - kubectl -n ploeg logs deploy/{{ $labels.workload }} --previous
               - Compare with the version that ran before: delivery:release_deployed:info{release="{{ $labels.release }}"} over the last 24h
-              - To roll back, revert the Renovate bump commit on main (OCIRepository tag and digest, plus the image tag and digest in helmrelease.yaml)
+              - To roll back, revert the Renovate "update ploeg and unfold release" commit on main
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/rfc/rfc-unfold-release-train/#p4-verify"
         - alert: DeliveryVerifySignalMissing
           expr: |
-            absent(delivery:release_revision:current{release="ploeg"})
-            or
             absent(delivery:release_revision:current{release="unfold"})
           for: 30m
           labels:

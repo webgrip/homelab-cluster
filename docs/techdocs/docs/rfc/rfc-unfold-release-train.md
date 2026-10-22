@@ -77,6 +77,21 @@ publishes an image, and Renovate picks it up.
 | P4 | post-deploy check with revert and deploy events | a broken rc is reverted automatically; a good one is recorded as deployed |
 | P5 | GitLab and Bitbucket adapters | each after its conformance run |
 
+### Status on 2026-10-22
+
+| Phase | State | Evidence | Left |
+| --- | --- | --- | --- |
+| P0 | done | Ploeg ADR 0115 and 0116 replace the explicit-tag rule of ADR 0063/0064; Unfold ADR-0019 is superseded by ADR-0039; the shared config README names the home forge as the release authority | none |
+| P1 | partly done | the Unfold release, which carries Ploeg (Unfold ADR-0043), automerges through the `ploeg-unfold-release` group: `0.4.0-rc.103` to `0.4.0-rc.107` merged without a person | the channel rules still live in this repository's `.renovaterc.json5`, not a `renovate-config` preset; `agent-runner` (under `runnerImage`) has moved only by hand since Renovate's last bump to 1.2.0 on 2026-08-28: 1.3.0, 1.4.0 and 1.4.1 were hand commits; the CI runner is pinned by digest only |
+| P2 | done | `@webgrip/semantic-release-config` v1.4.0 takes `forge: 'github'`; Ploeg's `.releaserc.cjs` uses it, and merges to `development` published `v0.2.0-rc.45` to `rc.47` with no hand step | none |
+| P3 | done | Unfold has no submodule; it pins Ploeg's contract bundle and Go module (Unfold ADR-0039), Ploeg's release opens that pin PR (ADR-0041), and the Unfold chart carries the Ploeg chart (ADR-0043) | none |
+| P4 | slice 1 live | `delivery-verify` rules loaded in vmalert; on 2026-10-22 they were moved to the single `unfold` release, after `DeliveryVerifySignalMissing{release="ploeg"}` had fired since the standalone Ploeg release was retired on 2026-10-20 and Ploeg's own crash signals could no longer reach `DeliveryCandidateUnhealthy` | slice 2, the revert |
+| P5 | not started | waits for the first GitLab or Bitbucket project | adapter and conformance run |
+
+The D7 hop changed after this plan: the Harbor release relay was removed on 2026-10-20 with the
+standalone Ploeg release, so an Unfold release now reaches the homelab on Renovate's hourly run of
+`webgrip-forgejo`, and Forgejo merges it once the required checks pass.
+
 ### P4 verify
 
 P4 lands in two slices. The first detects and notifies; the second reverts.
@@ -88,12 +103,12 @@ alert has a case that must fire and a case that must not.
 
 | Series or alert | Meaning | Source |
 | --- | --- | --- |
-| `delivery:release_revision:current{release, revision}` | the chart version Flux is applying for `ploeg` or `unfold` | flux-operator `flux_resource_info` |
+| `delivery:release_revision:current{release, revision}` | the chart version Flux is applying for `unfold`, which carries Ploeg since Unfold ADR-0043 | flux-operator `flux_resource_info` |
 | `delivery:release_deployed:info{release, revision}` | that version is applied and Ready; when a revision first shows up here is when it went live (use it as a Grafana annotation) | same, `ready="True"` |
-| `delivery:release_running_image:info{release, image_id}` | the image digest the Deployment pods actually run | kube-state-metrics `kube_pod_container_info` |
+| `delivery:release_running_image:info{release, workload, image_id}` | the image digest each Deployment of the release (`ploeg`, `ploeg-mcp`, `claude-runner`, `unfold`) actually runs | kube-state-metrics `kube_pod_container_info` |
 | `delivery:release_candidate:fresh{release, revision}` | the revision was not there an hour ago | `flux_resource_info` offset 1h |
-| `delivery:release_unhealthy:signal{release, signal}` | `release_not_ready`, `replicas_unavailable`, `container_restarting` (two or more restarts in 15m), `route_probe_failing` (Unfold only; Ploeg has no route probe) | Flux, kube-state-metrics, blackbox |
-| `DeliveryCandidateUnhealthy` | a fresh revision has had an unhealthy signal for 15m; carries `release`, `revision`, `signal` | the two above |
+| `delivery:release_unhealthy:signal{release, signal, workload}` | `release_not_ready`, `replicas_unavailable`, `container_restarting` (two or more restarts in 15m), `route_probe_failing` (the Unfold gateway; Ploeg has no route probe) | Flux, kube-state-metrics, blackbox |
+| `DeliveryCandidateUnhealthy` | a fresh revision has had an unhealthy signal for 15m; carries `release`, `revision`, `signal`, `workload` | the two above |
 | `DeliveryVerifySignalMissing` | the layer has gone blind for a release | absent for 30m |
 
 Both alerts are `severity: warning` and reach ntfy through the warning route in
