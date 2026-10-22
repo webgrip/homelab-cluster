@@ -192,6 +192,17 @@
     },
     {
       customType: "regex",
+      description: "Ploeg's agent runner is one `runnerImage: repository:tag@digest` string in the Unfold release's values. helm-values reads only `image` keys, so the pin moved by hand from 1.2.0 to 1.4.1 between 2026-09-27 and 2026-10-18 while Renovate stayed silent. This manager reads the tag and digest together (ADR-0069, P1).",
+      managerFilePatterns: [
+        "/(^|/)kubernetes/apps/ploeg/unfold/app/helmrelease\\.ya?ml$/",
+      ],
+      matchStrings: [
+        "runnerImage:\\s*[\"']?(?<depName>harbor\\.webgrip\\.dev/webgrip/agent-runner):(?<currentValue>[^@\"'\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})",
+      ],
+      datasourceTemplate: "docker",
+    },
+    {
+      customType: "regex",
       description: "The Forgejo image is pinned as registry + repository + tag + digest, and the chart renders registry/repository:tag@digest. helm-values reads only registry + repository + tag and skips the image when tag is missing, which froze Forgejo on 15.0.2 for three months behind a digest-only pin. This manager reads all four so tag and digest move together; the -rootless suffix keeps candidates on the rootless line.",
       managerFilePatterns: [
         "/(^|/)kubernetes/apps/forgejo/forgejo/app/helmrelease\\.ya?ml$/",
@@ -953,6 +964,26 @@
       prPriority: 10,
       branchConcurrentLimit: 0,
       prConcurrentLimit: 0,
+      automerge: true,
+      automergeType: "pr",
+      platformAutomerge: true,
+    },
+    {
+      description: "The agent and CI runner images are built and signed in webgrip/infrastructure and gated by this repository's e2e checks, so a release moves without the blanket patch and minor soaks, and Forgejo merges it on the last required check (ADR-0069, P1). Majors still wait for a person.",
+      matchDepNames: [
+        "harbor.webgrip.dev/webgrip/agent-runner",
+        "harbor.webgrip.dev/webgrip/ci-runner"
+      ],
+      matchUpdateTypes: [
+        "patch",
+        "minor",
+        "digest"
+      ],
+      dependencyDashboardApproval: false,
+      minimumReleaseAge: "0 days",
+      schedule: [
+        "at any time"
+      ],
       automerge: true,
       automergeType: "pr",
       platformAutomerge: true,

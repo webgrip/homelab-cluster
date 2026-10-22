@@ -82,10 +82,10 @@ publishes an image, and Renovate picks it up.
 | Phase | State | Evidence | Left |
 | --- | --- | --- | --- |
 | P0 | done | Ploeg ADR 0115 and 0116 replace the explicit-tag rule of ADR 0063/0064; Unfold ADR-0019 is superseded by ADR-0039; the shared config README names the home forge as the release authority | none |
-| P1 | partly done | the Unfold release, which carries Ploeg (Unfold ADR-0043), automerges through the `ploeg-unfold-release` group: `0.4.0-rc.103` to `0.4.0-rc.107` merged without a person | the channel rules still live in this repository's `.renovaterc.json5`, not a `renovate-config` preset; `agent-runner` (under `runnerImage`) has moved only by hand since Renovate's last bump to 1.2.0 on 2026-08-28: 1.3.0, 1.4.0 and 1.4.1 were hand commits; the CI runner is pinned by digest only |
+| P1 | done in config, waits for the next runner release | the Unfold release, which carries Ploeg (Unfold ADR-0043), automerges through the `ploeg-unfold-release` group: `0.4.0-rc.103` to `0.4.0-rc.107` merged without a person. On 2026-10-22 `agent-runner` got a regex manager for its `runnerImage` string (it had moved only by hand since 1.2.0 on 2026-08-28) and `ci-runner` went from a digest-only pin to `1.2.5@sha256:…`; both automerge patch and minor with no soak | the next `agent-runner` or `ci-runner` release has to arrive as a merged Renovate PR; the shared channel preset is deferred |
 | P2 | done | `@webgrip/semantic-release-config` v1.4.0 takes `forge: 'github'`; Ploeg's `.releaserc.cjs` uses it, and merges to `development` published `v0.2.0-rc.45` to `rc.47` with no hand step | none |
 | P3 | done | Unfold has no submodule; it pins Ploeg's contract bundle and Go module (Unfold ADR-0039), Ploeg's release opens that pin PR (ADR-0041), and the Unfold chart carries the Ploeg chart (ADR-0043) | none |
-| P4 | slice 1 live | `delivery-verify` rules loaded in vmalert; on 2026-10-22 they were moved to the single `unfold` release, after `DeliveryVerifySignalMissing{release="ploeg"}` had fired since the standalone Ploeg release was retired on 2026-10-20 and Ploeg's own crash signals could no longer reach `DeliveryCandidateUnhealthy` | slice 2, the revert |
+| P4 | slice 1 live | `delivery-verify` rules loaded in vmalert; on 2026-10-22 they were moved to the single `unfold` release, after `DeliveryVerifySignalMissing{release="ploeg"}` had fired since the standalone Ploeg release was retired on 2026-10-20 and Ploeg's own crash signals could no longer reach `DeliveryCandidateUnhealthy` | slice 2, the revert; its two open choices are decided (D9, D10) |
 | P5 | not started | waits for the first GitLab or Bitbucket project | adapter and conformance run |
 
 The D7 hop changed after this plan: the Harbor release relay was removed on 2026-10-20 with the
@@ -144,6 +144,13 @@ candidate. From then on the steady-state alerts (`FluxHelmReleaseNotReady`, `Syn
   picks the identity: reuse `renovate` (already on the merge whitelist, but it mixes two writers
   under one name) or add a dedicated bot (which runs against the no-new-bot-accounts decision). A
   revert PR also waits for the e2e checks, which adds their run time to the rollback.
+
+Decided by the owner on 2026-10-22:
+
+| # | Decision |
+| --- | --- |
+| D9 | The revert PR is opened by the existing `renovate` Forgejo user, already on `main`'s merge whitelist; no new bot account |
+| D10 | A reverted version is not excluded anywhere: the next release candidate supersedes it, because every releasable Ploeg or Unfold merge cuts one (D4) |
 
 ### P1b events, not schedules
 
