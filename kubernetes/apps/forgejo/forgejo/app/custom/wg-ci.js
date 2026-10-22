@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var WG_CI_VERSION = '1.0.0';
+  var WG_CI_VERSION = '1.0.1';
   var CONSOLE_PATH = '/-/ci';
   var OAUTH_CONFIG_URL = '/assets/wg/wg-ci-oauth.json';
   var PANELS_URL = '/assets/wg/wg-ci-panels.json';
@@ -817,7 +817,7 @@
       : esc(state.runnersNote || 'loading');
     var html = [
       tile('running', 'Running', String(s.running), s.running ? 'in ' + plural(s.runningRepos, 'repository', 'repositories') : 'nothing building', s.running ? 'running' : '', 'status:active'),
-      tile('queued', 'Queued', String(s.queued), s.queued ? 'oldest waiting <span data-wg-elapsed="' + s.oldestQueued + '">' + formatDuration(queuedFor) + '</span>' : 'no backlog', s.queued && queuedFor > 300000 ? 'warn' : '', 'status:active'),
+      tile('queued', 'Queued', String(s.queued), s.queued ? 'oldest waiting <span data-wg-elapsed="' + s.oldestQueued + '"></span>' : 'no backlog', s.queued && queuedFor > 300000 ? 'warn' : '', 'status:active'),
       tile('failed', 'Failed · 24h', String(s.failed), s.failed ? 'in ' + plural(s.failedRepos, 'repository', 'repositories') : 'none', s.failed ? 'bad' : '', 'status:failure'),
       tile('rate', 'Success · 24h', s.rate === null ? '&ndash;' : Math.round(s.rate * 100) + '<span class="wg-ci-tile-of">%</span>', s.succeeded + s.failed ? 'of ' + plural(s.succeeded + s.failed, 'finished run') : 'no finished runs', s.rate !== null && s.rate < 0.8 ? 'warn' : '', ''),
       tile('duration', 'Run time · 24h', s.p50 === null ? '&ndash;' : formatDuration(s.p50), s.p95 === null ? 'median' : 'median &middot; p95 ' + formatDuration(s.p95), '', ''),
@@ -844,11 +844,11 @@
 
   function runTiming(run) {
     if (run.status === 'running' && run.started) {
-      return '<span class="wg-ci-time-main" data-wg-elapsed="' + run.started + '">' + formatDuration(Date.now() - run.started) + '</span>';
+      return '<span class="wg-ci-time-main" data-wg-elapsed="' + run.started + '"></span>';
     }
     var since = queuedSince(run);
     if (QUEUED[run.status] && since) {
-      return '<span class="wg-ci-time-main wg-ci-muted" title="Waiting since ' + esc(formatStamp(since)) + '">queued <span data-wg-elapsed="' + since + '">' + formatDuration(Date.now() - since) + '</span></span>';
+      return '<span class="wg-ci-time-main wg-ci-muted" title="Waiting since ' + esc(formatStamp(since)) + '">queued <span data-wg-elapsed="' + since + '"></span></span>';
     }
     return '<span class="wg-ci-time-main">' + (run.duration > 0 ? formatDuration(run.duration) : '') + '</span>';
   }
@@ -886,7 +886,7 @@
       (run.actor ? '<span class="wg-ci-actor">' + (run.actorAvatar ? '<img src="' + esc(run.actorAvatar) + '" alt="" width="14" height="14" loading="lazy">' : '') + esc(run.actor) + '</span>' : '') +
       '</div>' + (failure ? '<div class="wg-ci-row-error" role="alert">' + icon('alert', 12) + esc(failure) + '</div>' : '') + '</div>' +
       '<div class="wg-ci-run-time">' + runTiming(run) +
-      '<span class="wg-ci-time-sub" title="' + esc('Created ' + formatStamp(run.created)) + '" data-wg-since="' + (run.created || 0) + '">' + formatAgo(run.created) + '</span></div>' +
+      '<span class="wg-ci-time-sub" title="' + esc('Created ' + formatStamp(run.created)) + '" data-wg-since="' + (run.created || 0) + '"></span></div>' +
       '<div class="wg-ci-run-tools">' + rowAction(run) +
       '<a class="wg-ci-act wg-ci-act-open" href="' + esc(run.path) + '" target="_blank" rel="noopener" aria-label="Open run in a new tab">' + icon('external', 14) + '</a></div>' +
       '</div>';
@@ -1060,7 +1060,7 @@
 
   function strip(runs) {
     var cells = runs.slice(0, STRIP_LENGTH).reverse().map(function (run) {
-      return '<a class="wg-ci-cell wg-ci-c-' + esc(run.status) + '" href="' + esc(run.path) + '" title="' + esc('#' + run.number + ' ' + (STATUS_LABEL[run.status] || run.status) + ' · ' + run.workflow + ' · ' + run.ref + ' · ' + formatAgo(run.created)) + '"></a>';
+      return '<a class="wg-ci-cell wg-ci-c-' + esc(run.status) + '" href="' + esc(run.path) + '" title="' + esc('#' + run.number + ' ' + (STATUS_LABEL[run.status] || run.status) + ' · ' + run.workflow + ' · ' + run.ref + ' · ' + formatStamp(run.created)) + '"></a>';
     });
     while (cells.length < STRIP_LENGTH) cells.unshift('<span class="wg-ci-cell wg-ci-c-none"></span>');
     return '<span class="wg-ci-strip">' + cells.join('') + '</span>';
@@ -1080,7 +1080,7 @@
         '<span class="wg-ci-num-cell' + (r.rate !== null && r.rate < 0.8 ? ' wg-ci-warn-text' : '') + '" title="' + esc(r.finished + ' finished in 24 hours') + '">' + (r.rate === null ? '&ndash;' : Math.round(r.rate * 100) + '%') + '</span>' +
         '<span class="wg-ci-num-cell">' + (r.median === null ? '&ndash;' : formatDuration(r.median)) + '</span>' +
         '<span class="wg-ci-num-cell">' + (r.active ? '<button type="button" class="wg-ci-link" data-wg-repo-active="' + esc(r.entry.name) + '">' + r.active + ' active</button>' : '') + '</span>' +
-        '<span class="wg-ci-num-cell wg-ci-muted" data-wg-since="' + r.last + '">' + formatAgo(r.last) + '</span>' +
+        '<span class="wg-ci-num-cell wg-ci-muted" data-wg-since="' + r.last + '"></span>' +
         '<button type="button" class="wg-ci-act wg-ci-act-filter" data-wg-repo-filter="' + esc(r.entry.name) + '" aria-label="' + esc('Show runs of ' + r.entry.name) + '">Runs' + icon('chevron', 12) + '</button>';
       return { key: 'r:' + r.entry.name, className: 'wg-ci-repo-row' + (r.lastTrunk && r.lastTrunk.status === 'failure' ? ' wg-ci-repo-red' : ''), html: html };
     });
