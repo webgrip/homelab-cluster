@@ -308,21 +308,6 @@ data:
         && log "sbom-on-push enabled on $$_proj" || log "WARN: sbom-on-push enable failed on $$_proj (needs Harbor >= 2.11)"
     }
 
-    remove_release_webhook() {
-      _proj="$$1"; _name="unfold-release-renovate"
-      _pid="$$(hc GET "/projects?name=$$_proj" 2>/dev/null | jq -r ".[] | select(.name==\"$$_proj\") | .project_id" 2>/dev/null | head -n1)"
-      [ -n "$$_pid" ] && [ "$$_pid" != "null" ] || { log "WARN: $$_proj project id not found; skipping release webhook removal"; return 0; }
-      _wid="$$(hc GET "/projects/$$_pid/webhook/policies?page_size=100" 2>/dev/null | jq -r --arg name "$$_name" '.[]? | select(.name == $$name) | .id' 2>/dev/null | head -n1)"
-      if [ -n "$$_wid" ] && [ "$$_wid" != "null" ]; then
-        _resp="$$(curl -sS -u "$$AUTH" -X DELETE -w ' HTTP %{http_code}' "$$HARBOR/projects/$$_pid/webhook/policies/$$_wid" 2>&1)"
-        if [ "$${_resp##* }" = "200" ]; then
-          log "removed webhook policy '$$_name' (id=$$_wid) from $$_proj"
-        else
-          log "ERROR: webhook policy removal failed on $$_proj (id=$$_wid): $$_resp"; HEALTH_FAILED=1
-        fi
-      fi
-    }
-
     # docker.io -> proxy project "dockerhub"
     DH_ID="$$(ensure_registry docker-hub docker-hub https://hub.docker.com \
       "$${DOCKERHUB_USERNAME:-}" "$${DOCKERHUB_TOKEN:-}")"
@@ -400,10 +385,9 @@ data:
     ensure_retention webgrip
     ensure_project_scanning webgrip
     ensure_immutable_semver webgrip
-    remove_release_webhook webgrip
 
     if [ "$$HEALTH_FAILED" != "0" ]; then
-      log "reconcile finished but a credentialed upstream or the release webhook removal failed its check — exiting 1 (HarborProxyReconcileStale will fire)"
+      log "reconcile finished but a credentialed upstream failed its check — exiting 1 (HarborProxyReconcileStale will fire)"
       exit 1
     fi
     log "reconcile complete"

@@ -57,8 +57,8 @@ published only after all its images. The hourly `webgrip-forgejo` run opens or u
 required `e2e /` status. That is safe only while homelab `main` requires the `e2e / Lint & static
 validation` context; `scripts/validate-repo-config-model.sh` fails when it stops doing so. For a
 faster pickup, force a run (above). The Harbor release relay that triggered runs on each push was
-removed on 2026-10-20; the `harbor-proxy-config` CronJob deletes its webhook policy
-`unfold-release-renovate` from Harbor project `webgrip`.
+removed on 2026-10-20, and its webhook policy `unfold-release-renovate` was deleted from Harbor
+project `webgrip` on 2026-10-22.
 
 ## All PRs red at once: OCI digest drift
 
