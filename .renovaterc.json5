@@ -1065,5 +1065,24 @@
       dependencyDashboardApproval: true,
       automerge: false,
     },
+    {
+      description: "aws-cli ships a release almost every day, so with the preset's internalChecksFilter none every Renovate run re-targets the newest release and restarts the 3-day minor soak: the PR waits forever and never automerges. For aws-cli only, propose the newest release that has already passed its soak, and do it once a week, both pins in one PR. Both names are listed because the snapshot CronJob pins docker.io and the invoiceninja backup pins the Harbor proxy path.",
+      matchDatasources: [
+        "docker"
+      ],
+      matchPackageNames: [
+        "docker.io/amazon/aws-cli",
+        "harbor.webgrip.dev/dockerhub/amazon/aws-cli"
+      ],
+      internalChecksFilter: "strict",
+      schedule: [
+        "before 6am on monday"
+      ],
+      groupName: "aws-cli",
+      group: {
+        commitMessageTopic: "{{{groupName}}}",
+      },
+      minimumGroupSize: 1,
+    },
   ],
 }
