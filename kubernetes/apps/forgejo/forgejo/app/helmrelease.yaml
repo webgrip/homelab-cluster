@@ -166,6 +166,10 @@ spec:
     # its ConfigMap carries reloader.stakater.com/ignore so pushes do NOT
     # restart Forgejo).
     extraVolumes:
+      - name: signing-key
+        secret:
+          secretName: forgejo-signing-key
+          defaultMode: 0440
       - name: custom-header
         configMap:
           name: forgejo-custom-header
@@ -178,6 +182,9 @@ spec:
                 name: forgejo-ci-console-oauth
                 optional: true
     extraContainerVolumeMounts:
+      - name: signing-key
+        mountPath: /etc/forgejo-signing
+        readOnly: true
       - name: custom-header
         mountPath: /data/gitea/templates/custom/header.tmpl
         subPath: header.tmpl
@@ -306,6 +313,12 @@ spec:
           # 2026-07-24) before this flip.
           DEFAULT_ACTIONS_URL: "http://forgejo-http.forgejo.svc.cluster.local:3000"
           ARTIFACT_RETENTION_DAYS: 7
+        repository.signing:
+          FORMAT: ssh
+          SIGNING_KEY: /etc/forgejo-signing/key.pub
+          SIGNING_NAME: Forgejo webgrip
+          SIGNING_EMAIL: forgejo-signing@${SECRET_DOMAIN}
+          MERGES: always
         security:
           INSTALL_LOCK: true
           # Trust X-Forwarded-* from the in-cluster Envoy proxy (pod CIDR) so client
