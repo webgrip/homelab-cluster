@@ -60,7 +60,10 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /
+            value: /v2
+        - path:
+            type: PathPrefix
+            value: /api/packages
       filters:
         - type: RequestHeaderModifier
           requestHeaderModifier:
@@ -73,3 +76,21 @@ spec:
         - name: forgejo-http
           namespace: forgejo
           port: 3000
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - name: X-Forwarded-Port
+                value: "443"
+              - name: X-Forwarded-Proto
+                value: https
+              - name: X-Real-IP
+                value: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+      backendRefs:
+        - name: anubis
+          namespace: forgejo
+          port: 8923

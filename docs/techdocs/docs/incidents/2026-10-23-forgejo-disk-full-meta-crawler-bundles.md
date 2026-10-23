@@ -72,6 +72,18 @@ commit pages that link the bundles are allowed.
    half hour after the user-agent block went live, 611 distinct addresses with browser user agents
    hit the forge, 585 of them exactly once, Chrome versions 101 to 140, many from Alibaba Cloud
    ranges.
+4. (2026-10-24) A crawler that spoofs a browser now meets [Anubis](https://github.com/TecharoHQ/anubis),
+   a proof-of-work gate in front of Forgejo's web UI (`kubernetes/apps/forgejo/anubis`). The
+   catch-all rule of the Forgejo `HTTPRoute` sends traffic to Anubis, which proxies to
+   `forgejo-http:3000`. Anubis runs its default policy: a client whose user-agent looks like a browser
+   (`Mozilla`/`Opera`) solves a challenge once and gets a signed cookie for a week; git, docker,
+   Forgejo runners, `tea`, `curl` and other non-browser clients pass without one. The registry paths
+   (`/v2`, `/api/packages`) bypass Anubis at the gateway, so image and package traffic never depends
+   on it. The gateway sets `X-Real-IP` from Envoy's client address (after the one trusted
+   `X-Forwarded-For` hop of the Cloudflare tunnel), and the cookie is bound to that IP. One replica,
+   in-memory challenge store; the HS512 signing secret comes from `password-generator`, so cookies
+   survive restarts. Anubis down means the Forgejo web UI answers 503; `blackbox-forgejo` probes
+   `/api/healthz` through the same route and catches it.
 
 ## Recovery
 

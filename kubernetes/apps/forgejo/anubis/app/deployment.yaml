@@ -1,0 +1,79 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anubis
+  labels:
+    app.kubernetes.io/name: anubis
+    app.kubernetes.io/part-of: forgejo
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: anubis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: anubis
+        app.kubernetes.io/part-of: forgejo
+    spec:
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: anubis
+          image: harbor.webgrip.dev/ghcr/techarohq/anubis:v1.28.2@sha256:5fcbce70ee6168be5b226d19bec90111d0acd0daf13028fa06b044cf3ebbbd5f
+          env:
+            - name: BIND
+              value: ":8923"
+            - name: METRICS_BIND
+              value: ":9090"
+            - name: TARGET
+              value: http://forgejo-http.forgejo.svc.cluster.local:3000
+            - name: OG_PASSTHROUGH
+              value: "true"
+          envFrom:
+            - secretRef:
+                name: anubis-signing-secret
+          ports:
+            - name: http
+              containerPort: 8923
+            - name: metrics
+              containerPort: 9090
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
