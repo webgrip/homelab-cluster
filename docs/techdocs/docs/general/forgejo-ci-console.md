@@ -61,30 +61,55 @@ for the next poll. When a row's button changes between Stop and Re-run, clicks o
 ignored for 1.5 seconds with a notice, so a click aimed at one action cannot land on the
 other.
 
-### Polling budget
+### Reading through ci-console-api
 
-The run list endpoint returns about 13 KB per run (it embeds the repository and the event
-payload) and Forgejo does not compress API responses. The page therefore polls
-adaptively instead of re-reading everything:
+Forgejo's run list returns about 13 KB per run, because it embeds the repository and the
+event payload, and Forgejo does not compress API responses. Read straight from the browser,
+the page downloaded 8.7 MB per load and spent half of every 30 seconds re-rendering
+(measured 2026-10-23). So the browser no longer reads the Forgejo API for runs:
+
+- `ci-console-api` (Deployment in `forgejo`, `kubernetes/apps/forgejo/ci-console/`) answers
+  `GET /-/ci/api/state` and `POST /-/ci/api/wake`, routed by the `forgejo` HTTPRoute.
+- The page sends its OAuth token with each call. The service checks it against Forgejo's
+  `/api/v1/user` (cached for five minutes) and reads Forgejo in-cluster **with that token**,
+  so each viewer sees exactly the repositories Forgejo lets them see. It holds no
+  credential of its own and stores nothing on disk.
+- It keeps one session per Forgejo login, polls while that login has polled in the last two
+  minutes, and forgets the session after 30 idle minutes.
+- `/state` returns one compact snapshot: about 300 bytes per run, gzipped to about 33 KB for
+  480 runs. Its ETag changes only when data changes, so the page's poll every 2 s is
+  usually a 304 with an `X-Synced-At` header. While repositories are still loading, the
+  page polls every 400 ms.
+- After a stop or re-run the page calls `/wake`, which polls that repository and run within
+  a second.
+
+The service polls Forgejo adaptively:
 
 | Repository state | Poll | Page size |
 | --- | --- | --- |
-| a run is in progress | every 8 s | 5 newest runs, plus each in-progress run by id |
-| had a run in the last 14 days | every 45 s | 5 newest runs; reads further pages only when all 5 are new |
+| a run is in progress | every 6 s | 5 newest runs, plus each in-progress run by id |
+| had a run in the last 14 days | every 30 s | 5 newest runs; reads further pages only when all 5 are new |
 | quiet | every 10 min | 5 newest runs |
 | first load | once | pages of 20 until the 24-hour window is covered (at most 5 pages) |
 
-Polling stops while the tab is hidden and can be paused from the header. Runners and the
-job queue are read every 15 s.
+Runners and the job queue are read every 15 s. Polling stops while the tab is hidden and
+can be paused from the header.
 
 `limit` on `/repos/{owner}/{repo}/actions/runs` is ignored unless `page` is also given:
 without `page`, Forgejo 15 returns every run the repository ever had (44 MB for
-homelab-cluster). The page always sends both.
+homelab-cluster). The service always sends both. Repository discovery pages by `id`, not by
+`updated`, so a repository updated mid-scan is neither missed nor counted twice.
+
+### Rendering
+
+The run list renders at most 150 rows, with a "Show more" button. Dates use cached
+`Intl.DateTimeFormat` instances, because creating a formatter per call cost about 32 µs and
+ran thousands of times per render. Renders are coalesced to at most one every 250 ms.
 
 ### Stats
 
-All 24-hour numbers are computed in the browser from the runs it has loaded, which cover
-the full 24 hours for every repository. Success rate counts success against failure only;
+All 24-hour numbers are computed in the browser from the snapshot, which covers the full
+24 hours for every repository. Success rate counts success against failure only;
 cancelled and skipped runs are left out. Queue wait is `started − created`, ignoring
 samples over six hours, because a re-run keeps its original `created` time.
 

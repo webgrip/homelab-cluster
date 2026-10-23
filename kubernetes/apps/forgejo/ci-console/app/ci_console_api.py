@@ -217,7 +217,7 @@ class Session:
     def discover(self):
         found, page = [], 1
         while True:
-            body, _ = forgejo(self.token, "/repos/search", {"page": page, "limit": 50, "sort": "updated", "order": "desc"})
+            body, _ = forgejo(self.token, "/repos/search", {"page": page, "limit": 50, "sort": "id", "order": "asc"})
             batch = (body or {}).get("data") or []
             found.extend(batch)
             if len(batch) < 50 or page >= 20:

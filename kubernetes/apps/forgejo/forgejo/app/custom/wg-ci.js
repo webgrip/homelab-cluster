@@ -1,38 +1,33 @@
 (function () {
   'use strict';
 
-  var WG_CI_VERSION = '1.1.0';
+  var WG_CI_VERSION = '2.0.0';
   var CONSOLE_PATH = '/-/ci';
   var OAUTH_CONFIG_URL = '/assets/wg/wg-ci-oauth.json';
   var PANELS_URL = '/assets/wg/wg-ci-panels.json';
   var AUTH_KEY = 'wg-ci-auth';
   var PKCE_KEY = 'wg-ci-pkce';
   var THEME_KEY = 'wg-ci-theme';
-  var QUIET_KEY = 'wg-ci-quiet-repos';
   var PREFS_KEY = 'wg-ci-prefs';
   var TOKEN_SCOPES = 'read:repository read:user read:organization read:admin';
   var TOKEN_EARLY_REFRESH_MS = 60000;
-  var HOT_INTERVAL_MS = 8000;
-  var WARM_INTERVAL_MS = 45000;
-  var QUIET_INTERVAL_MS = 600000;
-  var REPOS_INTERVAL_MS = 600000;
-  var RUNNERS_INTERVAL_MS = 15000;
+  var API_BASE = '/-/ci/api';
+  var STATE_POLL_MS = 2000;
+  var STATE_POLL_LOADING_MS = 400;
+  var OPTIMISTIC_HOLD_MS = 20000;
   var JOBS_INTERVAL_MS = 5000;
   var TICK_MS = 1000;
   var WINDOW_MS = 24 * 3600 * 1000;
-  var QUIET_AFTER_MS = 14 * 24 * 3600 * 1000;
-  var KEEP_MS = 7 * 24 * 3600 * 1000;
-  var KEEP_PER_REPO = 40;
-  var HOT_PAGE = 5;
-  var FULL_PAGE = 20;
-  var MAX_PAGES = 5;
-  var MAX_WATCHED = 10;
-  var LANES = 6;
   var CONFIRM_MS = 4000;
   var CONFIRM_ARM_GUARD_MS = 400;
   var ACTION_FLIP_GUARD_MS = 1500;
   var TOAST_MS = 4500;
   var STRIP_LENGTH = 20;
+  var RUN_PAGE_SIZE = 150;
+  var MIN_RENDER_GAP_MS = 250;
+  var SHORT_DATE = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
+  var LONG_DAY = new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  var STAMP = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   var MAX_QUEUE_SAMPLE_MS = 6 * 3600 * 1000;
   var ACTIVE = { running: 1, waiting: 1, blocked: 1 };
   var QUEUED = { waiting: 1, blocked: 1 };
@@ -109,13 +104,18 @@
     tab: 'runs',
     filters: { q: '', status: 'all', repo: '', event: '', mine: false, trunk: false },
     insightRange: '24h',
+    runLimit: RUN_PAGE_SIZE,
+    lastRenderAt: 0,
     insightsMounted: false,
     panels: null,
-    reposDiscoveredAt: 0,
-    runnersAt: 0,
+    reposDiscovered: false,
+    optimistic: new Map(),
+    etag: null,
+    polling: false,
+    lastPollAt: 0,
+    apiError: null,
     lastSyncAt: 0,
     paused: false,
-    inflight: 0,
     authFailed: false,
     started: false,
   };
@@ -150,12 +150,6 @@
     return n + ' ' + (n === 1 ? word : (many || word + 's'));
   }
 
-  function parseTime(value) {
-    if (!value) return 0;
-    var t = Date.parse(value);
-    return isNaN(t) || t < 86400000 ? 0 : t;
-  }
-
   function formatDuration(ms) {
     if (!(ms >= 0)) return '';
     var s = Math.round(ms / 1000);
@@ -174,23 +168,29 @@
     if (s < 3600) return Math.max(1, Math.round(s / 60)) + 'm ago';
     if (s < 86400) return Math.round(s / 3600) + 'h ago';
     if (s < 7 * 86400) return Math.round(s / 86400) + 'd ago';
-    return new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    return SHORT_DATE.format(t);
   }
 
   function formatStamp(t) {
     if (!t) return '';
-    return new Date(t).toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return STAMP.format(t);
   }
 
-  function dayLabel(t, now) {
+  function startOfDay(t) {
     var d = new Date(t);
-    var today = new Date(now);
-    today.setHours(0, 0, 0, 0);
-    var day = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    var diff = Math.round((today.getTime() - day) / 86400000);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
+
+  function dayLabel(dayStart, todayStart) {
+    var diff = Math.round((todayStart - dayStart) / 86400000);
     if (diff <= 0) return 'Today';
     if (diff === 1) return 'Yesterday';
-    return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+    return LONG_DAY.format(dayStart);
+  }
+
+  function groupOf(run, todayStart) {
+    return ACTIVE[run.status] ? 'In progress' : dayLabel(startOfDay(run.created || todayStart), todayStart);
   }
 
   function percentile(values, fraction) {
@@ -346,9 +346,7 @@
         return res;
       });
     }
-    state.inflight++;
-    return accessToken().then(function (t) { return attempt(t, false); })
-      .finally(function () { state.inflight--; });
+    return accessToken().then(function (t) { return attempt(t, false); });
   }
 
   function api(path, params) {
@@ -371,228 +369,81 @@
     }, function () { return null; });
   }
 
-  function repoEntry(repo) {
-    var name = repo.full_name;
-    var entry = state.repos.get(name);
-    if (!entry) {
-      entry = { name: name, repo: repo, loaded: false, nextAt: 0, error: null, total: null, lastActivity: 0, watched: new Set() };
-      state.repos.set(name, entry);
-    }
-    entry.repo = repo;
-    return entry;
-  }
-
-  function quietRepos() {
-    return new Set(readJson(localStorage, QUIET_KEY) || []);
-  }
-
-  function rememberQuiet() {
-    var quiet = [];
-    state.repos.forEach(function (entry) { if (entry.loaded && entry.quiet) quiet.push(entry.name); });
-    writeJson(localStorage, QUIET_KEY, quiet);
-  }
-
-  function discoverRepos() {
-    var found = [];
-    function page(n) {
-      return api('/repos/search', { page: n, limit: 50, sort: 'updated', order: 'desc' }).then(function (res) {
-        var batch = (res.data && res.data.data) || [];
-        found = found.concat(batch);
-        if (batch.length === 50 && n < 20) return page(n + 1);
-        return found;
+  function consoleApi(path, init) {
+    var options = init || {};
+    function attempt(token, retried) {
+      var headers = Object.assign({ Authorization: 'Bearer ' + token, Accept: 'application/json' }, options.headers || {});
+      return fetch(API_BASE + path, { method: options.method || 'GET', headers: headers, body: options.body, cache: 'no-store' }).then(function (res) {
+        if (res.status === 401 && !retried) return refreshToken(token).then(function (t) { return attempt(t, true); });
+        if (res.status === 401) throw new AuthRequired('Forgejo no longer accepts the console token.');
+        return res;
       });
     }
-    return page(1).then(function (repos) {
-      var quiet = quietRepos();
-      var seen = new Set();
-      repos.forEach(function (repo) {
-        if (!repo.has_actions || repo.archived || repo.mirror || repo.empty) return;
-        var entry = repoEntry(repo);
-        seen.add(entry.name);
-        if (!entry.loaded && quiet.has(entry.name)) {
-          entry.quiet = true;
-          entry.nextAt = Date.now() + Math.random() * QUIET_INTERVAL_MS;
-        }
-      });
-      state.repos.forEach(function (entry, name) {
-        if (!seen.has(name)) dropRepo(name);
-      });
-      state.reposDiscoveredAt = Date.now();
-      scheduleRender();
-    });
+    return accessToken().then(function (t) { return attempt(t, false); });
   }
 
-  function dropRepo(name) {
-    state.repos.delete(name);
-    state.runs.forEach(function (run, key) { if (run.repo === name) state.runs.delete(key); });
-  }
-
-  function toRun(raw, entry) {
-    var started = parseTime(raw.started);
-    var stopped = parseTime(raw.stopped);
-    var created = parseTime(raw.created);
-    var path = raw.html_url ? new URL(raw.html_url, location.origin).pathname : '/' + entry.name + '/actions/runs/' + raw.index_in_repo;
+  function repoEntryFrom(info) {
     return {
-      key: entry.name + '#' + raw.index_in_repo,
-      id: raw.id,
-      repo: entry.name,
-      number: raw.index_in_repo,
-      title: raw.title || '(no title)',
-      workflow: raw.workflow_id || '',
-      status: raw.status || 'unknown',
-      event: raw.trigger_event || raw.event || '',
-      ref: raw.prettyref || '',
-      sha: raw.commit_sha || '',
-      actor: (raw.trigger_user && raw.trigger_user.login) || '',
-      actorAvatar: (raw.trigger_user && raw.trigger_user.avatar_url) || '',
-      created: created,
-      started: started,
-      stopped: stopped && FINISHED[raw.status] ? stopped : 0,
-      duration: raw.duration ? raw.duration / 1e6 : (started && stopped && FINISHED[raw.status] ? stopped - started : 0),
-      updated: parseTime(raw.updated),
-      path: path,
-      trunk: (raw.prettyref || '') === (entry.repo.default_branch || 'main') && raw.event !== 'pull_request',
+      name: info.name,
+      repo: { id: info.id, full_name: info.name, owner: { id: info.owner_id, login: info.owner }, default_branch: info.default_branch },
+      loaded: info.loaded,
+      error: info.error,
+      total: info.total,
+      lastActivity: info.lastActivity,
+      quiet: info.quiet,
     };
   }
 
-  function signature(run) {
-    return [run.status, run.started, run.stopped, run.title, run.updated].join('|');
+  function withOptimisticStatus(run, previous) {
+    var pending = state.optimistic.get(run.key);
+    if (!pending) return run;
+    if (Date.now() > pending.until || run.updated !== pending.baseUpdated) {
+      state.optimistic.delete(run.key);
+      return run;
+    }
+    var shown = Object.assign({}, run);
+    applyOptimisticStatus(shown, pending.kind);
+    shown.updated = previous ? previous.updated : shown.updated;
+    return shown;
   }
 
-  function absorb(entry, items) {
-    var added = 0;
-    var changed = 0;
-    items.forEach(function (raw) {
-      var run = toRun(raw, entry);
-      var known = state.runs.get(run.key);
-      if (!known) added++;
-      else if (signature(known) !== signature(run)) changed++;
-      else return;
-      state.runs.set(run.key, run);
-      if (known && known.status !== run.status) state.jobs.delete(run.key);
-      entry.lastActivity = Math.max(entry.lastActivity, run.created, run.updated);
+  function applySnapshot(snapshot) {
+    var repos = new Map();
+    (snapshot.repos || []).forEach(function (info) { repos.set(info.name, repoEntryFrom(info)); });
+    var runs = new Map();
+    (snapshot.runs || []).forEach(function (run) {
+      var previous = state.runs.get(run.key);
+      var shown = withOptimisticStatus(run, previous);
+      if (previous && previous.status !== shown.status) state.jobs.delete(run.key);
+      runs.set(run.key, shown);
     });
-    return { added: added, changed: changed };
+    state.repos = repos;
+    state.runs = runs;
+    state.reposDiscovered = !!snapshot.reposDiscovered;
+    state.runners = snapshot.runners || null;
+    state.runnersNote = snapshot.runnersNote || '';
+    state.queue = snapshot.queue === undefined ? null : snapshot.queue;
+    state.lastSyncAt = snapshot.syncedAt || state.lastSyncAt;
+    if (snapshot.authFailed) throw new AuthRequired('Forgejo no longer accepts the console token.');
   }
 
-  function runsPage(entry, page, limit) {
-    return api('/repos/' + entry.name + '/actions/runs', { page: page, limit: limit }).then(function (res) {
-      var data = res.data || {};
-      entry.total = typeof data.total_count === 'number' ? data.total_count : entry.total;
-      return data.workflow_runs || [];
-    });
-  }
-
-  function oldestCreated(items) {
-    var oldest = Infinity;
-    items.forEach(function (raw) { oldest = Math.min(oldest, parseTime(raw.created) || Infinity); });
-    return oldest;
-  }
-
-  function backfill(entry, page, stopOnKnown) {
-    var cutoff = Date.now() - WINDOW_MS;
-    return runsPage(entry, page, FULL_PAGE).then(function (items) {
-      var result = absorb(entry, items);
-      var exhausted = items.length < FULL_PAGE || page >= MAX_PAGES;
-      var pastWindow = oldestCreated(items) < cutoff;
-      var reachedKnown = stopOnKnown && result.added < items.length;
-      if (exhausted || pastWindow || reachedKnown) return null;
-      return backfill(entry, page + 1, stopOnKnown);
-    });
-  }
-
-  function refreshWatched(entry, seenIds) {
-    var stale = [];
-    state.runs.forEach(function (run) {
-      if (run.repo === entry.name && ACTIVE[run.status] && !seenIds.has(run.id)) stale.push(run.id);
-    });
-    entry.watched.forEach(function (id) { if (!seenIds.has(id) && stale.indexOf(id) === -1) stale.push(id); });
-    entry.watched.clear();
-    return inPool(stale.slice(0, MAX_WATCHED), function (id) {
-      return api('/repos/' + entry.name + '/actions/runs/' + id).then(function (res) {
-        if (res.data) absorb(entry, [res.data]);
-      }, function (e) {
-        if (e && e.authRequired) throw e;
-      });
-    }, 2);
-  }
-
-  function entryIsHot(entry) {
-    var hot = false;
-    state.runs.forEach(function (run) { if (run.repo === entry.name && ACTIVE[run.status]) hot = true; });
-    return hot || entry.watched.size > 0;
-  }
-
-  function syncRepo(entry) {
-    var firstLoad = !entry.loaded;
-    var limit = firstLoad ? FULL_PAGE : HOT_PAGE;
-    return runsPage(entry, 1, limit).then(function (items) {
-      var result = absorb(entry, items);
-      var seen = new Set(items.map(function (raw) { return raw.id; }));
-      var next;
-      if (firstLoad) {
-        next = items.length === FULL_PAGE && oldestCreated(items) > Date.now() - WINDOW_MS ? backfill(entry, 2, false) : null;
-      } else if (result.added === items.length && items.length === limit) {
-        next = backfill(entry, 1, true);
-      }
-      return Promise.resolve(next).then(function () { return refreshWatched(entry, seen); });
+  function pollState() {
+    state.polling = true;
+    state.lastPollAt = Date.now();
+    return consoleApi('/state', { headers: state.etag ? { 'If-None-Match': state.etag } : {} }).then(function (res) {
+      var synced = Number(res.headers.get('X-Synced-At'));
+      if (synced) state.lastSyncAt = synced;
+      if (res.status === 304) return;
+      if (!res.ok) throw new Error('The console API answered HTTP ' + res.status + '.');
+      state.etag = res.headers.get('ETag');
+      return res.json().then(applySnapshot);
     }).then(function () {
-      entry.loaded = true;
-      entry.error = null;
-      entry.quiet = !entry.total || (Date.now() - entry.lastActivity > QUIET_AFTER_MS);
-      entry.hot = entryIsHot(entry);
-      entry.nextAt = Date.now() + (entry.hot ? HOT_INTERVAL_MS : entry.quiet ? QUIET_INTERVAL_MS : WARM_INTERVAL_MS);
-      if (firstLoad) rememberQuiet();
+      state.apiError = null;
     }, function (e) {
       if (e && e.authRequired) throw e;
-      if (e && e.status === 404) { dropRepo(entry.name); return; }
-      entry.error = (e && e.message) || String(e);
-      entry.loaded = true;
-      entry.nextAt = Date.now() + WARM_INTERVAL_MS;
-    }).then(function () {
-      state.lastSyncAt = Date.now();
-      scheduleRender();
-    });
-  }
-
-  function pruneRuns() {
-    var now = Date.now();
-    var byRepo = new Map();
-    state.runs.forEach(function (run) {
-      if (!byRepo.has(run.repo)) byRepo.set(run.repo, []);
-      byRepo.get(run.repo).push(run);
-    });
-    byRepo.forEach(function (runs) {
-      runs.sort(function (a, b) { return b.number - a.number; });
-      runs.forEach(function (run, i) {
-        if (i >= KEEP_PER_REPO && now - run.created > KEEP_MS && !ACTIVE[run.status] && !state.selected.has(run.key)) {
-          state.runs.delete(run.key);
-        }
-      });
-    });
-  }
-
-  function syncRunners() {
-    var admin = state.me && state.me.is_admin;
-    var runnersPath = admin ? '/admin/actions/runners' : '/user/actions/runners';
-    var runners = [];
-    function page(n) {
-      return api(runnersPath, { page: n, limit: 50, visible: admin ? 'true' : '' }).then(function (res) {
-        var batch = Array.isArray(res.data) ? res.data : (res.data && res.data.entries) || [];
-        runners = runners.concat(batch);
-        if (batch.length === 50 && n < 10) return page(n + 1);
-        return runners;
-      });
-    }
-    var queue = admin ? api('/admin/actions/runners/jobs').then(function (res) { return res.data || []; }, function () { return null; }) : Promise.resolve(null);
-    return Promise.all([page(1).catch(function (e) {
-      if (e && e.authRequired) throw e;
-      state.runnersNote = 'Forgejo did not list runners for this account (' + ((e && e.message) || e) + ').';
-      return null;
-    }), queue]).then(function (results) {
-      if (results[0]) { state.runners = results[0]; state.runnersNote = ''; }
-      state.queue = results[1];
-      state.runnersAt = Date.now();
+      state.apiError = (e && e.message) || String(e);
+    }).finally(function () {
+      state.polling = false;
       scheduleRender();
     });
   }
@@ -647,11 +498,8 @@
   }
 
   function wakeRepo(name, runId) {
-    var entry = state.repos.get(name);
-    if (!entry) return;
-    if (runId) entry.watched.add(runId);
-    entry.hot = true;
-    entry.nextAt = Date.now() + 1500;
+    consoleApi('/wake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: name, runId: runId }) })
+      .then(function () { state.lastPollAt = 0; }, function () { return null; });
   }
 
   function performRunActions(keys, kind) {
@@ -666,6 +514,7 @@
         else {
           state.selected.delete(run.key);
           state.jobs.delete(run.key);
+          state.optimistic.set(run.key, { kind: kind, until: Date.now() + OPTIMISTIC_HOLD_MS, baseUpdated: run.updated });
           applyOptimisticStatus(run, kind);
           wakeRepo(run.repo, run.id);
         }
@@ -813,7 +662,7 @@
   function renderStats() {
     var s = computeStats();
     var queuedFor = s.oldestQueued ? Date.now() - s.oldestQueued : 0;
-    var coverage = s.loading ? 'reading ' + (s.repoCount - s.loading) + ' of ' + s.repoCount + ' repositories' : 'across ' + plural(s.repoCount, 'repository', 'repositories');
+    var coverage = !state.reposDiscovered ? 'finding repositories' : s.loading ? 'reading ' + (s.repoCount - s.loading) + ' of ' + s.repoCount + ' repositories' : 'across ' + plural(s.repoCount, 'repository', 'repositories');
     var runnerValue = state.runners ? s.runnersBusy + '<span class="wg-ci-tile-of">/' + s.runnersOnline + '</span>' : '&ndash;';
     var runnerSub = state.runners
       ? (s.queueJobs ? plural(s.queueJobs, 'job') + ' waiting' : 'busy of online') + (s.runnersOffline ? ' &middot; ' + s.runnersOffline + ' offline' : '')
@@ -828,7 +677,8 @@
       tile('runners', 'Runners busy', runnerValue, runnerSub, s.queueJobs && s.runnersOnline && s.runnersBusy >= s.runnersOnline ? 'warn' : '', 'tab:runners'),
     ].join('');
     if (dom.stats._html !== html) { dom.stats.innerHTML = html; dom.stats._html = html; }
-    var note = coverage + (s.errored ? ' &middot; <span class="wg-ci-bad-text">' + plural(s.errored, 'repository', 'repositories') + ' failing to load</span>' : '');
+    var note = coverage + (s.errored ? ' &middot; <span class="wg-ci-bad-text">' + plural(s.errored, 'repository', 'repositories') + ' failing to load</span>' : '') +
+      (state.apiError ? ' &middot; <span class="wg-ci-bad-text">' + esc(state.apiError) + '</span>' : '');
     if (dom.coverage._html !== note) { dom.coverage.innerHTML = note; dom.coverage._html = note; }
   }
 
@@ -972,23 +822,29 @@
     existing.forEach(function (node) { node.remove(); });
   }
 
-  function renderRuns() {
-    var runs = sortRuns(filteredRuns());
-    var now = Date.now();
+  function renderRuns(filtered) {
+    var runs = sortRuns(filtered);
+    var todayStart = startOfDay(Date.now());
+    var groups = runs.map(function (run) { return groupOf(run, todayStart); });
+    var counts = new Map();
+    groups.forEach(function (label) { counts.set(label, (counts.get(label) || 0) + 1); });
+    var shown = runs.slice(0, state.runLimit);
     var items = [];
     var group = null;
-    runs.forEach(function (run) {
-      var label = ACTIVE[run.status] ? 'In progress' : dayLabel(run.created || now, now);
+    shown.forEach(function (run, i) {
+      var label = groups[i];
       if (label !== group) {
         group = label;
-        var count = runs.filter(function (r) { return (ACTIVE[r.status] ? 'In progress' : dayLabel(r.created || now, now)) === label; }).length;
-        items.push({ key: 'g:' + label, className: 'wg-ci-group', html: '<span>' + esc(label) + '</span><span class="wg-ci-group-count">' + count + '</span>' });
+        items.push({ key: 'g:' + label, className: 'wg-ci-group', html: '<span>' + esc(label) + '</span><span class="wg-ci-group-count">' + counts.get(label) + '</span>' });
       }
       items.push({ key: run.key, className: 'wg-ci-item', html: runRowHtml(run) });
       if (state.expanded.has(run.key)) jobsFor(run);
     });
+    if (runs.length > shown.length) {
+      items.push({ key: 'more', className: 'wg-ci-more', html: '<button type="button" class="wg-ci-act" data-wg-more>Show ' + Math.min(RUN_PAGE_SIZE, runs.length - shown.length) + ' more of ' + (runs.length - shown.length) + '</button>' });
+    }
     if (!runs.length) {
-      var loading = Array.from(state.repos.values()).some(function (e) { return !e.loaded; });
+      var loading = !state.reposDiscovered || Array.from(state.repos.values()).some(function (e) { return !e.loaded; });
       items.push({
         key: 'empty', className: 'wg-ci-empty',
         html: loading && !state.runs.size ? '<span class="wg-ci-spinner"></span>Reading runs from every repository&hellip;'
@@ -1214,9 +1070,9 @@
       }).join('') + '</div>';
   }
 
-  function renderTabs() {
+  function renderTabs(filtered) {
     var counts = {
-      runs: filteredRuns().length,
+      runs: filtered.length,
       repos: state.repos.size,
       runners: state.runners ? state.runners.filter(function (r) { return r.status !== 'offline'; }).length : null,
     };
@@ -1237,7 +1093,7 @@
   function renderLive() {
     var now = Date.now();
     var errored = Array.from(state.repos.values()).some(function (e) { return e.error; });
-    var mode = state.paused ? 'paused' : document.hidden ? 'idle' : errored ? 'warn' : state.lastSyncAt ? 'live' : 'idle';
+    var mode = state.paused ? 'paused' : document.hidden ? 'idle' : errored || state.apiError ? 'warn' : state.lastSyncAt ? 'live' : 'idle';
     dom.live.setAttribute('data-wg-mode', mode);
     var age = state.lastSyncAt ? Math.round((now - state.lastSyncAt) / 1000) : null;
     var text = state.paused ? 'Paused' : age === null ? 'Connecting' : 'Live · ' + (age < 2 ? 'now' : age < 90 ? age + 's ago' : formatAgo(state.lastSyncAt));
@@ -1250,9 +1106,11 @@
   function render() {
     renderQueued = false;
     if (!state.started) return;
+    state.lastRenderAt = Date.now();
+    var filtered = filteredRuns();
     renderStats();
-    renderTabs();
-    if (state.tab === 'runs') renderRuns();
+    renderTabs(filtered);
+    if (state.tab === 'runs') renderRuns(filtered);
     if (state.tab === 'repos') renderRepos();
     if (state.tab === 'runners') renderRunners();
     if (state.tab === 'insights') renderInsights();
@@ -1263,7 +1121,7 @@
   function scheduleRender() {
     if (renderQueued) return;
     renderQueued = true;
-    setTimeout(render, 30);
+    setTimeout(render, Math.max(30, MIN_RENDER_GAP_MS - (Date.now() - state.lastRenderAt)));
   }
 
   function tickClocks() {
@@ -1288,37 +1146,28 @@
     tickTimer = setTimeout(tick, 300);
   }
 
+  function stillLoading() {
+    return !state.reposDiscovered || Array.from(state.repos.values()).some(function (e) { return !e.loaded; });
+  }
+
+  function pollInterval() {
+    return stillLoading() ? STATE_POLL_LOADING_MS : STATE_POLL_MS;
+  }
+
   function tick() {
     clearTimeout(tickTimer);
-    tickTimer = setTimeout(tick, TICK_MS);
+    tickTimer = setTimeout(tick, stillLoading() ? STATE_POLL_LOADING_MS : TICK_MS);
     if (state.confirm && state.confirm.until <= Date.now()) { state.confirm = null; scheduleRender(); }
     renderLive();
     tickClocks();
-    if (ticking || state.paused || document.hidden || state.authFailed) return;
-    ticking = true;
-    var now = Date.now();
-    var work = [];
-    if (now - state.reposDiscoveredAt > REPOS_INTERVAL_MS) work.push(discoverRepos());
-    if (now - state.runnersAt > RUNNERS_INTERVAL_MS) work.push(syncRunners());
-    var due = Array.from(state.repos.values()).filter(function (e) { return e.nextAt <= now; })
-      .sort(function (a, b) { return (b.hot ? 1 : 0) - (a.hot ? 1 : 0) || b.lastActivity - a.lastActivity; });
-    due.forEach(function (e) { e.nextAt = now + WARM_INTERVAL_MS; });
-    work.push(inPool(due, syncRepo, LANES).then(function (results) {
-      var auth = results.filter(function (r) { return r && r.authRequired; })[0];
-      if (auth) throw auth;
-    }));
-    state.jobs.forEach(function (cached, key) {
+    if (state.paused || document.hidden || state.authFailed) return;
+    state.expanded.forEach(function (key) {
       var run = state.runs.get(key);
-      if (run && state.expanded.has(key) && ACTIVE[run.status]) jobsFor(run);
+      if (run && ACTIVE[run.status]) jobsFor(run);
     });
-    Promise.all(work).then(function () {
-      pruneRuns();
-    }, function (e) {
+    if (state.polling || Date.now() - state.lastPollAt < pollInterval()) return;
+    pollState().catch(function (e) {
       if (e && e.authRequired) showGate('expired', e.message);
-      else console.debug('[wg-ci]', e);
-    }).then(function () {
-      ticking = false;
-      scheduleRender();
     });
   }
 
@@ -1355,6 +1204,7 @@
   function setFilter(name, value) {
     state.filters[name] = value;
     state.focusKey = null;
+    state.runLimit = RUN_PAGE_SIZE;
     savePrefs();
     scheduleRender();
   }
@@ -1463,6 +1313,7 @@
       return;
     }
     if (target.closest('[data-wg-signin]')) { startSignIn(); return; }
+    if (target.closest('[data-wg-more]')) { state.runLimit += RUN_PAGE_SIZE; scheduleRender(); return; }
     if (target.closest('[data-wg-pause]')) {
       state.paused = !state.paused;
       if (!state.paused) tickSoon();
@@ -1510,6 +1361,7 @@
     var i = keys.indexOf(state.focusKey);
     i = i === -1 ? (delta > 0 ? 0 : keys.length - 1) : Math.max(0, Math.min(keys.length - 1, i + delta));
     state.focusKey = keys[i];
+    if (i >= state.runLimit) state.runLimit = i + RUN_PAGE_SIZE;
     render();
     var node = dom.runList.querySelector('[data-wg-row="' + CSS.escape(state.focusKey) + '"]');
     if (node) node.scrollIntoView({ block: 'nearest' });
@@ -1668,12 +1520,9 @@
     showGate('none');
     state.started = true;
     scheduleRender();
-    return loadMe().then(function () {
-      loadStatic(PANELS_URL).then(function (panels) { state.panels = panels; scheduleRender(); });
-      return discoverRepos();
-    }).then(function () {
-      tick();
-    });
+    loadStatic(PANELS_URL).then(function (panels) { state.panels = panels; scheduleRender(); });
+    tick();
+    return loadMe();
   }
 
   function boot() {
