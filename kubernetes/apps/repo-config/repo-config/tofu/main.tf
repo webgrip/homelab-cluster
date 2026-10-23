@@ -43,6 +43,7 @@ resource "forgejo_repository" "repo" {
   default_delete_branch_after_merge = each.value.default_delete_branch_after_merge
   allow_fast_forward_only_merge     = each.value.allow_fast_forward_only_merge
   allow_squash_merge                = each.value.allow_squash_merge
+  archived                          = try(each.value.archived, false)
   archive_on_destroy                = true
 
   lifecycle {
