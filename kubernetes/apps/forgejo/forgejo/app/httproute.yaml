@@ -17,6 +17,20 @@ spec:
     - matches:
         - path:
             type: PathPrefix
+            value: /
+          headers:
+            - type: RegularExpression
+              name: user-agent
+              value: "(?i).*(meta-externalagent|facebookexternalhit).*"
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: forgejo-deny-meta-crawlers
+    - matches:
+        - path:
+            type: PathPrefix
             value: /-/ci/api
       backendRefs:
         - name: ci-console-api

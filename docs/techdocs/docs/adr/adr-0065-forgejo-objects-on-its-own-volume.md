@@ -167,3 +167,4 @@ PushSecret per consumer.
   [ADR-0064](adr-0064-dependency-track-only-sbom-platform.md) (the 2026-09-28 disk-full
   incident), [off-site Garage runbook](../runbooks/garage-offsite.md).
 * 2026-10-01 — implemented: `forgejo-data` grown to 40Gi (46442409) and `[storage]` flipped to local (558c0aee). The `MINIO_*` env and `forgejo-s3-secret` stay wired, unused, until the off-site `forgejo` bucket is deleted, for the copy pass and rollback; the rollback window ends around 2026-10-31 (logged in audit 2026-10-04)
+* 2026-10-23 — the volume filled with 21.6 GB of per-commit git bundles that Meta's crawler requested; the gateway now refuses that crawler and `archive_cleanup` runs hourly ([incident](../incidents/2026-10-23-forgejo-disk-full-meta-crawler-bundles.md)).
