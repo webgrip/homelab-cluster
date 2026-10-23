@@ -181,8 +181,10 @@ spec:
             - configMap:
                 name: forgejo-ci-console-oauth
                 optional: true
-    # configure-gitea loads app.ini, which names the signing key, so the
-    # init containers need the key too or Forgejo never starts.
+    extraInitVolumeMounts:
+      - name: signing-key
+        mountPath: /etc/forgejo-signing
+        readOnly: true
     extraInitVolumeMounts:
       - name: signing-key
         mountPath: /etc/forgejo-signing
