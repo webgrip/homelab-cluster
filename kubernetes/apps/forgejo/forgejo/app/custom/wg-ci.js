@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var WG_CI_VERSION = '2.0.0';
+  var WG_CI_VERSION = '2.0.1';
   var CONSOLE_PATH = '/-/ci';
   var OAUTH_CONFIG_URL = '/assets/wg/wg-ci-oauth.json';
   var PANELS_URL = '/assets/wg/wg-ci-panels.json';
@@ -110,7 +110,7 @@
     panels: null,
     reposDiscovered: false,
     optimistic: new Map(),
-    etag: null,
+    stateVersion: 0,
     polling: false,
     lastPollAt: 0,
     apiError: null,
@@ -430,13 +430,15 @@
   function pollState() {
     state.polling = true;
     state.lastPollAt = Date.now();
-    return consoleApi('/state', { headers: state.etag ? { 'If-None-Match': state.etag } : {} }).then(function (res) {
+    return consoleApi('/state' + (state.stateVersion ? '?have=' + state.stateVersion : '')).then(function (res) {
       var synced = Number(res.headers.get('X-Synced-At'));
       if (synced) state.lastSyncAt = synced;
       if (res.status === 304) return;
       if (!res.ok) throw new Error('The console API answered HTTP ' + res.status + '.');
-      state.etag = res.headers.get('ETag');
-      return res.json().then(applySnapshot);
+      return res.json().then(function (snapshot) {
+        applySnapshot(snapshot);
+        state.stateVersion = snapshot.version;
+      });
     }).then(function () {
       state.apiError = null;
     }, function (e) {

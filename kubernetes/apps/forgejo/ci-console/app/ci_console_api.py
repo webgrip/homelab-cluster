@@ -513,12 +513,12 @@ class Handler(BaseHTTPRequestHandler):
         session = self.authorised_session()
         if not session:
             return
-        etag = f'"{session.key[:16]}-{session.version}"'
-        synced = {"ETag": etag, "X-Synced-At": str(int(session.synced_at * 1000))}
-        if self.headers.get("If-None-Match") == etag:
-            self.reply(304, headers=synced)
+        have = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("have", [""])[0]
+        headers = {"X-State-Version": str(session.version), "X-Synced-At": str(int(session.synced_at * 1000))}
+        if have == str(session.version):
+            self.reply(304, headers=headers)
             return
-        self.reply(200, session.snapshot(), headers=synced)
+        self.reply(200, session.snapshot(), headers=headers)
 
     def do_POST(self):
         if self.route() != "/wake":

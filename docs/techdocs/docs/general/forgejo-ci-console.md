@@ -77,8 +77,10 @@ the page downloaded 8.7 MB per load and spent half of every 30 seconds re-render
 - It keeps one session per Forgejo login, polls while that login has polled in the last two
   minutes, and forgets the session after 30 idle minutes.
 - `/state` returns one compact snapshot: about 300 bytes per run, gzipped to about 33 KB for
-  480 runs. Its ETag changes only when data changes, so the page's poll every 2 s is
-  usually a 304 with an `X-Synced-At` header. While repositories are still loading, the
+  480 runs. The snapshot carries a version that changes only when data changes; the page
+  polls every 2 s with `?have=<version>`, so an unchanged poll is a bodiless 304 with an
+  `X-Synced-At` header. Not an ETag: Envoy's compressor strips ETags from the responses it
+  compresses. While repositories are still loading, the
   page polls every 400 ms.
 - After a stop or re-run the page calls `/wake`, which polls that repository and run within
   a second.
