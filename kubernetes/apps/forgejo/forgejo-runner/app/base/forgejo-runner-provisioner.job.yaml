@@ -54,6 +54,8 @@ spec:
               valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
             - name: ADMIN_PASSWORD
               valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+            - name: REGISTER_PATH
+              value: admin/actions/runners
           command:
             - /bin/sh
             - -ceu
@@ -86,20 +88,20 @@ spec:
                 echo "stored runner uuid is well-formed ($cur) — cache secret ensured, no other change"
                 exit 0
               fi
-              echo "stored uuid missing/malformed ('${cur}') — (re)registering global runner"
+              echo "stored uuid missing/malformed ('${cur}') — (re)registering runner"
 
               # 2) Drop any prior registration with our name so we don't accumulate dead runners.
               #    Best-effort: tolerate either {runners:[...]} or a bare array, and parse misses.
-              ids="$(curl -fsS -u "$admin" "$api/admin/actions/runners?limit=50" 2>/dev/null \
+              ids="$(curl -fsS -u "$admin" "$api/${REGISTER_PATH}?limit=50" 2>/dev/null \
                 | jq -r --arg n "$RUNNER_NAME" '(.runners // .)[]? | select(.name==$n) | .id' 2>/dev/null || true)"
               for id in $ids; do
-                curl -sS -o /dev/null -u "$admin" -X DELETE "$api/admin/actions/runners/$id" \
+                curl -sS -o /dev/null -u "$admin" -X DELETE "$api/${REGISTER_PATH}/$id" \
                   && echo "deleted stale runner id=$id" || true
               done
 
               # 3) Register a fresh persistent global runner; capture server-issued uuid + token.
               resp="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST \
-                "$api/admin/actions/runners" \
+                "$api/${REGISTER_PATH}" \
                 -d "{\"name\":\"${RUNNER_NAME}\",\"ephemeral\":false}")"
               uuid="$(printf '%s' "$resp" | jq -r '.uuid // empty')"
               token="$(printf '%s' "$resp" | jq -r '.token // empty')"
@@ -112,7 +114,7 @@ spec:
                 --from-literal="token=$token" \
                 --from-literal="cache-secret=$cache_secret" \
                 --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-              echo "registered global runner ${RUNNER_NAME} (uuid ${uuid}) and wrote $SECRET_NAME"
+              echo "registered runner ${RUNNER_NAME} (uuid ${uuid}) and wrote $SECRET_NAME"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
