@@ -128,6 +128,26 @@ run on a fixture repository.
 | R4 | Nine dead release paths | A archive the repos · B delete the `.github/workflows` and keep the repos · C revive the ones you still want | A for the ones you no longer use, C per repo otherwise; list below |
 | R5 | `webgrip.nl` and `counterscale` versioning | A become Sites with rc/stable · B stay unversioned deploys | **A**: one recipe; staging previews already exist |
 
+Owner answers, 2026-10-23:
+
+- **R1: A**, semantic-release hardened, with a knope pilot alongside to compare on real repos
+  ([VIK-2314](https://vikunja.webgrip.dev/tasks/2314)).
+- **R2: open.** The owner sees value in release candidates for shared workflows and images. Proposed
+  refinement: the branch shape follows **blast radius**, not kind. A repository is staged when a bad
+  release breaks more than itself: services, sites, and the estate-wide packages and images
+  (`workflows`, `renovate-config`, `semantic-release-config`, `infrastructure`, whose `ci-runner`
+  and `agent-runner` run every CI job and agent Run). Each staged package or image needs one canary
+  consumer on its `-rc` channel. Leaf packages (`frontend-toolkit`, `common-charts`,
+  `telemetry-service`, templates, `ai-skills`) stay trunk.
+- **R3: A**, fast-forward only, with one escape hatch for the case where it is not possible: when
+  production needs a fix while `development` holds work that must not ship yet, the fix goes on a
+  maintenance branch cut from the stable tag (`0.4.x`, a semantic-release maintenance range), which
+  releases `0.4.1`; the same fix also lands on `development`. `main` still only fast-forwards.
+- **R4: A**, archived through the repo-config model (`archived: true`, homelab `5ef7a5b9`) for the
+  eight Forgejo repositories; `twitch_exporter` leads on GitHub and waits for GitHub repository
+  settings to be modelled too.
+- **R5: A.**
+
 Dead release paths for R4: freshrss-application, searxng-application, invoiceninja-application,
 backstage-application, ledgerflow, monitoring-platform, traefik-local-development,
 whisperx-application, twitch_exporter.
