@@ -262,3 +262,4 @@ changes](../runbooks/omnigraph.md#open-glide-branches-block-schema-changes).
 | VIK-1260 | The archive layer, then mail (VIK-1254), Slack (VIK-1290), calls (VIK-1253) |
 | VIK-1251 | Alert when Claude requests silently fall back |
 | VIK-1296 | Explorer camera on tiny graphs |
+| (RFC) | [Omnigraph 0.14 and knowledge tiers](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md): the upgrade cutover, the company-brain claim layer, which graph holds which tier, and the write rules every agent follows |

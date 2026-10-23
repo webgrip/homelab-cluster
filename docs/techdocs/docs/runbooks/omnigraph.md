@@ -832,6 +832,8 @@ Merging `main` into the branch first (`branch merge main --into <branch>`) works
 
 ## Upgrade
 
+The 0.11 → 0.14 move is not this procedure: a cluster-managed 0.11 graph has no in-place route, so every graph is exported and loaded into a fresh root, with the HTTP contract, the CLI and the MCP bridge changing in the same cutover. The measured plan is the [Omnigraph 0.14 RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md). The steps below describe a same-format upgrade (0.14.x → 0.14.y).
+
 1. Read the release notes.
 2. Run the brain retrieval eval gate on the old version and keep its numbers (`kubectl -n ai create job --from=cronjob/omnigraph-brain-eval-gate omnigraph-brain-eval-gate-manual`, once RFC P2 has shipped it). v0.11 behaviour the retrieval depends on, such as the ranked-first rule, can change silently.
 3. Scale the deployment to 0.
