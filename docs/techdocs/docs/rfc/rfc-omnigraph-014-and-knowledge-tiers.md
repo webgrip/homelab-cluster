@@ -386,10 +386,12 @@ one writer here; this makes them the rule for all of them.
 
 ## 8. Phased plan and tickets
 
-Every ticket below is written to the Definition of Ready and needs creating on the Homelab Roadmap
-(the board was not writable from the session that wrote this RFC: no LiteLLM MCP route and no
-OpenBao session for the Vikunja token). `VIK-2054` is superseded by P1 and should be closed with a
-pointer here.
+On the board since 2026-10-24: epic VIK-2323 (P1) with VIK-2326 (T1.1), VIK-2327 (T1.2),
+VIK-2328 (T1.3), VIK-2336 (T1.4, Omnigraph Explorer), VIK-2337 (T1.5, Unfold), VIK-2329 (T1.6),
+VIK-2330 (T1.7), VIK-2331 (T1.8), VIK-2332 (T1.9); VIK-2324 (T0.1), VIK-2333 (T2.1), VIK-2334
+(P3), VIK-2335 (P4). T1.2, T1.7, T1.8, T2.1, P3 and P4 wait on decisions D1–D4 as
+`needs-refinement`. VIK-2054 is closed as superseded. T2.2–T2.5 fold into those tickets or wait
+until after the cutover. The gateway failure found while writing them is VIK-2325.
 
 ### P0 — stop the recurrence (this week, 0.11)
 
