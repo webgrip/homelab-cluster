@@ -3,7 +3,7 @@
 > Status: **Proposed** 2026-10-23 · Owner: Ryan · Builds on
 > [ADR-0069 One delivery contract](../adr/adr-0069-one-delivery-contract.md) and
 > [its RFC](rfc-unfold-release-train.md) · Plan page:
-> [Release supply chain](https://claude.ai/artifact/RNeXfn8qdVH8XhutYXHta8), round 5. Decision record:
+> [Release supply chain](https://claude.ai/artifact/P1P7NRxiCRdVNTwizyAekC), rounds 1 to 6. Decision record:
 > [ADR-0078](../adr/adr-0078-one-release-recipe-four-kinds.md) (proposed until R2 is confirmed).
 
 ## Why
