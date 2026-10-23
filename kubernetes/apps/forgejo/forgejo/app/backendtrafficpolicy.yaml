@@ -1,0 +1,43 @@
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: forgejo-expensive-paths
+  namespace: forgejo
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: forgejo
+  rateLimit:
+    type: Local
+    local:
+      rules:
+        - clientSelectors:
+            - path:
+                type: RegularExpression
+                value: "/[^/]+/[^/]+/archive/.*"
+          limit:
+            requests: 10
+            unit: Minute
+        - clientSelectors:
+            - path:
+                type: RegularExpression
+                value: "/[^/]+/[^/]+/compare/.*"
+          limit:
+            requests: 20
+            unit: Minute
+        - clientSelectors:
+            - path:
+                type: RegularExpression
+                value: "/[^/]+/[^/]+/blame/.*"
+          limit:
+            requests: 30
+            unit: Minute
+        - clientSelectors:
+            - path:
+                type: RegularExpression
+                value: "/[^/]+/[^/]+/commits/.*"
+          limit:
+            requests: 30
+            unit: Minute
