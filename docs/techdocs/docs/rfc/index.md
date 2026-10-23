@@ -25,7 +25,7 @@ Statuses: Proposed (open) · Accepted (decided, executing) · Implemented (done)
   machine-readable Watch or a stated reason; a scheduled evaluator records Confirmed, Regressed or
   Inconclusive, Regressed also warns via ntfy; `watch/*` labels and capped `needs-refinement`
   created tickets from slice 2; epic VIK-1315).
-- **Proposed / open** — [CI isolation on Talos](rfc-ci-isolation-talos.md)
+- **Proposed / open** — [One release recipe, four kinds of project](rfc-one-release-recipe.md) (proposed 2026-10-23: semantic-release hardened to tags-only with one toolchain image on Harbor and GHCR; every repo is a service, image set, package or site with one branch shape each; owner decisions R1–R5 open), [CI isolation on Talos](rfc-ci-isolation-talos.md)
   (2026-08-11 incident-driven: shared privileged dind is unsupported on Talos per Sidero;
   containment wrapper shipped, staged plan → Talos v1.13.8, cilium OOM-exemption, kata for
   KinD e2e, rootless end-state gated on moby#52268),
