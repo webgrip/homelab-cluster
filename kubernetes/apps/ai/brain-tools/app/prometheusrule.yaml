@@ -34,7 +34,6 @@ spec:
               Likely causes:
               - The pod is crash-looping: a missing act-brain-reader token (Secret omnigraph-brain-reader-token) or a code error in the brain-tools-server ConfigMap (log line "brain-tools: ..." at start).
               - The pod is Pending: no worker node has 128Mi to request.
-              - The pod stays unready because Omnigraph is down or a stored query it needs is missing (see BrainToolsCatalogIncomplete).
 
               First actions:
               - kubectl -n ai get pods -l app.kubernetes.io/name=brain-tools
@@ -53,7 +52,7 @@ spec:
             summary: "brain-tools cannot reach every stored query it needs on brain (ai/brain-tools)"
             description: |
               What's happening:
-              - brain-tools reads GET /graphs/brain/queries as act-brain-reader every 30 seconds. For 10 minutes Omnigraph did not answer, or the catalog lacked a query brain-tools calls (brain_tools_catalog_missing_queries says how many). /readyz fails meanwhile, so the pod is unready.
+              - brain-tools reads GET /graphs/brain/queries as act-brain-reader every 30 seconds. For 10 minutes Omnigraph did not answer, or the catalog lacked a query brain-tools calls (brain_tools_catalog_missing_queries says how many). /readyz answers 503 meanwhile; the pod stays Ready, so LiteLLM still lists brain_tools-search and brain_tools-read and every other gateway tool.
 
               Impact/risk:
               - search and read answer "the brain is unavailable" or fail outright, and the eval's REST profiles fail.

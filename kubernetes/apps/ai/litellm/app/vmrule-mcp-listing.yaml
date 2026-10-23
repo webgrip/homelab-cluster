@@ -1,0 +1,44 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: litellm-mcp-listing
+  labels:
+    rules: logs
+spec:
+  groups:
+    - name: litellm.mcp.listing
+      type: vlogs
+      interval: 1m
+      rules:
+        - alert: LiteLLMMcpServerListingFails
+          expr: >-
+            _time:10m namespace:=ai container:=app pod:litellm*
+            message:"listing tools from"
+            | extract "listing tools from <server>" from message
+            | stats by (server) count() as failures
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: litellm
+          annotations:
+            summary: "LiteLLM cannot list the tools of MCP server {{ $labels.server }} (ai/litellm)"
+            description: |
+              What's happening:
+              - LiteLLM failed {{ $value }} tool listings of MCP server {{ $labels.server }} in ten minutes, by timeout, cancellation or error.
+
+              Impact/risk:
+              - Every key that holds {{ $labels.server }} waits up to LITELLM_MCP_TOOL_LISTING_TIMEOUT (10 s) on each listing and gets no {{ $labels.server }} tools.
+              - A Claude Code session that started while this fired has none of that server's tools until /mcp reconnects; before the 10-second cap it lost every gateway tool, Vikunja's included (2026-10-23).
+
+              Likely causes:
+              - The backend is down or unready, so its Service has no endpoints and the connection hangs: omnigraph-mcp while Omnigraph is down, brain-tools, mcp-vikunja.
+              - A network policy between ai and the backend's namespace drops the connection.
+              - The backend lists slowly after an upgrade.
+
+              First actions:
+              - kubectl -n ai logs deploy/litellm -c app --since=15m | grep "listing tools from"
+              - kubectl get pods -A -l 'app.kubernetes.io/name in (omnigraph-mcp,brain-tools,mcp-vikunja)'
+              - Time one listing: GET /mcp-rest/tools/list?server_id=<server> with a key that holds the server
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/litellm/"
