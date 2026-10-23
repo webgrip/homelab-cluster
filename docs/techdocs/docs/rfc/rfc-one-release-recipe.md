@@ -1,10 +1,10 @@
 # RFC: One release recipe, four kinds of project
 
-> Status: **Proposed** 2026-10-23 · Owner: Ryan · Builds on
+> Status: **Accepted** 2026-10-24 · Owner: Ryan · Builds on
 > [ADR-0069 One delivery contract](../adr/adr-0069-one-delivery-contract.md) and
 > [its RFC](rfc-unfold-release-train.md) · Plan page:
 > [Release supply chain](https://claude.ai/artifact/P1P7NRxiCRdVNTwizyAekC), rounds 1 to 6. Decision record:
-> [ADR-0078](../adr/adr-0078-one-release-recipe-four-kinds.md) (proposed until R2 is confirmed).
+> [ADR-0078](../adr/adr-0078-one-release-recipe-four-kinds.md).
 
 ## Why
 
@@ -133,7 +133,7 @@ Owner answers, 2026-10-23:
 
 - **R1: A**, semantic-release hardened, with a knope pilot alongside to compare on real repos
   ([VIK-2314](https://vikunja.webgrip.dev/tasks/2314)).
-- **R2: open.** The owner sees value in release candidates for shared workflows and images. Proposed
+- **R2: yes** (confirmed 2026-10-24). The owner sees value in release candidates for shared workflows and images. Proposed
   refinement: the branch shape follows **blast radius**, not kind. A repository is staged when a bad
   release breaks more than itself: services, sites, and the estate-wide packages and images
   (`workflows`, `renovate-config`, `semantic-release-config`, `infrastructure`, whose `ci-runner`

@@ -1,14 +1,14 @@
 ---
-status: proposed
-date: 2026-10-23
+status: accepted
+date: 2026-10-24
 ---
 
 # One release recipe: semantic-release tags-only, four kinds of project, fast-forward promotion
 
 Technical Story: [RFC: One release recipe, four kinds of project](../rfc/rfc-one-release-recipe.md).
 Refines [ADR-0069](adr-0069-one-delivery-contract.md), whose five layers say what a release must
-achieve; this record says how every repository achieves it. Owner answers R1, R3, R4 and R5 given on
-2026-10-23; R2 (which repositories are staged) awaits confirmation, so the record stays proposed.
+achieve; this record says how every repository achieves it. Owner answers R1 to R5 given on
+2026-10-23 and 2026-10-24.
 
 ## Context and Problem Statement
 
@@ -56,7 +56,7 @@ promising but pre-1.0 with one maintainer and is piloted separately
 5. **Four kinds.** Every repository is a **service** (images plus one chart), an **image set**, a
    **package** (npm package, preset, library chart, reusable workflow or action, skill) or a **site**
    (Cloudflare). OpenTofu and Flux trees are applied from `main`, not released.
-6. **Branch shape by blast radius (R2, proposed).** A repository is *staged* (`development` cuts
+6. **Branch shape by blast radius.** A repository is *staged* (`development` cuts
    `-rc.N`, `main` cuts stables) when a bad release breaks more than itself: services, sites,
    `workflows`, `renovate-config`, `semantic-release-config` and `infrastructure`. Each staged
    package or image set names one canary consumer on its `-rc` channel. Other packages are *trunk*
@@ -124,3 +124,7 @@ promising but pre-1.0 with one maintainer and is piloted separately
   fast-forward with a maintenance-branch escape hatch; R4 the eight dead Forgejo repositories
   archived (homelab `5ef7a5b9`); R5 versioned sites. R2 refined to "branch shape by blast radius",
   awaiting confirmation.
+* 2026-10-24 — Accepted. The owner confirmed R2 (branch shape by blast radius), chose to model
+  GitHub repository settings in the same repo-config model ([VIK-2320](https://vikunja.webgrip.dev/tasks/2320)),
+  to move the semantic-release toolchain images into `semantic-release-config`, and to archive
+  `common-charts` and `application-template` (homelab `0fb4fbd8`).

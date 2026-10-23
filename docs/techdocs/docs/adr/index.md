@@ -148,7 +148,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | [0030](adr-0030-forgejo-static-bot-pat.md) | Authenticate Renovate to Forgejo with a static bot PAT | accepted | 2026-06-16 |
 | [0031](adr-0031-github-as-renovate-data-oracle.md) | Keep GitHub as a read-only data oracle during the cutover | accepted | 2026-10-04 |
 | [0066](adr-0066-actions-resolve-from-the-local-forge.md) | Forgejo Actions resolve bare `uses:` refs from the local forge, against mirrored action repos | accepted | 2026-10-04 |
-| [0078](adr-0078-one-release-recipe-four-kinds.md) | One release recipe: semantic-release tags-only, four kinds of project, fast-forward promotion | proposed | 2026-10-23 |
+| [0078](adr-0078-one-release-recipe-four-kinds.md) | One release recipe: semantic-release tags-only, four kinds of project, fast-forward promotion | accepted | 2026-10-24 |
 
 ### 8. Policy & admission
 
