@@ -62,6 +62,16 @@ commit pages that link the bundles are allowed.
    (rate limits on expensive paths or a proof-of-work gate such as Anubis).
 2. `cron.archive_cleanup` runs every hour and removes archives older than one hour, so the cache can
    hold at most one hour of downloads.
+3. The gateway rate-limits the expensive paths per route, whatever the user agent says
+   (`BackendTrafficPolicy` `forgejo-expensive-paths`, Envoy local rate limit, answers `429`):
+   archives 10 a minute, compare pages 20, blame and commit-list pages 30 each. People browsing
+   stay far below these (the busiest human minute in the gateway log was 6 blame pages), the
+   crawler peaked at 22 commit-list pages a minute. Git over HTTP, the API, the registry, raw files
+   and LFS are not limited. The limit is per Envoy replica, not per client, so it caps the damage a
+   spoofed-browser botnet can do rather than identifying it. Such a botnet is already here: in the
+   half hour after the user-agent block went live, 611 distinct addresses with browser user agents
+   hit the forge, 585 of them exactly once, Chrome versions 101 to 140, many from Alibaba Cloud
+   ranges.
 
 ## Recovery
 
