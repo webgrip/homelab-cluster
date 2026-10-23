@@ -51,9 +51,15 @@ commit pages that link the bundles are allowed.
 
 ## Fix
 
-1. The gateway answers `403` to `meta-externalagent` and `facebookexternalhit` on `forgejo.<domain>`
-   before the request reaches Forgejo (`HTTPRouteFilter` `forgejo-deny-meta-crawlers`, a header-matched
-   rule in the Forgejo `HTTPRoute`). Nothing legitimate shares links to the forge through Meta.
+1. The gateway answers `403` to AI-training and data crawlers on `forgejo.<domain>` before the request
+   reaches Forgejo (`HTTPRouteFilter` `forgejo-deny-meta-crawlers`, a user-agent-matched rule in the
+   Forgejo `HTTPRoute`). The list is the training and bulk-scraping agents from
+   [ai-robots-txt/ai.robots.txt](https://github.com/ai-robots-txt/ai.robots.txt), plus Meta's three
+   agents. Deliberately not on it: agents a person triggers (`ChatGPT-User`, `Claude-User`,
+   `Perplexity-User`), coding agents (`Claude-Code`, `opencode`, `Codex`, `Cursor`, `Devin`) that
+   Unfold and the owner's own tooling use against this forge, and search engines. The match runs on
+   the honest user-agent only; a crawler that spoofs a browser passes it and is a separate problem
+   (rate limits on expensive paths or a proof-of-work gate such as Anubis).
 2. `cron.archive_cleanup` runs every hour and removes archives older than one hour, so the cache can
    hold at most one hour of downloads.
 
@@ -73,7 +79,11 @@ The same can be done from the web UI as the admin: Site administration → Monit
 ## Lessons
 
 - A public Forgejo with big mirrors needs crawler rules at the gateway. `robots.txt` is advisory and
-  the archive links are not covered by the default file anyway.
+  the archive links are not covered by the default file anyway. The same crawler filled a public
+  Forgejo mirror's disk with 573 GB of archives in 2026-08 while ignoring that instance's `robots.txt`
+  ([blog.philipp.info](https://blog.philipp.info/2026/08/residential-proxy-crawlers-on-a-public-forgejo-mirror/)),
+  and that write-up reports `DISABLE_DOWNLOAD_SOURCE_ARCHIVES` only hides the button, not the
+  `/archive/` endpoint.
 - Caches that grow per request belong on a bounded schedule, not the upstream default.
 - The `AppPersistentVolumeLowFree` rule in `prometheusrule-apps.yaml` covers `forgejo-data`; whether it
   paged before 21:41 is worth checking when the alert history is next reviewed.
