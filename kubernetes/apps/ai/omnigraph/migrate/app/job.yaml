@@ -2,7 +2,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: omnigraph-migrate-014
+  name: omnigraph-migrate-014-b
   namespace: ai
   labels:
     app.kubernetes.io/name: omnigraph-migrate
@@ -37,6 +37,7 @@ spec:
             - "/etc/omnigraph-migrate/copy.sh"
           env:
             - {name: OMNIGRAPH_GRAPHS, value: "brain memory webgrip webgrip-knowledge webgrip-notes"}
+            - {name: OMNIGRAPH_STATE_DIR, value: /var/lib/omnigraph/state}
             - {name: HOME, value: /tmp}
             - {name: NO_COLOR, value: "1"}
           securityContext:
@@ -49,7 +50,7 @@ spec:
           volumeMounts:
             - {name: scripts, mountPath: /etc/omnigraph-migrate, readOnly: true}
             - {name: source, mountPath: /source, readOnly: true}
-            - {name: work, mountPath: /work}
+            - {name: work, mountPath: /var/lib/omnigraph/state}
             - {name: tmp, mountPath: /tmp}
         - name: export
           image: harbor.webgrip.dev/dockerhub/modernrelay/omnigraph-server:v0.14.0@sha256:b5c92f1cfe2f735f07bc7aa79ec69d8b8311772a18399dc90136bc23b4943e1a
@@ -59,6 +60,7 @@ spec:
             - "/etc/omnigraph-migrate/export.sh"
           env:
             - {name: OMNIGRAPH_GRAPHS, value: "brain memory webgrip webgrip-knowledge webgrip-notes"}
+            - {name: OMNIGRAPH_STATE_DIR, value: /var/lib/omnigraph/state}
             - {name: HOME, value: /tmp}
             - {name: NO_COLOR, value: "1"}
           securityContext:
@@ -70,7 +72,7 @@ spec:
             limits: {memory: 4Gi}
           volumeMounts:
             - {name: scripts, mountPath: /etc/omnigraph-migrate, readOnly: true}
-            - {name: work, mountPath: /work}
+            - {name: work, mountPath: /var/lib/omnigraph/state}
             - {name: tmp, mountPath: /tmp}
       containers:
         - name: load
