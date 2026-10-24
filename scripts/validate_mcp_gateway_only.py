@@ -12,7 +12,7 @@ LITELLM_PEER = {
     "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ai"}},
     "podSelector": {"matchLabels": {"app.kubernetes.io/name": "litellm"}},
 }
-READ_ONLY_ACCESS_GROUPS = {"observability", "brain-dogfood"}
+READ_ONLY_ACCESS_GROUPS = {"observability", "brain-dogfood", "omnigraph-next"}
 ROUTE_KINDS = {"HTTPRoute", "GRPCRoute", "TCPRoute", "TLSRoute", "UDPRoute"}
 WORKLOAD_KINDS = {"Deployment", "StatefulSet", "DaemonSet"}
 IGNORED_TREES = ("kubernetes/apps/kyverno/tests/",)
