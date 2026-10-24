@@ -6,6 +6,8 @@ CLUSTER="kubernetes"
 CONTEXT="homelab-oidc"
 USER_NAME="oidc"
 KUBECONFIG_PATH="${KUBECONFIG:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/kubeconfig}"
+API_SERVER="${KUBERNETES_API_SERVER:-https://10.0.0.25:6443}"
+CLUSTER_CA="$(dirname "$0")/../talos/kubernetes-ca.crt"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 ok() { printf 'ok: %s\n' "$1"; }
@@ -18,9 +20,16 @@ ok "kubelogin present"
 [[ -n "$CLIENT_ID" ]] || die "no client id: talos/patches/controller/cluster.yaml carries none yet, or set KUBERNETES_OIDC_CLIENT_ID"
 ok "client id ${CLIENT_ID}"
 
-kubectl --kubeconfig "$KUBECONFIG_PATH" config get-clusters | grep -qx "$CLUSTER" \
-  || die "cluster '$CLUSTER' is not in $KUBECONFIG_PATH; fetch the admin kubeconfig once with 'just bootstrap-talos' or talosctl kubeconfig"
-ok "cluster '$CLUSTER' found"
+if kubectl --kubeconfig "$KUBECONFIG_PATH" config get-clusters 2>/dev/null | grep -qx "$CLUSTER"; then
+  ok "cluster '$CLUSTER' found"
+else
+  kubectl --kubeconfig "$KUBECONFIG_PATH" config set-cluster "$CLUSTER" \
+    --server="$API_SERVER" \
+    --certificate-authority="$CLUSTER_CA" \
+    --embed-certs=true >/dev/null
+  chmod 600 "$KUBECONFIG_PATH"
+  ok "cluster '$CLUSTER' written to $KUBECONFIG_PATH from $(basename "$CLUSTER_CA")"
+fi
 
 for port in 18000 8000; do
   if lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | grep -q 'IPv6'; then

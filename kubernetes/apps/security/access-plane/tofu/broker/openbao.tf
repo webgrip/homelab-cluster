@@ -38,3 +38,24 @@ resource "vault_identity_group_alias" "homelab_admins" {
   mount_accessor = vault_jwt_auth_backend.oidc.accessor
   canonical_id   = vault_identity_group.openbao_admins.id
 }
+
+resource "vault_policy" "kubernetes_login" {
+  name   = "kubernetes-login"
+  policy = <<-EOT
+    path "secret/data/security/kubernetes-oidc" {
+      capabilities = ["read"]
+    }
+  EOT
+}
+
+resource "vault_identity_group" "kubernetes_login" {
+  name     = "kubernetes-login"
+  type     = "external"
+  policies = [vault_policy.kubernetes_login.name]
+}
+
+resource "vault_identity_group_alias" "kubernetes_login" {
+  name           = "kubernetes-login"
+  mount_accessor = vault_jwt_auth_backend.oidc.accessor
+  canonical_id   = vault_identity_group.kubernetes_login.id
+}

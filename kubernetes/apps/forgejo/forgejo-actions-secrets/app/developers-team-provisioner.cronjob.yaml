@@ -1,0 +1,94 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: developers-team-provisioner
+  namespace: forgejo
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: developers-team-provisioner
+  namespace: forgejo
+spec:
+  schedule: "23 * * * *"
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: developers-team-provisioner
+        spec:
+          serviceAccountName: developers-team-provisioner
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: provision
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4
+              imagePullPolicy: IfNotPresent
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+                - {name: ORG, value: webgrip}
+                - {name: TEAM_NAME, value: Developers}
+                - {name: TEAM_DESCRIPTION, value: "Everyone the access plane grants repo-contribute; membership comes from the Authentik homelab-users group at each sign-in"}
+                - {name: TEAM_PERMISSION, value: write}
+                - {name: TEAM_UNITS, value: '["repo.code","repo.issues","repo.pulls","repo.wiki","repo.projects","repo.actions"]'}
+                - name: ADMIN_USERNAME
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+                - name: ADMIN_PASSWORD
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  api="${FORGEJO_URL}/api/v1"
+                  admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+                  curl() { command curl --connect-timeout 10 --max-time 30 "$@"; }
+                  body="$(jq -nc \
+                    --arg name "$TEAM_NAME" \
+                    --arg description "$TEAM_DESCRIPTION" \
+                    --arg permission "$TEAM_PERMISSION" \
+                    --argjson units "$TEAM_UNITS" \
+                    '{name: $name, description: $description, permission: $permission, includes_all_repositories: true, can_create_org_repo: false, units: $units}')"
+
+                  tid="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams?limit=50" | jq -r --arg n "$TEAM_NAME" '.[] | select(.name==$n) | .id' | head -1)"
+                  if [ -z "$tid" ]; then
+                    tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/${ORG}/teams" -d "$body" | jq -r '.id // empty')"
+                    echo "created ${ORG}/${TEAM_NAME} (id ${tid})"
+                  else
+                    curl -fsS -o /dev/null -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/teams/$tid" -d "$body"
+                    echo "converged ${ORG}/${TEAM_NAME} (id ${tid})"
+                  fi
+
+                  curl -fsS -u "$admin" "$api/teams/$tid" \
+                    | jq -e --arg permission "$TEAM_PERMISSION" '.permission == $permission and .includes_all_repositories' >/dev/null \
+                    || { echo "ERROR: ${ORG}/${TEAM_NAME} read-back does not match" >&2; exit 1; }
+                  echo "developers team provisioner converged"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}
