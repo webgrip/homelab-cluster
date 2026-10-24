@@ -14,8 +14,9 @@ metadata:
     policies.kyverno.io/description: >-
       Reports Ploeg images, pulled from GHCR directly or through the Harbor proxy, that lack
       a keyless cosign signature from the ploeg-hq/ploeg release workflow (GitHub Actions
-      OIDC, recorded in the public Rekor log). Audit until a signed Ploeg release runs here;
-      promotion follows ADR-0073.
+      OIDC, recorded in the public Rekor log), and Ploeg images whose release did not attest a
+      CVE budget verdict of pass under enforce (predicate cve-budget/v1, from 0.2.0-rc.62). Audit
+      until a signed, gated Ploeg release runs here; promotion follows ADR-0073.
 spec:
   validationFailureAction: Audit
   background: false
@@ -44,3 +45,36 @@ spec:
                     subjectRegExp: '^https://github\.com/ploeg-hq/ploeg/\.github/workflows/release\.yml@refs/(heads/development|heads/main|tags/v0\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?)$'
                     rekor:
                       url: https://rekor.sigstore.dev
+    - name: verify-ploeg-cve-budget-verdict
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      skipBackgroundRequests: true
+      verifyImages:
+        - imageReferences:
+            - "harbor.${SECRET_DOMAIN}/ghcr/ploeg-hq/*"
+            - "ghcr.io/ploeg-hq/*"
+          required: true
+          mutateDigest: false
+          verifyDigest: true
+          useCache: true
+          attestations:
+            - predicateType: https://github.com/ploeg-hq/ploeg/attestations/cve-budget/v1
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        issuer: https://token.actions.githubusercontent.com
+                        subjectRegExp: '^https://github\.com/ploeg-hq/ploeg/\.github/workflows/release\.yml@refs/(heads/development|heads/main|tags/v0\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?)$'
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ verdict }}"
+                      operator: Equals
+                      value: "pass"
+                    - key: "{{ mode }}"
+                      operator: Equals
+                      value: "enforce"
