@@ -70,6 +70,8 @@ spec:
           port: 3900
     # envoy-internal -> web endpoint (ADR-0052): the docs-site bucket is served
     # as a static website through the gateway at docs.<domain> (LAN-only).
+    # Also -> S3 API (3900) for browser reads of authentik's presigned media URLs
+    # (VIK-2380); the authentik-media HTTPRoute admits only GET and HEAD.
     - from:
         - namespaceSelector:
             matchLabels:
@@ -77,6 +79,20 @@ spec:
       ports:
         - protocol: TCP
           port: 3902
+        - protocol: TCP
+          port: 3900
+    # authentik server + worker -> S3 API: media and reports (VIK-2380). The
+    # matching EGRESS allow is on authentik's side.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: authentik
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: authentik
+      ports:
+        - protocol: TCP
+          port: 3900
     # Metrics scraping.
     - from:
         - namespaceSelector:
