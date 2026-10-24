@@ -121,6 +121,16 @@ def check_people(people: list, roles: dict, capabilities: dict, projects: dict, 
         values = [p[field] for p in people if p.get(field)]
         for duplicate in {v for v in values if values.count(v) > 1}:
             findings.error(f"{field} {duplicate}: used by more than one principal")
+    keys = [d["public_key"] for p in people for d in p.get("wireguard", [])]
+    for duplicate in {k for k in keys if keys.count(k) > 1}:
+        findings.error(f"wireguard key {duplicate}: used by more than one device")
+    for person in people:
+        devices = [d["device"] for d in person.get("wireguard", [])]
+        for duplicate in {d for d in devices if devices.count(d) > 1}:
+            findings.error(f"person {person['id']}: wireguard device {duplicate} declared twice")
+        for device in devices:
+            if len(f"ap-{person['id']}-{device}") > 64:
+                findings.error(f"person {person['id']}: wireguard peer name ap-{person['id']}-{device} is longer than OPNsense's 64")
     by_id = {p["id"]: p for p in people}
     for person in people:
         where = f"person {person['id']}"

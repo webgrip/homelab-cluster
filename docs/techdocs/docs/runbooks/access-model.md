@@ -89,11 +89,64 @@ mise exec -- kubectl auth can-i list pods -n erfbeeld --as oidc:jane@webgrip.nl
 Both objects `Ready` with no pending plan, one binding per owned namespace, and `yes`. Then ask
 them to sign in at Authentik; a refusal after Google means the email differs byte for byte.
 
-### What is still by hand
+### VPN devices
 
-| Step | Why it is not in Git yet |
-| --- | --- |
-| A WireGuard peer on the router | OPNsense is outside the cluster and has no reconciler here |
+Each human may list `wireguard` devices: a `device` name and the device's WireGuard **public**
+key, which the person generates and sends you ([Start here, step 0](../general/start-here.md#0-the-vpn-if-you-work-away-from-the-lan)).
+The `wireguard-peers` CronJob in `security` reconciles them into the router every fifteen minutes
+through the OPNsense API, as peers named `ap-<id>-<device>` on the one WireGuard instance:
+
+- a new device gets the next free tunnel address and keeps it for its life, a rotated key keeps
+  the address;
+- a device, person or `status: suspended` that leaves the roster loses its peer on the next run;
+- peers whose names do not start with `ap-` were made by hand and are never touched.
+
+Then hand the person their tunnel settings, everything except the private key:
+
+```sh
+mise exec -- kubectl -n security get cm wireguard-peers -o jsonpath='{.data.ap-jane-laptop}'
+```
+
+The validator refuses a malformed key, the same key on two devices, a device declared twice and a
+peer name over OPNsense's 64 characters.
+
+#### One-time setup of the reconciler
+
+The reconciler holds one credential: an OPNsense API key for a user that can do nothing but
+WireGuard. It is the only thing created by hand, once.
+
+1. OPNsense, **System → Access → Users**: add `access-plane` with a random password nobody keeps, no shell, and
+   **Effective Privileges** `VPN: WireGuard: Configuration` only.
+2. On that user, **API keys → +**. The browser downloads `key` and `secret`.
+3. Store them, then delete the download:
+
+   ```sh
+   export BAO_ADDR=https://openbao.webgrip.dev
+   mise exec -- bao login -method=oidc
+   mise exec -- bao kv put secret/opnsense/wireguard-reconciler key=<key> secret=<secret>
+   ```
+
+4. Within the hour External Secrets writes `opnsense-wireguard-api` and the next run succeeds:
+   `kubectl -n security logs job/<latest wireguard-peers job>`.
+
+#### Symptom → cause
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Pod in `CreateContainerConfigError` | `opnsense-wireguard-api` does not exist yet | The one-time setup above |
+| `public key does not match pinned public key` | OPNsense's web certificate was replaced with a new key | Pin the new key in `OPNSENSE_PINNED_PUBKEY` (command below) and commit |
+| `OPNsense has 2 WireGuard instances` | A second instance was added | Set `WG_SERVER_NAME` on the CronJob |
+| `401` from the API | The key was revoked or lacks the WireGuard privilege | Recreate it and store it again |
+| `404` on `getServerInfo` | OPNsense older than the peer generator API | Upgrade OPNsense |
+
+```sh
+echo | openssl s_client -connect 10.0.0.1:443 2>/dev/null | openssl x509 -pubkey -noout \
+  | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
+```
+
+The web certificate is self-signed, so the CronJob pins its public key instead of trusting a CA;
+it expires on 2027-01-08 and a renewal with a new key fails every run until the pin is updated.
+`KubeJobFailed` fires on the first failure.
 
 ## Mover
 

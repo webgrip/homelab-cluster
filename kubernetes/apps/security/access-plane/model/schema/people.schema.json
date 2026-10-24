@@ -31,6 +31,15 @@
         "reason": { "type": "string", "minLength": 1 }
       }
     },
+    "wireguardDevice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device", "public_key"],
+      "properties": {
+        "device": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,23}$" },
+        "public_key": { "type": "string", "pattern": "^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=$" }
+      }
+    },
     "principal": {
       "type": "object",
       "additionalProperties": false,
@@ -49,14 +58,15 @@
         "grants": { "type": "array", "items": { "$ref": "#/$defs/grant" } },
         "delegates_to": { "type": "array", "items": { "$ref": "#/$defs/slug" }, "uniqueItems": true },
         "owner": { "$ref": "#/$defs/email" },
-        "purpose": { "type": "string", "minLength": 1 }
+        "purpose": { "type": "string", "minLength": 1 },
+        "wireguard": { "type": "array", "items": { "$ref": "#/$defs/wireguardDevice" }, "uniqueItems": true }
       },
       "allOf": [
         {
           "if": { "properties": { "kind": { "const": "machine" } } },
           "then": {
             "required": ["owner", "purpose"],
-            "not": { "anyOf": [{ "required": ["username"] }, { "required": ["projects"] }, { "required": ["grants"] }, { "required": ["reviewed"] }] }
+            "not": { "anyOf": [{ "required": ["username"] }, { "required": ["projects"] }, { "required": ["grants"] }, { "required": ["reviewed"] }, { "required": ["wireguard"] }] }
           },
           "else": {
             "required": ["email", "username", "projects", "reviewed", "grants"],

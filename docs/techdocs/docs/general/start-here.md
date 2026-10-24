@@ -27,8 +27,37 @@ These happen on someone else's side. Check them with whoever added you.
 - [ ] Your entry in `people.yaml` is merged and the access plane has applied it. The admin
       checks with `kubectl -n security get terraform access-broker` (Ready, no pending plan).
 - [ ] You have a way onto the network. Most applications are reachable only from the home LAN
-      (`10.0.0.0/24`) or over the WireGuard VPN that ends on the router. A WireGuard peer is
-      issued by the owner; there is no self-service for it yet.
+      (`10.0.0.0/24`) or over the WireGuard VPN that ends on the router. For the VPN, see
+      [step 0](#0-the-vpn-if-you-work-away-from-the-lan).
+
+## 0. The VPN, if you work away from the LAN
+
+Your VPN access is a line in the roster, like everything else. Each device gets its own key pair,
+and the private key never leaves the device.
+
+1. Install WireGuard ([wireguard.com/install](https://www.wireguard.com/install/)) and make a key
+   pair on the device:
+
+   ```sh
+   umask 077
+   wg genkey | tee ~/.config/wg-webgrip.key | wg pubkey
+   ```
+
+   On a phone or in the desktop app, **Add empty tunnel** shows the same public key.
+2. Send the **public** key (the one line that command printed) to the person who added you, with
+   a short device name such as `laptop`. They add it under your entry in `people.yaml`:
+
+   ```yaml
+       wireguard:
+         - device: laptop
+           public_key: <your public key>
+   ```
+
+3. Within fifteen minutes of that merge the router knows your device. They send you the tunnel
+   settings: your address, the router's public key and endpoint, and which networks route
+   through it. Paste them into your tunnel and put your private key in `PrivateKey`.
+
+A new device is a new line, a lost device is deleting its line, and leaving removes them all.
 
 ## 1. Sign in once
 
