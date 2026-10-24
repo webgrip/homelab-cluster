@@ -36,7 +36,6 @@ patch_flags() {
 cluster_name="$(yq -r '.clusterName' "${inventory}")"
 endpoint="$(yq -r '.endpoint' "${inventory}")"
 additional_sans="$(yq -r '.additionalSans | join(",")' "${inventory}")"
-installer_registry="$(yq -r '.installerRegistry' "${inventory}")"
 
 common=(
     "${cluster_name}" "${endpoint}"
@@ -50,7 +49,8 @@ common=(
 
 mkdir -p "${out_dir}"
 
-while IFS=$'\t' read -r host role disk schematic; do
+while IFS=$'\t' read -r host role disk; do
+    install_image="$("${talos_dir}/../scripts/talos-installer-image.sh" "${host}" "${talosVersion}" "${inventory}")"
     patches=()
     while IFS= read -r flag; do patches+=("${flag}"); done < <(
         patch_flags --config-patch '.patches.all[]'
@@ -64,11 +64,11 @@ while IFS=$'\t' read -r host role disk schematic; do
     talosctl gen config "${common[@]}" \
         --output-types "${role}" \
         --install-disk "${disk}" \
-        --install-image "${installer_registry}/${schematic}:${talosVersion}" \
+        --install-image "${install_image}" \
         "${patches[@]}" \
         --output "${out_dir}/kubernetes-${host}.yaml"
-    echo "rendered ${out_dir}/kubernetes-${host}.yaml (${role}, ${schematic:0:12}, ${talosVersion})"
-done < <(yq -r '.nodes[] | [.hostname, .role, .installDisk, .schematic] | @tsv' "${inventory}")
+    echo "rendered ${out_dir}/kubernetes-${host}.yaml (${role}, ${install_image})"
+done < <(yq -r '.nodes[] | [.hostname, .role, .installDisk] | @tsv' "${inventory}")
 
 talosctl gen config "${common[@]}" --output-types talosconfig --output "${out_dir}/talosconfig"
 control_planes=()

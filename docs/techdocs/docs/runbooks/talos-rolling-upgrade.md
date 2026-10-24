@@ -46,6 +46,27 @@ Talos upgrade leaves it alone. Raising it to `v1.14` means moving our `cluster.a
 `machine.*` patches onto the 1.14 `Kube*Config` documents, which is its own change with its own
 dry-run diff.
 
+### A node on its own installer image
+
+A node can carry `installerImage` in `talos/nodes.yaml` instead of using
+`<installerRegistry>/<schematic>:<talosVersion>`. This is for installers built with `imager` rather
+than the Image Factory, such as the Kata Containers 4.3.1 installer from
+[`webgrip/talos-kata-extension`](https://forgejo.webgrip.dev/webgrip/talos-kata-extension)
+(private repository; images in the LAN-only Harbor project `talos`, which allows anonymous pulls so
+nodes need no registry credentials). Both `just talos-generate-config` (the rendered
+`machine.install.image`) and `just talos-upgrade-node` read it through
+`scripts/talos-installer-image.sh`, so a node keeps its installer across config applies and upgrades.
+
+The value must be pinned by digest and its tag must start with the current `talosVersion`:
+
+```yaml
+    installerImage: harbor.webgrip.dev/talos/installer-kata:v1.13.10-kata4.3.1-webgrip.1@sha256:<digest>
+```
+
+A `talosVersion` bump therefore fails the render for that node until a matching installer is built
+and pinned, instead of quietly putting the factory image back. Removing the field returns the node
+to its `schematic`.
+
 Check a render before upgrading: `mise exec -- just talos-generate-config`, then
 `talosctl validate --mode metal --config talos/clusterconfig/kubernetes-<node>.yaml`, and a
 `talosctl apply-config --dry-run` against the node.

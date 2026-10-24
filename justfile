@@ -223,19 +223,18 @@ talos-upgrade-node node at="" insecure="false":
     just _file "${TALOSCONFIG}"
     cd {{ root }}/talos
     at='{{ at }}'; insecure='{{ insecure }}'
-    # One yq pass for all three fields. Captured into a variable first, not
+    # One yq pass for both fields. Captured into a variable first, not
     # piped into `read` — an empty match would make `read` hit EOF and, under
     # `set -e`, abort before the explanatory error below ever runs.
     match="$(NODE='{{ node }}' yq -r \
         '.nodes[] | select(.hostname == env(NODE) or .address == env(NODE))
-         | [.hostname, .address, .schematic] | join(" ")' nodes.yaml)"
+         | [.hostname, .address] | join(" ")' nodes.yaml)"
     if [ -z "${match}" ]; then
         echo "node='{{ node }}' matches no hostname or address in talos/nodes.yaml" >&2
         exit 1
     fi
-    read -r host configured_ip schematic <<< "${match}"
-    image="$(yq -r .installerRegistry nodes.yaml)/${schematic}"
-    version="$(yq -r '.talosVersion' talenv.yaml)"
+    read -r host configured_ip <<< "${match}"
+    image="$({{ root }}/scripts/talos-installer-image.sh "${host}" "$(yq -r '.talosVersion' talenv.yaml)" "${PWD}/nodes.yaml")"
     target="${at:-${configured_ip}}"
     insecure_flag=""
     control_plane_endpoints_unless_insecure=""
@@ -247,11 +246,11 @@ talos-upgrade-node node at="" insecure="false":
         talosctl config info >/dev/null
         talosctl --nodes "${target}" --endpoints "${target}" get machineconfig >/dev/null
     fi
-    echo "==> ${host} — upgrading to ${image}:${version} via ${target}"
+    echo "==> ${host} — upgrading to ${image} via ${target}"
     talosctl upgrade \
         --talosconfig=./clusterconfig/talosconfig \
         --nodes="${target}" ${control_plane_endpoints_unless_insecure} \
-        --image="${image}:${version}" --timeout=10m ${insecure_flag}
+        --image="${image}" --timeout=10m ${insecure_flag}
 
 # Upgrade Kubernetes to the version pinned in talos/talenv.yaml
 [group('talos')]
