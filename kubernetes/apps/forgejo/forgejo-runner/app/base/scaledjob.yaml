@@ -42,6 +42,11 @@ spec:
   # Fixed in apps/forgejo/networkpolicy.yaml; don't re-derive the timeout theory from this
   # comment.
   #
+  # maxReplicaCount stays 6 and is NOT the effective ceiling: the worker pool is out of room
+  # (fringe-workstation 93% CPU / 96% memory requests, worker-1 98% CPU), and runner pods
+  # already hit FailedScheduling "Insufficient cpu, Insufficient memory" at this value.
+  # Raising it only manufactures Pending pods and makes KEDA's queue numbers lie. The lever
+  # that actually works is making CI do less work per push (see .forgejo/workflows/e2e.yml).
   # Back to 2 (2026-08-01). The 2->4 raise above was made because a Renovate wave drained at 2
   # runners for 2+ hours — but the CORRECTION recorded immediately above it establishes that the
   # cause was the `keda` namespace missing from forgejo-allow-ingress, so every scaler poll was
@@ -60,7 +65,7 @@ spec:
   # two of them a Ploeg Run fitted on only one worker node. One warm runner still
   # takes the next job instantly; a second concurrent job waits for a pod start.
   minReplicaCount: 1
-  maxReplicaCount: 10
+  maxReplicaCount: 6
   successfulJobsHistoryLimit: 3
   # 0: don't retain Failed runner Jobs. The warm-pool runner blocks on `one-job --wait`;
   # a real CI failure is visible in Forgejo's Actions UI, not worth a lingering k8s Job
@@ -95,7 +100,6 @@ spec:
         # token exchanged at OpenBao's JWT auth) — it never needs the k8s SA token, so we
         # don't expose one to untrusted workflow code.
         automountServiceAccountToken: false
-        priorityClassName: ci-batch
         # First-party images come from the in-cluster Harbor (private `webgrip` project), so the
         # kubelet needs the robot credential. Harbor is LAN-local, keeps working during a WAN
         # outage, and avoids ghcr package visibility (new ghcr packages default to private, which
@@ -111,10 +115,9 @@ spec:
             value: fringe
             effect: NoSchedule
         topologySpreadConstraints:
-          - maxSkew: 2
+          - maxSkew: 1
             topologyKey: kubernetes.io/hostname
-            whenUnsatisfiable: DoNotSchedule
-            nodeTaintsPolicy: Honor
+            whenUnsatisfiable: ScheduleAnyway
             labelSelector:
               matchLabels:
                 app.kubernetes.io/name: forgejo-runner
@@ -306,7 +309,7 @@ spec:
               # request makes the scheduler spread scan-heavy jobs instead of stacking them onto
               # whichever node bin-packs tightest.
               requests:
-                cpu: "1"
+                cpu: 250m
                 memory: 2Gi
               limits:
                 memory: 6Gi
