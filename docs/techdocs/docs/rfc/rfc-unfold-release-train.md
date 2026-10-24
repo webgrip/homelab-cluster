@@ -283,6 +283,18 @@ Decided by the owner on 2026-10-24:
 | D12 | A hold is the `!=` exclusion for automatic reverts and an exact pin for a human freeze |
 | D13 | Chart signing and `spec.verify` land before the semver switch, so no unsigned chart is ever followed |
 
+**Ploeg pins meet the release train.** Unfold #568 (Unfold ADR-0046) cuts an Unfold release only from an
+hourly train whose checks pass on a `development` head that has not moved in the meantime. Under D5
+each Ploeg release merges Unfold's pin PR as soon as its checks pass, and on 2026-10-24 Ploeg released
+rc.61, rc.62 and rc.63 within 85 minutes, so `development` kept moving and no Unfold release was cut
+between `0.4.0-rc.111` (07:29) and the evening.
+
+Decided by the owner on 2026-10-24:
+
+| # | Decision |
+| --- | --- |
+| D14 | Ploeg's pin PRs into Unfold stop merging themselves. Ploeg's release still opens them (D5); Unfold's release train merges the newest green pin PR first, closes the ones it supersedes, and then checks and releases that head. Other consumers keep merge-when-green |
+
 ## Risks
 
 - **More tags.** Every releasable Ploeg merge is a candidate; ADR-0028 already treats candidates as
