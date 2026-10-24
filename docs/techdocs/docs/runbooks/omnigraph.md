@@ -20,7 +20,7 @@ Omnigraph v0.11 runs one server in namespace `ai` with five graphs: `memory` (sh
 
 ## Omnigraph 0.14 (`omnigraph-next`)
 
-The 0.14 cutover ([RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md), epic VIK-2323) runs 0.14 as a second Deployment, `omnigraph-next`, in the same app directory, beside the 0.11 `omnigraph` pod. It serves the same bundle (schemas, queries, policies) from its own 20Gi PVC `omnigraph-next-state` and Service `omnigraph-next:8080`, with the same `omnigraph-tokens` and embedding key. Nothing points at it until the flip; its graphs stay empty until the migration Job (T1.7) fills them.
+The 0.14 cutover ([RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md), epic VIK-2323) runs 0.14 as a second Deployment, `omnigraph-next`, in the same app directory, beside the 0.11 `omnigraph` pod. It serves the same bundle (schemas, queries, policies) from its own 20Gi PVC `omnigraph-014-state` and Service `omnigraph-next:8080`, with the same `omnigraph-tokens` and embedding key. Nothing points at it until the flip; its graphs stay empty until the migration Job (T1.7) fills them. The final copy before the flip starts from an empty volume and a fresh clone of `omnigraph-state`, so rows deleted on 0.11 since an earlier copy do not survive on 0.14.
 
 Its init container runs [next/bootstrap.sh](../../../../kubernetes/apps/ai/omnigraph/app/next/bootstrap.sh):
 
