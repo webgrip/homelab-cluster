@@ -10,6 +10,7 @@ locals {
     "homelab-cluster/main",
     "unfold/development",
     "unfold/main",
+    "unfold-cluster/main",
     "workflows/main",
   ])
 }
