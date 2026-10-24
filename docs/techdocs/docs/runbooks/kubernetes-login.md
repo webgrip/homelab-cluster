@@ -17,7 +17,7 @@ admin certificate is still for. Decision: [ADR-0059](../adr/adr-0059-per-user-ku
 ```sh
 cd ~/projects/webgrip/homelab-cluster
 mise install
-export BAO_ADDR="$(mise exec -- just bao-addr)"
+export BAO_ADDR=https://openbao.webgrip.dev
 mise exec -- bao login -method=oidc
 KUBERNETES_OIDC_CLIENT_SECRET="$(mise exec -- bao kv get -field=client_secret secret/security/kubernetes-oidc)" \
   mise exec -- ./scripts/kube-oidc-setup.sh
@@ -25,7 +25,14 @@ mise exec -- kubectl auth whoami
 ```
 
 Expect `Username: oidc:you@webgrip.nl` and `Groups: [system:authenticated]`. The script makes
-`homelab-oidc` the default context in the repo's `kubeconfig`. `Forbidden` on everything is
+`homelab-oidc` the default context in the repo's `kubeconfig`, and writes the cluster entry
+itself from `talos/kubernetes-ca.crt` and the API VIP when the file has none, so a person never
+needs the admin kubeconfig or a talosconfig. The certificate is public and valid until 2035; a
+CA rotation must replace that file in the same change.
+
+Reading the client secret needs the `k8s-login` capability, which every role that reaches the
+API carries. It puts you in the Authentik group `kubernetes-login`, which opens the OpenBao
+login and maps to the OpenBao policy of the same name: read on that one path, nothing else. `Forbidden` on everything is
 normal until `people.yaml` grants you a tier; logging in grants nothing by itself.
 
 The client secret is for a loopback OAuth client and ships to every operator by design; the

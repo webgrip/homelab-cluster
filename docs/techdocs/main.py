@@ -74,6 +74,11 @@ def define_env(env):
         """Who can do what, computed from the access-plane model at build time."""
         return _access_matrix()
 
+    @env.macro
+    def launchpad():
+        """Per role, every application a person can sign in to, computed from the access-plane model."""
+        return _launchpad()
+
 
 MODEL_ROOT = APPS_ROOT / "security" / "access-plane" / "model"
 RISK_MARK = {"critical": "‼", "high": "!", "medium": "·", "low": " "}
@@ -222,4 +227,78 @@ def _access_matrix() -> str:
         out.append(f"| `{name}` | {project['owner']} | {', '.join(project['namespaces']) or '—'} | {', '.join(project['repos']) or '—'} | {project['reviewed']} |")
 
     out += ["", "## Routed surfaces, and what authenticates them", "", "Derived from every HTTPRoute and SecurityPolicy in the tree; `none` is a finding.", "", "| Namespace | Hostnames | Gateway | Authentication |", "| --- | --- | --- | --- |", *_routed_surfaces()]
+    return "\n".join(out)
+
+
+BROKER_APPLICATION = re.compile(r"^    ([a-z0-9-]+) = \{$")
+BROKER_FIELD = re.compile(r'^\s+(app_name|launch_url)\s+=\s+"([^"]*)"')
+
+
+def _broker_applications() -> dict[str, dict[str, str]]:
+    applications: dict[str, dict[str, str]] = {}
+    current = None
+    for line in BROKER_MODULE.read_text().splitlines():
+        if opened := BROKER_APPLICATION.match(line):
+            current = opened.group(1)
+            continue
+        if current and (field := BROKER_FIELD.match(line)):
+            value = field.group(2).replace("${var.SECRET_DOMAIN}", "webgrip.dev")
+            applications.setdefault(current, {})[field.group(1)] = value
+    return {key: fields for key, fields in applications.items() if "app_name" in fields}
+
+
+def _role_capabilities(role: dict, capabilities: dict) -> list[str]:
+    held = [grant["capability"] for grant in role["grants"]]
+    superseded = {s for c in held for s in capabilities[c].get("supersedes", [])}
+    return [c for c in held if c not in superseded]
+
+
+RISK_ORDER = ["low", "medium", "high", "critical"]
+
+
+def _launch_location(app: str, fields: dict[str, str]) -> str:
+    url = fields.get("launch_url")
+    if url:
+        return f"[{url.removeprefix('https://')}]({url})"
+    if app.endswith("-mcp"):
+        return "from an AI client, over MCP"
+    return "behind the gateway, no launch page"
+
+
+def _launchpad_rows(held: list[str], capabilities: dict, applications: dict) -> list[str]:
+    strongest: dict[str, tuple[int, str, str]] = {}
+
+    def offer(label: str, where: str, capability: str) -> None:
+        cap = capabilities[capability]
+        rank = RISK_ORDER.index(cap["risk"])
+        if label not in strongest or rank > strongest[label][0]:
+            strongest[label] = (rank, where, cap["summary"])
+
+    for name in held:
+        projections = capabilities[name].get("projects") or {}
+        for app in (projections.get("authentik") or {}).get("applications", []):
+            fields = applications.get(app, {})
+            offer(fields.get("app_name", app), _launch_location(app, fields), name)
+        if "kubernetes" in projections:
+            offer("Kubernetes API", "`kubectl`, see [Kubernetes login](../runbooks/kubernetes-login.md)", name)
+        if "harbor" in projections:
+            offer("Harbor", "[harbor.webgrip.dev](https://harbor.webgrip.dev)", name)
+        if "envoy" in projections:
+            offer("Previews", "the preview URL you were sent", name)
+    return [
+        f"| {label} | {strongest[label][1]} | {strongest[label][2]} |"
+        for label in sorted(strongest, key=str.lower)
+    ]
+
+
+def _launchpad() -> str:
+    capabilities = _model("capabilities", "capabilities")
+    roles = _model("roles", "roles")
+    applications = _broker_applications()
+    out = []
+    for role_name, role in roles.items():
+        if role.get("human") is False:
+            continue
+        out += ["", f"### `{role_name}`", "", role["summary"] + ".", "", "| Application | Where | What it lets you do |", "| --- | --- | --- |"]
+        out += _launchpad_rows(_role_capabilities(role, capabilities), capabilities, applications)
     return "\n".join(out)

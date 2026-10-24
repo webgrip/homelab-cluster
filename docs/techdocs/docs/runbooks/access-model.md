@@ -19,6 +19,20 @@ you.
 
 ## Joiner
 
+The newcomer's half of this is [Start here](../general/start-here.md); send them that link.
+This is yours.
+
+### Before the commit
+
+- [ ] They have a Google Workspace account on `webgrip.nl` with 2-step verification enforced.
+      The consent screen is Internal, so any other address never reaches Authentik.
+- [ ] You know their role and projects. `developer` is the default; `platform-engineer` reaches
+      every secret and `main`, so it is a decision, not a convenience. Read what each role gets
+      on [Start here](../general/start-here.md#2-what-you-can-open) and the reachable column of
+      the [access matrix](../general/access-matrix.md).
+
+### The commit
+
 1. Add an entry to `people.yaml`:
 
    ```yaml
@@ -40,13 +54,40 @@ you.
    Authentik and every application will show. `forge` is the Forgejo handle.
 2. Run `mise exec -- ./scripts/validate-access-model.sh` and commit. The pre-commit hook runs
    the same check.
-3. Push. Within one reconcile interval the broker creates the user and puts them in the groups
-   their role projects onto; the Kubernetes root binds them in the namespaces their projects own.
-4. They sign in at `https://authentik.<domain>` with Google. There is no enrolment: the roster
-   is the allow-list, so a person not in `people.yaml` is refused after Google succeeds.
+3. Push.
 
-Propagation: Authentik groups and OpenBao roles within the broker's interval (15m); Kubernetes
-bindings within the kubernetes root's interval (15m); application roles at the next login.
+### What the platform does with it
+
+| System | What appears | When |
+| --- | --- | --- |
+| Authentik | The user, and every group their role projects onto | the broker's next interval (15m) |
+| OpenBao | The `kubernetes-login` group membership, through the Authentik group | at their first `bao login` |
+| Kubernetes | A RoleBinding to their tier in every namespace their projects own | the kubernetes root's next interval (15m) |
+| Harbor | Membership of each registry project their projects own | the broker's next interval |
+| Forgejo | The account, and the `Developers` or `Owners` team | at their first sign-in, re-checked every sign-in |
+| Grafana, LiteLLM, Backstage, Vikunja | The account with the role their groups map to | at their first sign-in |
+
+The `Developers` team itself is kept by the `developers-team-provisioner` CronJob in `forgejo`,
+not by hand: Forgejo skips a mapped team that does not exist, silently.
+
+### Verify against the live systems
+
+```sh
+mise exec -- kubectl -n security get terraform
+mise exec -- kubectl get rolebindings -A -o json \
+  | jq -r '.items[] | select(any(.subjects[]?; .name == "oidc:jane@webgrip.nl")) | "\(.metadata.namespace)/\(.roleRef.name)"'
+mise exec -- kubectl auth can-i list pods -n erfbeeld --as oidc:jane@webgrip.nl
+```
+
+Both objects `Ready` with no pending plan, one binding per owned namespace, and `yes`. Then ask
+them to sign in at Authentik; a refusal after Google means the email differs byte for byte.
+
+### What is still by hand
+
+| Step | Why it is not in Git yet |
+| --- | --- |
+| A WireGuard peer on the router | OPNsense is outside the cluster and has no reconciler here |
+| Sharing Vikunja boards | Vikunja has no team sync from Authentik groups configured |
 
 ## Mover
 
