@@ -10,6 +10,7 @@ SERVER = os.environ["OMNIGRAPH_URL"].rstrip("/")
 GRAPHS = os.environ["OMNIGRAPH_GRAPHS"].split()
 CONTRACT = os.environ["OMNIGRAPH_HTTP_API"]
 BATCH_BYTES = int(os.environ.get("OMNIGRAPH_LOAD_BATCH_BYTES", str(16 * 1024 * 1024)))
+BATCH_ROWS = int(os.environ.get("OMNIGRAPH_LOAD_BATCH_ROWS", "4000"))
 TOKEN = open(os.environ["OMNIGRAPH_TOKEN_FILE"]).read().strip()
 
 
@@ -60,7 +61,7 @@ def batches(lines):
     batch, size = [], 0
     for line in lines:
         encoded = line.encode()
-        if batch and size + len(encoded) > BATCH_BYTES:
+        if batch and (size + len(encoded) > BATCH_BYTES or len(batch) >= BATCH_ROWS):
             yield b"".join(batch)
             batch, size = [], 0
         batch.append(encoded)
