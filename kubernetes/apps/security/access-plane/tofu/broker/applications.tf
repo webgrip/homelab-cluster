@@ -359,7 +359,7 @@ resource "authentik_application" "app" {
 resource "authentik_policy_binding" "gate" {
   for_each = local.gate_bindings
 
-  target  = authentik_application.app[each.value.app].uuid
+  target  = local.application_uuids[each.value.app]
   group   = local.group_ids[each.value.group]
   order   = each.value.order
   enabled = true
