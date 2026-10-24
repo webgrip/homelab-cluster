@@ -209,6 +209,79 @@ image automation, producer-opened PRs, a promotion tool such as Kargo, an event 
 Implementation runs in a separate work stream; its first slice is the homelab branch
 `fix/renovate-ploeg-unfold-release`.
 
+### P1c the homelab follows the candidate channel
+
+Accepted 2026-10-24 (D11 to D13). **Retires D7 for the homelab hop**: it is the registry-following
+Flux deploy D7 rejected, with the reasons for that rejection answered one by one below.
+
+**Why.** After D7 shipped, the Renovate hop still adds 9 to 92 minutes after a chart is published,
+plus a homelab commit and an `e2e /` run per candidate:
+
+| Candidate | Tagged | Renovate bump on `main` | Bump merged |
+| --- | --- | --- | --- |
+| `0.4.0-rc.108` | 2026-10-23 15:05 | 15:53 | 16:02 |
+| `0.4.0-rc.109` | 2026-10-23 21:30 | 22:02 | 23:34 |
+| `0.4.0-rc.110` | 2026-10-24 01:09 | 01:54 | 02:06 |
+
+The Unfold release already does what the homelab pins duplicate. `scripts/publish_chart.py` in
+`webgrip/unfold` publishes the chart only after every image of the release is pushed, and writes
+their tag and digest into the chart's `values.yaml`. The chart's `Chart.lock` names the Ploeg chart
+it was tested with (Unfold ADR-0043). One chart digest is therefore the whole tested set: Unfold,
+the agent image and Ploeg.
+
+**Proposal.**
+
+| Change | Where |
+| --- | --- |
+| `ref.semver: ">=0.4.0-0"` with `semverFilter: "-rc\\."` replaces `ref.tag` and `ref.digest`; `interval: 2m` | `kubernetes/apps/ploeg/unfold/app/ocirepository.yaml` |
+| `spec.verify` with the cosign public key of the OpenBao Transit signing key, so Flux refuses a chart the release did not sign | same file |
+| the `image.tag` and `image.digest` overrides go; the chart's stamped values decide | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` |
+| the Unfold entries leave the lockstep check and the `ploeg-unfold-release` Renovate group | `scripts/check_release_lockstep.py`, `.renovaterc.json5` |
+| the release signs the chart with the key that already signs its images | `webgrip/unfold` `on_release_published.yml` |
+
+Polling every two minutes costs one manifest request to the LAN Harbor per poll and needs no
+webhook, so it adds no hand-made state. A Harbor push webhook into a Flux `Receiver` would cut the
+wait to seconds, but the Harbor webhook is not declared anywhere in git today.
+
+**Latency.** A published chart runs in the homelab within about two minutes plus the Helm upgrade.
+From tag to running, the release CI (build, gate, sign, publish) is then the largest share: at most
+32 to 48 minutes in the table above, the time to the Renovate bump.
+
+**What D7 kept, and where it goes.**
+
+| D7 kept | Under P1c |
+| --- | --- |
+| exact pins in git | Flux status and `delivery:release_deployed:info` name the running chart; git names the channel. A hold (below) puts an exact pin back |
+| the tested pair | unchanged: the chart is the pair, through `Chart.lock` |
+| the homelab `e2e /` render of each bump | Unfold's release renders the chart before it publishes. A chart that fails to install or is denied by Kyverno is rolled back by the root remediation patch every HelmRelease carries |
+| review of what enters the cluster | chart signature verified by Flux; only the release key can sign |
+
+**Channels and environments.**
+
+| Channel | Cut from | Consumer | How it moves |
+| --- | --- | --- | --- |
+| candidate `-rc.N` | `development` | the homelab | Flux follows the newest signed candidate |
+| stable | `main`, by fast-forward (ADR-0078) | customer clusters (D3) | exact pins, moved by Renovate, promoted on purpose |
+| hold | a commit to `ocirepository.yaml` | the homelab | an exclusion `, !=0.4.0-rc.N` skips one bad candidate and lets the next one through (D10); an exact `ref.tag` and `ref.digest` freezes the homelab on a known-good version until the commit is reverted |
+
+The homelab is staging and the rented cluster in `webgrip/unfold-cluster` is production (Unfold
+ADR-0040). Production takes the stable channel through a version-bump pull request in that
+repository, so P1c changes nothing there. The homelab gets no second Unfold of its own: a second
+Ploeg would double the agent plane on workers already near their memory requests, and the release
+CI, admission with Helm rollback and the P4 verify alerts already guard it.
+
+**P4 slice 2 under P1c.** The revert receiver writes the `!=` exclusion for the unhealthy revision
+instead of reverting a Renovate commit, still as the `renovate` user (D9). Its other guards stay:
+once per revision, never past a forward-only migration.
+
+Decided by the owner on 2026-10-24:
+
+| # | Decision |
+| --- | --- |
+| D11 | P1c replaces D7 for the homelab hop; the stable channel keeps exact pins |
+| D12 | A hold is the `!=` exclusion for automatic reverts and an exact pin for a human freeze |
+| D13 | Chart signing and `spec.verify` land before the semver switch, so no unsigned chart is ever followed |
+
 ## Risks
 
 - **More tags.** Every releasable Ploeg merge is a candidate; ADR-0028 already treats candidates as
