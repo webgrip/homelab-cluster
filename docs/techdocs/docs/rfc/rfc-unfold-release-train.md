@@ -244,8 +244,9 @@ webhook, so it adds no hand-made state. A Harbor push webhook into a Flux `Recei
 wait to seconds, but the Harbor webhook is not declared anywhere in git today.
 
 **Latency.** A published chart runs in the homelab within about two minutes plus the Helm upgrade.
-From tag to running, the release CI (build, gate, sign, publish) is then the largest share: at most
-32 to 48 minutes in the table above, the time to the Renovate bump.
+For `0.4.0-rc.110` the release CI took ten minutes (tag 01:09, chart `image.created` 01:19) and
+Flux stored the chart at 02:08, so 49 of the 59 minutes were the Renovate hop. Under P1c the same
+release would run about fifteen minutes after its tag.
 
 **What D7 kept, and where it goes.**
 
