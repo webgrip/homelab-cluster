@@ -10,6 +10,15 @@ machine:
           device_ownership_from_security_context = true
         [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata.options]
           ConfigPath = "/var/lib/kata-guest-seccomp/configuration.toml"
+        [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.runsc.options]
+          TypeUrl = "io.containerd.runsc.v1.options"
+          ConfigPath = "/var/lib/gvisor-oci-seccomp/runsc.toml"
+    - op: create
+      path: /var/lib/gvisor-oci-seccomp/runsc.toml
+      permissions: 0o644
+      content: |
+        [runsc_config]
+          oci-seccomp = "true"
     - op: create
       path: /var/lib/kata-guest-seccomp/configuration.toml
       permissions: 0o644
