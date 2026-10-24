@@ -8,6 +8,7 @@ bridge=kubernetes/apps/vikunja/mcp-vikunja/app
 omnigraph_bridge=kubernetes/apps/ai/omnigraph-mcp/app
 namespace_policy=kubernetes/apps/vikunja/vikunja/app/networkpolicy.yaml
 litellm=kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml
+omnigraph_next=kubernetes/apps/ai/omnigraph/app/next
 
 fresh() {
   rm -rf "${work:?}/$1"
@@ -124,6 +125,56 @@ spec:
         - world
 EOF2
 expect fail "a CiliumNetworkPolicy opens ingress to the omnigraph bridges" "$d"
+
+d=$(fresh native-loses-credential)
+python3 - "$d/$litellm" <<'EOF2'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+open(path, "w").write(text.replace('        authentication_token: "os.environ/OMNIGRAPH_MCP_BRAIN_AGENT_TOKEN"\n', "", 1))
+EOF2
+expect fail "omnigraph_brain on the native endpoint stops sending a credential" "$d"
+
+d=$(fresh native-literal-credential)
+rewrite 's#"os.environ/OMNIGRAPH_MCP_BRAIN_AGENT_TOKEN"#"a-token-written-into-git"#' "$d/$litellm"
+expect fail "omnigraph_brain sends a credential written into the config instead of read from LiteLLM's environment" "$d"
+
+d=$(fresh native-no-auth-type)
+rewrite '0,/auth_type: "bearer_token"/{/auth_type: "bearer_token"/d}' "$d/$litellm"
+expect fail "a native entry keeps its token but loses auth_type" "$d"
+
+d=$(fresh native-route)
+cat > "$d/$omnigraph_next/httproute.yaml" <<'EOF2'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: omnigraph-next
+  namespace: ai
+spec:
+  parentRefs:
+    - name: envoy-internal
+      namespace: network
+  rules:
+    - backendRefs:
+        - name: omnigraph-next
+          port: 8080
+EOF2
+expect fail "a LAN HTTPRoute reaches the credential-gated omnigraph-next" "$d"
+
+d=$(fresh native-loadbalancer)
+rewrite 's/^spec:$/spec:\n  type: LoadBalancer/' "$d/$omnigraph_next/service.yaml"
+expect fail "omnigraph-next becomes a LoadBalancer" "$d"
+
+d=$(fresh native-read-only-without-credential)
+python3 - "$d/$litellm" <<'EOF2'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+text = text.replace('        authentication_token: "os.environ/OMNIGRAPH_MCP_BRAIN_AGENT_TOKEN"\n', "", 1)
+open(path, "w").write(text.replace('access_groups: ["brain"]', 'access_groups: ["observability"]', 1))
+EOF2
+expect pass "a native entry without a credential served only to a read-only group" "$d"
 
 d=$(fresh broken-config)
 printf 'data: [\n' > "$d/$litellm"

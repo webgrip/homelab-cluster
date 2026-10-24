@@ -2140,7 +2140,7 @@ def build_parser():
     parser.add_argument("--repo-dir", default="/work/repo")
     parser.add_argument("--out-dir", default="/work/out")
     parser.add_argument("--prompts-dir", default=str(Path(__file__).resolve().parent))
-    parser.add_argument("--omnigraph-url", default="http://omnigraph.ai.svc.cluster.local:8080")
+    parser.add_argument("--omnigraph-url", default="http://omnigraph-next.ai.svc.cluster.local:8080")
     parser.add_argument("--omnigraph-token-file", default="/run/secrets/omnigraph/token")
     parser.add_argument("--litellm-url", default="http://litellm.ai.svc.cluster.local:4000")
     parser.add_argument("--litellm-key-file", default="/run/secrets/litellm/key")

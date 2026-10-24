@@ -506,18 +506,24 @@ data:
         access_groups: ["board"]
       omnigraph_memory:
         transport: "http"
-        url: "http://omnigraph-mcp.ai.svc.cluster.local:8001/mcp"
-        description: "Shared agent memory graph as act-agent: read everything, write only on its own unprotected branches, never merge"
+        url: "http://omnigraph-next.ai.svc.cluster.local:8080/mcp"
+        auth_type: "bearer_token"
+        authentication_token: "os.environ/OMNIGRAPH_MCP_AGENT_TOKEN"
+        description: "Shared agent memory graph on Omnigraph 0.14 as act-agent; pass graph: memory. Read everything (query runs a stored query by name, read runs ad-hoc GQ), write only on its own unprotected branches, never merge; the server refuses anything else"
         access_groups: ["memory"]
       omnigraph_brain:
         transport: "http"
-        url: "http://omnigraph-mcp.ai.svc.cluster.local:8002/mcp"
-        description: "Ryan's second brain as act-brain-agent: read and write on main directly (capture notes, people, tasks the moment Ryan asks); every write is a revertible commit; never merge or delete branches"
+        url: "http://omnigraph-next.ai.svc.cluster.local:8080/mcp"
+        auth_type: "bearer_token"
+        authentication_token: "os.environ/OMNIGRAPH_MCP_BRAIN_AGENT_TOKEN"
+        description: "Ryan's second brain on Omnigraph 0.14 as act-brain-agent; pass graph: brain. Read (query runs a stored query by name, read runs ad-hoc GQ) and write on main directly with mutate or load (capture notes, people, tasks the moment Ryan asks); every write is a revertible commit; never merge or delete branches"
         access_groups: ["brain"]
       omnigraph_brain_eval:
         transport: "http"
-        url: "http://omnigraph-mcp.ai.svc.cluster.local:8003/mcp"
-        description: "Ryan's second brain, read-only, as act-brain-eval: the brain eval harness scores today's raw-query chat path (baseline B0) through it; writes and branch changes are refused"
+        url: "http://omnigraph-next.ai.svc.cluster.local:8080/mcp"
+        auth_type: "bearer_token"
+        authentication_token: "os.environ/OMNIGRAPH_MCP_BRAIN_EVAL_TOKEN"
+        description: "Ryan's second brain on Omnigraph 0.14, read-only, as act-brain-eval; pass graph: brain. The brain eval harness scores today's raw-query chat path (baseline B0) through it: query runs a stored query by name, read runs ad-hoc GQ; writes and branch changes are hidden and the server refuses them"
         access_groups: ["brain-eval-raw"]
         disallowed_tools: ["mutate", "load", "branches_create", "branches_delete", "branches_merge"]
       brain_tools:
@@ -525,23 +531,19 @@ data:
         url: "http://brain-tools.ai.svc.cluster.local:8080/mcp"
         description: "Ryan's second brain as plain-question tools, read-only as act-brain-reader: search (hybrid retrieval over his notes, captures and Forgejo documents, compact and cited) and read (open a cited source); never a query language"
         access_groups: ["brain-dogfood"]
-      omnigraph_next:
+      omnigraph_glide_memory:
         transport: "http"
         url: "http://omnigraph-next.ai.svc.cluster.local:8080/mcp"
         auth_type: "bearer_token"
-        authentication_token: "os.environ/OMNIGRAPH_MCP_BRAIN_AGENT_TOKEN"
-        description: "Omnigraph 0.14 (omnigraph-next), read-only preview as act-brain-agent before the cutover: graphs, schema, stored reads (query), ad-hoc GQ reads (read), commits and change feeds; pass graph: brain. Writes are hidden here; the live second brain is still omnigraph_brain on 0.11"
-        access_groups: ["omnigraph-next"]
-        disallowed_tools: ["mutate", "load", "branches_create", "branches_delete", "branches_merge"]
-      omnigraph_glide_memory:
-        transport: "http"
-        url: "http://omnigraph-mcp.ai.svc.cluster.local:8004/mcp"
-        description: "Shared agent memory graph for a Glide run, as act-glide: read main freely; work only on branch glide/<run-id>, created from main with branches_create before the first write; writes to main are refused; never merge, Ryan merges after review; delete the branch only if the run is abandoned"
+        authentication_token: "os.environ/OMNIGRAPH_MCP_GLIDE_TOKEN"
+        description: "Shared agent memory graph on Omnigraph 0.14 for a Glide run, as act-glide; pass graph: memory. Read main freely; work only on branch glide/<run-id>, created from main with branches_create before the first write; writes to main are refused; never merge, Ryan merges after review; delete the branch only if the run is abandoned"
         access_groups: ["glide"]
       omnigraph_glide_brain:
         transport: "http"
-        url: "http://omnigraph-mcp.ai.svc.cluster.local:8005/mcp"
-        description: "Ryan's second brain graph for a Glide run, as act-glide: read main freely; work only on branch glide/<run-id>, created from main with branches_create before the first write; writes to main are refused; never merge, Ryan merges after review; delete the branch only if the run is abandoned"
+        url: "http://omnigraph-next.ai.svc.cluster.local:8080/mcp"
+        auth_type: "bearer_token"
+        authentication_token: "os.environ/OMNIGRAPH_MCP_GLIDE_TOKEN"
+        description: "Ryan's second brain on Omnigraph 0.14 for a Glide run, as act-glide; pass graph: brain. Read main freely; work only on branch glide/<run-id>, created from main with branches_create before the first write; writes to main are refused; never merge, Ryan merges after review; delete the branch only if the run is abandoned"
         access_groups: ["glide"]
       omnigraph_glide_webgrip:
         transport: "http"

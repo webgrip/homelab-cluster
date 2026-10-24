@@ -20,7 +20,9 @@ Omnigraph v0.11 runs one server in namespace `ai` with five graphs: `memory` (sh
 
 ## Omnigraph 0.14 (`omnigraph-next`)
 
-The 0.14 cutover ([RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md), epic VIK-2323) runs 0.14 as a second Deployment, `omnigraph-next`, in the same app directory, beside the 0.11 `omnigraph` pod. It serves the same bundle (schemas, queries, policies) from its own 20Gi PVC `omnigraph-014-state` and Service `omnigraph-next:8080`, with the same `omnigraph-tokens` and embedding key. Nothing points at it until the flip; its graphs stay empty until the migration Job (T1.7) fills them. The final copy before the flip starts from an empty volume and a fresh clone of `omnigraph-state`, so rows deleted on 0.11 since an earlier copy do not survive on 0.14.
+The 0.14 cutover ([RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md), epic VIK-2323) runs 0.14 as a second Deployment, `omnigraph-next`, in the same app directory, beside the 0.11 `omnigraph` pod. It serves the same bundle (schemas, queries, policies) from its own 20Gi PVC `omnigraph-014-state` and Service `omnigraph-next:8080`, with the same `omnigraph-tokens` and embedding key. Its graphs were filled by the migration Job (T1.7).
+
+**Who uses which server since the flip (2026-10-24).** `omnigraph-next` (0.14) serves the brain side: the vault, forge and distill importers, brain-tools, the brain eval, and the `omnigraph_memory`, `omnigraph_brain`, `omnigraph_brain_eval`, `omnigraph_glide_memory` and `omnigraph_glide_brain` MCP servers. Every HTTP client sends `Omnigraph-Http-Api: 0.14` (env `OMNIGRAPH_HTTP_API`). `omnigraph` (0.11) still serves Ploeg's tenant graphs (`webgrip-notes`, `webgrip-knowledge`), the explorer and `omnigraph_glide_webgrip` until VIK-2336 and VIK-2337 land; its `brain` and `memory` are a frozen copy from the flip and nothing writes them. To roll back, revert the flip commit: the clients return to 0.11, which lacks only what was written on 0.14 since. `OmnigraphNextDown` fires when the Deployment has no ready pod for 15 minutes. The final copy before the flip starts from an empty volume and a fresh clone of `omnigraph-state`, so rows deleted on 0.11 since an earlier copy do not survive on 0.14.
 
 Its init container runs [next/bootstrap.sh](../../../../kubernetes/apps/ai/omnigraph/app/next/bootstrap.sh):
 
@@ -125,29 +127,23 @@ just omnigraph-login
 
 `omnigraph-login` writes `~/.omnigraph/config.yaml` (server `homelab`, profiles `brain`, `memory`, `webgrip`) if it does not exist. It then pipes the `act-ryan` token from OpenBao into `~/.omnigraph/credentials` (mode 0600) without printing it. The CLI picks its token in this order: `OMNIGRAPH_TOKEN_HOMELAB`, then the credentials file, then `OMNIGRAPH_BEARER_TOKEN`.
 
-For Claude Code, the stdio MCP bridge `@modernrelay/omnigraph-mcp@0.10.0` works against v0.11. It serves one graph per process. It reads `OMNIGRAPH_BASE_URL`, `OMNIGRAPH_GRAPH_ID` and `OMNIGRAPH_TOKEN`, and has no token-file option.
+Agents reach the graphs through the LiteLLM MCP gateway. Since the 0.14 cutover (2026-10-24) the servers `omnigraph_memory` (access group `memory`, actor `act-agent`) and `omnigraph_brain` (group `brain`, actor `act-brain-agent`) are Omnigraph's own `/mcp` endpoint on `omnigraph-next`, started with `--mcp-allow-adhoc` and `--mcp-allow-writes`. LiteLLM sends each actor's bearer token from the `litellm-omnigraph-mcp` Secret, and the server's policy decides every call: `act-agent` reads everything and writes only on its own unprotected branches, never merges; `act-brain-agent` reads and writes `brain` on `main` directly, so "remember …" lands at once and every write is a revertible commit. Each tool takes a `graph` argument: `query` runs a stored query by name, `read` runs ad-hoc GQ, `mutate` and `load` write, and `branches_*` manage branches. A LiteLLM key sees these tools only when its `object_permission.mcp_access_groups` holds the group. The design and why the server, not the network, is the gate: [LiteLLM: Omnigraph MCP](../general/litellm.md#omnigraph-mcp).
 
-The bridge exposes inline `query`/`mutate`, `load` and branch tools. It does not expose stored queries. Policy is enforced by the server either way.
-
-The server's built-in `/mcp` endpoint does not exist in v0.11.
-
-In-cluster agents reach `memory` through the LiteLLM MCP gateway instead: server `omnigraph_memory`, access group `memory`, running as `act-agent` (read everything, write only on its own unprotected branches, never merge). A LiteLLM key only sees these tools when its `object_permission.mcp_access_groups` contains `memory`. The bridge runs over HTTP in the `memory` container of the `omnigraph-mcp` Deployment, behind supergateway, with `OMNIGRAPH_TOKEN` from the `omnigraph-mcp-memory` Secret (`secret/omnigraph/agent`). Its `install-omnigraph-mcp` init container runs `npm ci` from the lockfile in [bridge/](../../../../kubernetes/apps/ai/omnigraph-mcp/app/bridge/). Only LiteLLM can reach the bridges; the design, ports and network policies are in [LiteLLM: Omnigraph bridges](../general/litellm.md#omnigraph-bridges). A missing Secret keeps that one container from starting; LiteLLM itself does not depend on it.
-
-`brain` has a second bridge in the same pod: server `omnigraph_brain`, access group `brain`, running as `act-brain-agent` with the token from the `omnigraph-mcp-brain` Secret (`secret/omnigraph/brain-agent`). Its tools carry the prefix `omnigraph_brain-`. `act-brain-agent` reads and writes `main` directly, so a tool call works on `main` without creating a branch.
+The 0.11 stdio bridge `@modernrelay/omnigraph-mcp@0.10.0` now serves only `omnigraph_glide_webgrip`, until Ploeg's tenant graphs move (VIK-2337).
 
 Two keys see both groups: `open-webui` for [Open WebUI](open-webui.md) and `claude-code` for Claude Code on Ryan's workstation (setup in [Open WebUI: Claude Code](open-webui.md#claude-code)).
 
 ## Glide agents
 
-Glide runs read and write `memory`, `brain` and `webgrip` through three MCP servers in the `omnigraph-mcp` pod, all running as `act-glide`:
+Glide runs read and write `memory`, `brain` and `webgrip` through three MCP servers, all running as `act-glide`:
 
-| Server | Graph | Tool prefix |
+| Server | Graph | Served by |
 |---|---|---|
-| `omnigraph_glide_memory` | `memory` | `omnigraph_glide_memory-` |
-| `omnigraph_glide_brain` | `brain` | `omnigraph_glide_brain-` |
-| `omnigraph_glide_webgrip` | `webgrip` | `omnigraph_glide_webgrip-` |
+| `omnigraph_glide_memory` | `memory` (pass `graph: memory`) | `omnigraph-next` `/mcp`, 0.14 |
+| `omnigraph_glide_brain` | `brain` (pass `graph: brain`) | `omnigraph-next` `/mcp`, 0.14 |
+| `omnigraph_glide_webgrip` | `webgrip` | the `omnigraph-mcp` bridge to 0.11 |
 
-The servers sit in access group `glide`. Their token comes from the `omnigraph-mcp-glide` Secret (`secret/omnigraph/glide`).
+The servers sit in access group `glide`. The token is `secret/omnigraph/glide`: LiteLLM holds it as `OMNIGRAPH_MCP_GLIDE_TOKEN`, the bridge as the `omnigraph-mcp-glide` Secret.
 
 **How a run gets the tools.** The run holds a LiteLLM virtual key whose `object_permission.mcp_access_groups` contains `glide`. The harness connects to the MCP endpoint `http://litellm.ai.svc.cluster.local:4000/mcp/` over streamable HTTP with `Authorization: Bearer <run key>`. A key without the `glide` group sees none of these tools.
 

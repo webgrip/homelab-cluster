@@ -12,7 +12,9 @@ LITELLM_PEER = {
     "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ai"}},
     "podSelector": {"matchLabels": {"app.kubernetes.io/name": "litellm"}},
 }
-READ_ONLY_ACCESS_GROUPS = {"observability", "brain-dogfood", "omnigraph-next"}
+READ_ONLY_ACCESS_GROUPS = {"observability", "brain-dogfood"}
+CREDENTIAL_AUTH_TYPES = {"bearer_token", "api_key", "token"}
+ENVIRONMENT_REFERENCE = "os.environ/"
 ROUTE_KINDS = {"HTTPRoute", "GRPCRoute", "TCPRoute", "TLSRoute", "UDPRoute"}
 WORKLOAD_KINDS = {"Deployment", "StatefulSet", "DaemonSet"}
 IGNORED_TREES = ("kubernetes/apps/kyverno/tests/",)
@@ -27,7 +29,7 @@ TolerantLoader.add_multi_constructor("!", lambda loader, suffix, node: None)
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(
-        description="Fail when an MCP server marked litellm-gateway-only, or one LiteLLM serves to a write-capable access group, is reachable other than through LiteLLM."
+        description="Fail when an MCP server marked litellm-gateway-only, or one LiteLLM serves to a write-capable access group, is reachable other than through LiteLLM, unless that server demands a credential LiteLLM reads from its environment."
     )
     parser.add_argument("root", type=Path)
     return parser.parse_args(argv)
@@ -101,13 +103,13 @@ def route_findings(services, documents):
             for backend in rule.get("backendRefs") or []:
                 key = (backend.get("namespace") or namespace, backend.get("name"))
                 if key in services:
-                    findings.append(f"{relative}: {document['kind']} {document['metadata']['name']} routes to gateway-only service {key[1]}.{key[0]}")
+                    findings.append(f"{relative}: {document['kind']} {document['metadata']['name']} routes outside traffic to in-cluster-only MCP service {key[1]}.{key[0]}")
     return findings
 
 
 def exposure_findings(services):
     return [
-        f"{relative}: gateway-only service {name}.{namespace} is type {service['spec']['type']}"
+        f"{relative}: in-cluster-only MCP service {name}.{namespace} is type {service['spec']['type']}"
         for (namespace, name), (relative, service) in sorted(services.items())
         if service["spec"].get("type", "ClusterIP") != "ClusterIP"
     ]
@@ -174,16 +176,46 @@ def service_of(url):
     return None
 
 
-def litellm_findings(root, services):
-    findings = []
+def presents_credential(server):
+    token = server.get("authentication_token")
+    return (
+        server.get("auth_type") in CREDENTIAL_AUTH_TYPES
+        and isinstance(token, str)
+        and token.startswith(ENVIRONMENT_REFERENCE)
+        and len(token) > len(ENVIRONMENT_REFERENCE)
+    )
+
+
+def write_capable_servers(root):
     for name, server in litellm_http_servers(root):
         groups = set(server.get("access_groups") or [])
-        if groups <= READ_ONLY_ACCESS_GROUPS:
+        if not groups <= READ_ONLY_ACCESS_GROUPS:
+            yield name, server, groups
+
+
+def credential_gated_services(root, documents):
+    services = {
+        (namespace, document["metadata"]["name"]): (relative, document)
+        for relative, namespace, document in documents
+        if document["kind"] == "Service"
+    }
+    return {
+        target: services[target]
+        for _, server, _ in write_capable_servers(root)
+        if presents_credential(server)
+        and (target := service_of(server["url"])) in services
+    }
+
+
+def litellm_findings(root, services):
+    findings = []
+    for name, server, groups in write_capable_servers(root):
+        if presents_credential(server):
             continue
         target = service_of(server["url"])
         if target not in services:
             findings.append(
-                f"{LITELLM_CONFIG}: mcp_servers.{name} serves write-capable groups {sorted(groups - READ_ONLY_ACCESS_GROUPS)} from {server['url']}, which is not a {ACCESS_LABEL}={GATEWAY_ONLY} service"
+                f"{LITELLM_CONFIG}: mcp_servers.{name} serves write-capable groups {sorted(groups - READ_ONLY_ACCESS_GROUPS)} from {server['url']}, which is not a {ACCESS_LABEL}={GATEWAY_ONLY} service and is not sent a credential from LiteLLM's environment"
             )
     return findings
 
@@ -192,15 +224,16 @@ def main(argv):
     args = parse_args(argv)
     documents = list(manifests(args.root))
     services = gateway_only_services(documents)
+    gated = credential_gated_services(args.root, documents)
     findings = litellm_findings(args.root, services)
-    findings += route_findings(services, documents)
-    findings += exposure_findings(services)
+    findings += route_findings({**services, **gated}, documents)
+    findings += exposure_findings({**services, **gated})
     findings += policy_findings(services, documents)
     for finding in findings:
         print(f"FAIL {finding}")
     if findings:
         return 1
-    print(f"OK: {len(services)} gateway-only MCP services are reachable only through LiteLLM")
+    print(f"OK: {len(services)} gateway-only MCP services are reachable only through LiteLLM; {len(gated)} write-capable MCP services demand LiteLLM's credential and stay inside the cluster")
     return 0
 
 

@@ -1,0 +1,43 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: omnigraph-next
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-next
+spec:
+  groups:
+    - name: omnigraph-next.rules
+      rules:
+        - alert: OmnigraphNextDown
+          expr: |
+            max(kube_deployment_status_replicas_available{exported_namespace="ai", deployment="omnigraph-next"}) < 1
+            or
+            absent(kube_deployment_status_replicas_available{exported_namespace="ai", deployment="omnigraph-next"})
+          for: 15m
+          labels:
+            severity: critical
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "Omnigraph 0.14 has no ready pod (ai/omnigraph-next)"
+            description: |
+              What's happening:
+              - The omnigraph-next Deployment has had no available replica for 15 minutes. It serves the brain and memory graphs on Omnigraph 0.14, over HTTP and over its own /mcp endpoint.
+
+              Impact/risk:
+              - The vault, forge and distill importers, brain-tools and the brain eval cannot read or write the brain.
+              - The omnigraph_brain, omnigraph_memory, omnigraph_brain_eval and omnigraph_glide_* MCP tools in Claude Code, Open WebUI and Glide runs fail.
+
+              Likely causes:
+              - The init container apply-and-optimize is still running a long optimize or cleanup, or it failed.
+              - The server refused to start because a graph failed to open (--require-all-graphs).
+              - The omnigraph-014-state Longhorn volume is not attaching.
+
+              First actions:
+              - kubectl -n ai get pods,pvc -l app=omnigraph-next
+              - kubectl -n ai logs deploy/omnigraph-next -c apply-and-optimize --tail=50
+              - kubectl -n ai logs deploy/omnigraph-next -c omnigraph --tail=50
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/"

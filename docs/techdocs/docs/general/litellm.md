@@ -39,11 +39,11 @@ Registered servers (`mcp_servers:` in the config) and their groups:
 |---|---|---|
 | `observability` | grafana, victorialogs, kubernetes, opencost | read-only |
 | `board` | vikunja | **write** (task CRUD) |
-| `memory` | omnigraph_memory (HTTP, `omnigraph-mcp:8001/mcp`, `act-agent`) | read `memory`, write on its own branches |
-| `brain` | omnigraph_brain (HTTP, `omnigraph-mcp:8002/mcp`, `act-brain-agent`) | read and write `brain`, including `main` |
-| `glide` | omnigraph_glide_memory, omnigraph_glide_brain, omnigraph_glide_webgrip (HTTP, `omnigraph-mcp:8004`, `:8005` and `:8006`, `act-glide`) | read every branch of `memory`, `brain` and `webgrip`; write only on unprotected branches (`glide/<run-id>`); never merge ([runbooks/omnigraph](../runbooks/omnigraph.md#glide-agents)) |
+| `memory` | omnigraph_memory (Omnigraph 0.14's own `omnigraph-next:8080/mcp`, `act-agent`) | read `memory`, write on its own branches |
+| `brain` | omnigraph_brain (`omnigraph-next:8080/mcp`, `act-brain-agent`) | read and write `brain`, including `main` |
+| `glide` | omnigraph_glide_memory and omnigraph_glide_brain (`omnigraph-next:8080/mcp`), omnigraph_glide_webgrip (bridge `omnigraph-mcp:8006` to 0.11), all `act-glide` | read every branch of `memory`, `brain` and `webgrip`; write only on unprotected branches (`glide/<run-id>`); never merge ([runbooks/omnigraph](../runbooks/omnigraph.md#glide-agents)) |
 | `brain-dogfood` | brain_tools (HTTP, `brain-tools:8080/mcp`, `act-brain-reader`) | `search` and `read` over `brain` with plain questions, read-only; the dogfood grant of brain retrieval P4, held by `claude-code` only until P6 regroups it ([runbooks/omnigraph](../runbooks/omnigraph.md#brain-tools)) |
-| `brain-eval-raw` | omnigraph_brain_eval (HTTP, `omnigraph-mcp:8003/mcp`, `act-brain-eval`) | read every branch of `brain` and run stored queries; `mutate`, `load` and the branch writes are hidden by `disallowed_tools` and refused by policy. Only the brain eval key holds it, to score today's raw-query chat path as baseline B0 ([runbooks/omnigraph](../runbooks/omnigraph.md#brain-eval)) |
+| `brain-eval-raw` | omnigraph_brain_eval (`omnigraph-next:8080/mcp`, `act-brain-eval`) | read every branch of `brain` and run stored queries; `mutate`, `load` and the branch writes are hidden by `disallowed_tools` and refused by policy. Only the brain eval key holds it, to score today's raw-query chat path as baseline B0 ([runbooks/omnigraph](../runbooks/omnigraph.md#brain-eval)) |
 
 **One slow server must not hide the others.** LiteLLM lists every server behind a key in parallel and waits for the slowest. `LITELLM_MCP_TOOL_LISTING_TIMEOUT` is 20 seconds (upstream default 30). Healthy servers answer in 2–3 seconds on a quiet node and up to about 10 on a loaded one (measured 2026-10-24: vikunja 2.4–7.3 s, omnigraph 1.5–10 s while worker-1 ran at 100% CPU, brain_tools 0.1 s; each omnigraph listing starts a fresh `node` process in the stateless supergateway bridge, which the 0.14 server's own `/mcp` removes). A 10-second cap dropped healthy omnigraph servers under that load, so the cap sits at twice the loaded maximum and still under Claude Code's tool fetch. With 30 seconds a backend that hung made the whole listing outlast Claude Code's tool fetch, so the client got no tools at all: on 2026-10-23 brain_tools, unready while Omnigraph was down, hid the 53 Vikunja tools for the whole session. A server that fails its listing is dropped from that answer alone. `LiteLLMMcpServerListingFails` fires when one keeps failing; `/mcp` and reconnect in Claude Code picks the tools up again afterwards. MCP backends keep their readiness pod-local for the same reason: an unready pod leaves its Service without endpoints and LiteLLM's connect hangs instead of being refused.
 
@@ -57,21 +57,48 @@ The Omnigraph graphs are the exception: they have no LAN MCP endpoint of their o
 Code and Open WebUI reach `memory` and `brain` through the gateway with the keys below
 ([runbooks/open-webui](../runbooks/open-webui.md#claude-code)).
 
-## Omnigraph bridges
+## Omnigraph MCP
 
-The six `omnigraph_*` servers are the stdio bridge `@modernrelay/omnigraph-mcp` 0.10.0, which has no
-HTTP mode. Each runs behind supergateway 4.0.0 as one container of the `omnigraph-mcp` Deployment
+Since the 0.14 cutover (2026-10-24, [RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md)) five of
+the `omnigraph_*` servers are Omnigraph's own `/mcp` endpoint on `omnigraph-next`, started with
+`--mcp-allow-adhoc` and `--mcp-allow-writes`. Each entry is one actor: LiteLLM sends that actor's
+bearer token (`auth_type: bearer_token`, `authentication_token: os.environ/...` from the Secret
+`litellm-omnigraph-mcp`), and the server's applied Cedar policy decides every call. The tools take
+a `graph` argument; `query` runs a stored query by name, `read` runs ad-hoc GQ, and `mutate`,
+`load` and the `branches_*` tools write.
+
+| Server | Actor | Graph to pass | Token (env, OpenBao path) |
+|---|---|---|---|
+| `omnigraph_memory` | `act-agent` | `memory` | `OMNIGRAPH_MCP_AGENT_TOKEN`, `omnigraph/agent` |
+| `omnigraph_brain` | `act-brain-agent` | `brain` | `OMNIGRAPH_MCP_BRAIN_AGENT_TOKEN`, `omnigraph/brain-agent` |
+| `omnigraph_brain_eval` | `act-brain-eval` | `brain` | `OMNIGRAPH_MCP_BRAIN_EVAL_TOKEN`, `omnigraph/brain-eval` |
+| `omnigraph_glide_memory` | `act-glide` | `memory` | `OMNIGRAPH_MCP_GLIDE_TOKEN`, `omnigraph/glide` |
+| `omnigraph_glide_brain` | `act-glide` | `brain` | `OMNIGRAPH_MCP_GLIDE_TOKEN`, `omnigraph/glide` |
+
+**Why the server, not the network, is the gate.** `omnigraph-next` also serves the importers,
+brain-tools and the brain eval over HTTP, so it cannot be a `litellm-gateway-only` service. It
+does not need to be: `/mcp` refuses a call without a bearer token, and a token holder can do over
+`/mcp` exactly what its policy allows over the HTTP API it can already reach. The tokens these
+entries use are held by LiteLLM alone. `scripts/validate_mcp_gateway_only.py` accepts a server
+served to a write-capable group when LiteLLM sends it a credential from its environment, and
+still fails the build when that service gets a route or a non-ClusterIP type, when the credential
+is written into the config, or when the credential is dropped
+([test](../../../../scripts/test-validate-mcp-gateway-only.sh)). `omnigraph_brain_eval` keeps
+`disallowed_tools` so the write tools do not show; the policy refuses them anyway.
+
+`omnigraph_glide_webgrip` stays on the stdio bridge below until Ploeg's tenant graphs move to
+0.14 (VIK-2337); `webgrip` on 0.11 is the copy Ploeg reads.
+
+## Omnigraph bridge (`webgrip`, 0.11)
+
+The remaining `omnigraph_*` server is the stdio bridge `@modernrelay/omnigraph-mcp` 0.10.0, which has no
+HTTP mode. It runs behind supergateway 4.0.0 as the one container of the `omnigraph-mcp` Deployment
 ([app](../../../../kubernetes/apps/ai/omnigraph-mcp/app/)), and LiteLLM reaches it over streamable
 HTTP. LiteLLM itself runs no stdio server, and `LITELLM_ENABLE_MCP_STDIO` is unset, so the proxy
 also refuses to register one through its API.
 
 | Server | Container and port | Graph | Token (Secret, OpenBao path) |
 |---|---|---|---|
-| `omnigraph_memory` | `memory` :8001 | `memory` | `omnigraph-mcp-memory`, `omnigraph/agent` |
-| `omnigraph_brain` | `brain` :8002 | `brain` | `omnigraph-mcp-brain`, `omnigraph/brain-agent` |
-| `omnigraph_brain_eval` | `brain-eval` :8003 | `brain` | `omnigraph-mcp-brain-eval`, `omnigraph/brain-eval` |
-| `omnigraph_glide_memory` | `glide-memory` :8004 | `memory` | `omnigraph-mcp-glide`, `omnigraph/glide` |
-| `omnigraph_glide_brain` | `glide-brain` :8005 | `brain` | `omnigraph-mcp-glide`, `omnigraph/glide` |
 | `omnigraph_glide_webgrip` | `glide-webgrip` :8006 | `webgrip` | `omnigraph-mcp-glide`, `omnigraph/glide` |
 
 Why it is built this way:
@@ -85,7 +112,7 @@ Why it is built this way:
   (`envFrom` its own Secret). The pod does not share a process namespace, so a bridge cannot read another
   bridge's environment. The three `glide` bridges are one actor, `act-glide`, and share its token
   by design. The provider keys never enter this pod.
-- **Only LiteLLM gets in.** `omnigraph-mcp-ingress` admits the `litellm` pod alone, on 8001–8006.
+- **Only LiteLLM gets in.** `omnigraph-mcp-ingress` admits the `litellm` pod alone, on 8006.
   The pods and the Service carry `mcp.webgrip.io/access: litellm-gateway-only`, so
   `scripts/validate_mcp_gateway_only.py` fails the build if a route, a non-ClusterIP Service or a
   wider ingress rule ever reaches them. The bridges' write grants (`memory`, `brain`, `glide`) are
@@ -199,7 +226,7 @@ LiteLLM 1.104 and 1.105 changed two defaults homelab depended on; no setting put
 behaviour back any more.
 
 - 1.104 turned stdio MCP servers off. Homelab keeps them off, because the
-  [Omnigraph bridges](#omnigraph-bridges) run over HTTP.
+  [Omnigraph bridges](#omnigraph-bridge-webgrip-011) run over HTTP.
 - A spent budget answers HTTP 422 since 1.104.0. Homelab kept 429 with
   `budget_exceeded_status_code: 429` until Unfold and Ploeg recognised a spent budget by its body
   at any status (Unfold #401 in 0.4.0-rc.82, Ploeg #151 in 0.2.0-rc.23); the setting was removed
@@ -328,7 +355,7 @@ From 1.106.0 ([BerriAI/litellm#45401](https://github.com/BerriAI/litellm/pull/45
 removes the caller's key from every header it sends to an MCP server. Nothing here needs that key:
 
 - `grafana`, `victorialogs`, `kubernetes`, `opencost`, `vikunja`, `brain_tools` and the six
-  `omnigraph_*` [bridges](#omnigraph-bridges) are HTTP
+  `omnigraph_*` [bridges](#omnigraph-bridge-webgrip-011) are HTTP
   servers without `auth_type`, `extra_headers` or a pass-through setting, so LiteLLM forwards no
   caller credential to them. A header-recording HTTP MCP server registered the same way received
   no LiteLLM key on `initialize`, `tools/list` or `tools/call`, with the key in `Authorization`
