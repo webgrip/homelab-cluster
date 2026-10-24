@@ -1,0 +1,123 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hypervisor-override-pod
+  namespace: ploeg
+  annotations:
+    io.katacontainers.config.hypervisor.default_memory: "65536"
+spec:
+  runtimeClassName: kata
+  containers:
+    - name: worker
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: config-path-override-pod
+  namespace: forgejo
+  annotations:
+    io.katacontainers.config_path: /tmp/configuration.toml
+spec:
+  runtimeClassName: kata
+  containers:
+    - name: runner
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: annotated-job
+  namespace: ploeg
+spec:
+  template:
+    metadata:
+      annotations:
+        io.katacontainers.config.hypervisor.kernel_params: "nokaslr"
+    spec:
+      runtimeClassName: kata
+      restartPolicy: Never
+      containers:
+        - name: worker
+          image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: annotated-cronjob
+  namespace: forgejo
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          annotations:
+            io.katacontainers.config.runtime.disable_guest_seccomp: "true"
+        spec:
+          runtimeClassName: kata
+          restartPolicy: Never
+          containers:
+            - name: runner
+              image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: annotated-deployment
+  namespace: ploeg
+spec:
+  selector:
+    matchLabels:
+      app: probe
+  template:
+    metadata:
+      labels:
+        app: probe
+      annotations:
+        io.katacontainers.config.hypervisor.virtio_fs_extra_args: '["-o","allow_direct_io"]'
+    spec:
+      runtimeClassName: kata
+      containers:
+        - name: probe
+          image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: plain-kata-pod
+  namespace: ploeg
+spec:
+  runtimeClassName: kata
+  containers:
+    - name: worker
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: other-annotations-pod
+  namespace: ploeg
+  annotations:
+    ploeg.webgrip.dev/isolation-class: isolated
+    katacontainers.example/unrelated: "true"
+spec:
+  runtimeClassName: kata
+  containers:
+    - name: worker
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: plain-job
+  namespace: ploeg
+spec:
+  template:
+    spec:
+      runtimeClassName: kata
+      restartPolicy: Never
+      containers:
+        - name: worker
+          image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

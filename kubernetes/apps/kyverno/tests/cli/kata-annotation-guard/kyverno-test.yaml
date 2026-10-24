@@ -1,0 +1,42 @@
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: kata-annotation-guard
+policies:
+  - ../../policies/kata-annotation-guard-cel.yaml
+resources:
+  - resources.yaml
+results:
+  - policy: kata-annotation-guard
+    resources:
+      - ploeg/hypervisor-override-pod
+      - forgejo/config-path-override-pod
+    kind: Pod
+    result: fail
+  - policy: kata-annotation-guard
+    resources:
+      - ploeg/annotated-job
+    kind: Job
+    result: fail
+  - policy: kata-annotation-guard
+    resources:
+      - forgejo/annotated-cronjob
+    kind: CronJob
+    result: fail
+  - policy: kata-annotation-guard
+    resources:
+      - ploeg/annotated-deployment
+    kind: Deployment
+    result: fail
+  - policy: kata-annotation-guard
+    resources:
+      - ploeg/plain-kata-pod
+      - ploeg/other-annotations-pod
+    kind: Pod
+    result: pass
+  - policy: kata-annotation-guard
+    resources:
+      - ploeg/plain-job
+    kind: Job
+    result: pass

@@ -1,0 +1,70 @@
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: kata-annotation-guard
+  annotations:
+    policies.kyverno.io/title: Kata Containers — No Sandbox Overrides From Pod Annotations
+    policies.kyverno.io/category: Pod Security, Agent Plane
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.19.1
+    policies.kyverno.io/description: >-
+      Kata Containers reads pod annotations under io.katacontainers. as overrides of the
+      sandbox's runtime and hypervisor settings, and the Talos kata-containers extension
+      forwards every one of them to the runtime. No workload in this cluster sets them, so
+      a pod or pod template that carries one is refused in every namespace. The sandbox
+      configuration then comes only from the node's configuration file.
+spec:
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "pods"
+      - apiGroups:
+          - "apps"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "deployments"
+          - "statefulsets"
+          - "daemonsets"
+          - "replicasets"
+      - apiGroups:
+          - "batch"
+        apiVersions:
+          - "v1"
+        operations:
+          - "CREATE"
+          - "UPDATE"
+        resources:
+          - "jobs"
+          - "cronjobs"
+  variables:
+    - name: podAnnotations
+      expression: >-
+        object.kind == 'Pod' ? object.metadata.?annotations.orValue({}) :
+        (object.kind == 'CronJob' ?
+        object.spec.jobTemplate.spec.template.?metadata.?annotations.orValue({}) :
+        object.spec.template.?metadata.?annotations.orValue({}))
+  validations:
+    - expression: >-
+        !variables.podAnnotations.exists(k, k.startsWith('io.katacontainers.'))
+      message: >-
+        Pod annotations under io.katacontainers. are refused: they would override the Kata
+        sandbox's runtime and hypervisor settings, which must come only from the node's
+        configuration.
