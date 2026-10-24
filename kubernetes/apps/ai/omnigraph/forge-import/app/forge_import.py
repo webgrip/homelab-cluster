@@ -4,6 +4,7 @@ import base64
 import datetime
 import hashlib
 import json
+import os
 import re
 import sys
 import unicodedata
@@ -88,8 +89,11 @@ class ChunkReader:
 
     def fetch(self, slug):
         body = json.dumps({"query": CHUNKS_QUERY, "params": {"slug": slug}, "branch": "main"}).encode()
-        request = urllib.request.Request(self.url, data=body, method="POST",
-                                         headers={"content-type": "application/json", "Authorization": f"Bearer {self.token}"})
+        headers = {"content-type": "application/json", "Authorization": f"Bearer {self.token}"}
+        contract = os.environ.get("OMNIGRAPH_HTTP_API", "").strip()
+        if contract:
+            headers["Omnigraph-Http-Api"] = contract
+        request = urllib.request.Request(self.url, data=body, method="POST", headers=headers)
         self.calls += 1
         try:
             with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:

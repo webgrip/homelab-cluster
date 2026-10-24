@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
+import http.server
 import os
 import re
-import stat
+import socket
 import subprocess
+import threading
 import tempfile
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OMNIGRAPH = ROOT / "kubernetes/apps/ai/omnigraph"
+EMBED_APP = OMNIGRAPH / "embed-step/app"
 RESTART = OMNIGRAPH / "app/maintenance-restart.cronjob.yaml"
 WRITERS = {"vault-import": "/etc/vault-import/", "forge-import": "/etc/forge-import/", "distill": "/etc/distill/"}
 OBSERVED_RESTART_TO_READY_MINUTES = 3
@@ -67,36 +70,74 @@ class RestartWindow(unittest.TestCase):
                                       f"while the {restart_schedule} restart has Omnigraph down")
 
 
-def executable(path, body):
-    path.write_text("#!/bin/sh\n" + body, encoding="utf-8")
-    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+class FakeOmnigraph:
+    def __init__(self, not_ready_polls, query_refused):
+        self.polls = 0
+        owner = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def reply(self, status, body):
+                data = body.encode()
+                self.send_response(status)
+                self.send_header("content-type", "application/json")
+                self.send_header("content-length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_GET(self):
+                if self.path == "/readyz":
+                    owner.polls += 1
+                    self.reply(200 if owner.polls > not_ready_polls else 503, '{"ready": false}' if owner.polls <= not_ready_polls else '{"ready": true}')
+                else:
+                    self.reply(404, "{}")
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers.get("content-length", "0")))
+                if query_refused:
+                    self.reply(403, '{"error": "act refused by policy", "code": "forbidden"}')
+                else:
+                    self.reply(200, '{"rows": []}')
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+def closed_port_url():
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+    return f"http://127.0.0.1:{port}"
 
 
 class SnapshotWaitsForOmnigraph(unittest.TestCase):
-    def run_snapshot(self, writer, not_ready_polls, query_refused=False, timeout_seconds="300"):
+    def run_snapshot(self, writer, not_ready_polls, query_refused=False, timeout_seconds="300", reachable=True):
         holder = tempfile.TemporaryDirectory()
         self.addCleanup(holder.cleanup)
         scratch = Path(holder.name)
-        bin_dir = scratch / "bin"
-        bin_dir.mkdir()
         (scratch / "work").mkdir()
         (scratch / "token").write_text("token", encoding="utf-8")
-        (scratch / "polls").write_text("", encoding="utf-8")
-        executable(bin_dir / "curl", f'echo x >> "{scratch}/polls"\n'
-                                     f'[ "$(wc -l < "{scratch}/polls")" -gt {not_ready_polls} ] && exit 0\n'
-                                     'echo "curl: (7) Failed to connect to omnigraph port 8080: Connection refused" >&2\nexit 7\n')
-        executable(bin_dir / "omnigraph", 'echo "HTTP 403: act refused by policy" >&2\nexit 1\n' if query_refused else 'echo \'{"rows": []}\'\n')
+        fake = FakeOmnigraph(not_ready_polls, query_refused)
+        self.addCleanup(fake.stop)
         text = (OMNIGRAPH / writer / "app/snapshot.sh").read_text(encoding="utf-8")
-        for old, new in (("/tmp/", f"{scratch}/"), (WRITERS[writer], f"{OMNIGRAPH / writer / 'app'}/"),
+        for old, new in (("/tmp/", f"{scratch}/"), (WRITERS[writer], f"{OMNIGRAPH / writer / 'app'}/"), ("/etc/omnigraph-embed-step/", f"{EMBED_APP}/"),
                          ("/run/secrets/omnigraph/token", str(scratch / "token")), ("/work/", f"{scratch}/work/")):
             text = text.replace(old, new)
         script = scratch / "snapshot.sh"
         script.write_text(text, encoding="utf-8")
-        env = {"PATH": f"{bin_dir}:{os.environ['PATH']}", "OMNIGRAPH_URL": "http://omnigraph.test:8080",
+        env = {"PATH": os.environ["PATH"], "OMNIGRAPH_URL": fake.url if reachable else closed_port_url(),
                "OMNIGRAPH_READY_TIMEOUT_SECONDS": timeout_seconds, "OMNIGRAPH_READY_POLL_SECONDS": "0"}
         result = subprocess.run(["sh", str(script)], capture_output=True, text=True, env=env, timeout=60)
-        polls = len((scratch / "polls").read_text(encoding="utf-8").splitlines())
-        return result, polls
+        return result, fake.polls
 
     def test_a_restarting_omnigraph_is_waited_out_before_the_snapshot_reads(self):
         for writer in WRITERS:
@@ -109,7 +150,7 @@ class SnapshotWaitsForOmnigraph(unittest.TestCase):
     def test_an_omnigraph_that_never_gets_ready_fails_with_the_readiness_error(self):
         for writer in WRITERS:
             with self.subTest(writer):
-                result, _ = self.run_snapshot(writer, not_ready_polls=10**6, timeout_seconds="0")
+                result, _ = self.run_snapshot(writer, not_ready_polls=10**6, timeout_seconds="1", reachable=False)
                 self.assertEqual(result.returncode, 1)
                 self.assertIn("omnigraph not ready", result.stderr)
                 self.assertIn("Connection refused", result.stderr)
@@ -119,7 +160,8 @@ class SnapshotWaitsForOmnigraph(unittest.TestCase):
             with self.subTest(writer):
                 result, _ = self.run_snapshot(writer, not_ready_polls=0, query_refused=True)
                 self.assertEqual(result.returncode, 1)
-                self.assertIn("HTTP 403: act refused by policy", result.stderr)
+                self.assertIn("HTTP 403", result.stderr)
+                self.assertIn("act refused by policy", result.stderr)
 
 
 if __name__ == "__main__":

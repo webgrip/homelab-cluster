@@ -58,6 +58,11 @@ class RealServerWriters(unittest.TestCase):
         rehearsal = importlib.import_module("omnigraph_rehearsal")
         cls.scratch = tempfile.TemporaryDirectory(prefix="omnigraph-writers-real-")
         workdir = Path(cls.scratch.name)
+        cls.workdir = workdir
+        cls.http_api = ""
+        if os.environ.get("OMNIGRAPH_WRITERS_SERVER") == "next":
+            cls.start_next(workdir)
+            return
         rendered = rehearsal.kustomize(ROOT / rehearsal.APP_PATH, "working")
         bundle = rehearsal.Bundle(rendered.bundle_files(), "working")
         init_env = rendered.plain_env(rehearsal.INIT_CONTAINER, init=True)
@@ -75,6 +80,32 @@ class RealServerWriters(unittest.TestCase):
         cls.workdir = workdir
 
     @classmethod
+    def start_next(cls, workdir):
+        rehearsal = importlib.import_module("omnigraph_rehearsal")
+        next_rehearsal = importlib.import_module("test_omnigraph_next_bootstrap")
+        docs = next_rehearsal.documents(next_rehearsal.APP_DIR)
+        pod_spec = next_rehearsal.named(docs, "Deployment", next_rehearsal.DEPLOYMENT)["spec"]["template"]["spec"]
+        init = next_rehearsal.container(pod_spec, next_rehearsal.INIT_CONTAINER, init=True)
+        server = next_rehearsal.container(pod_spec, next_rehearsal.SERVER_CONTAINER, init=False)
+        version = next_rehearsal.SERVER_IMAGE.search(server["image"])["version"]
+        bin_dir = next_rehearsal.binaries(version, os.environ.get("OMNIGRAPH_NEXT_BIN_DIR"))
+        files = dict(next_rehearsal.named(docs, "ConfigMap", next_rehearsal.BUNDLE_CONFIGMAP, generated=True).get("data") or {})
+        bundle = rehearsal.Bundle({k: v for k, v in files.items() if k != "bootstrap.sh"}, "omnigraph-next")
+        init_env = next_rehearsal.plain_env(init)
+        cls.embedder = rehearsal.FakeEmbedder(init_env.get("OMNIGRAPH_EMBED_MODEL", "x"))
+        embed_url = cls.embedder.start()
+        (workdir / "next").mkdir()
+        cluster = next_rehearsal.Cluster(workdir / "next", bin_dir, files, init_env, embed_url, files["bootstrap.sh"])
+        cluster.boot("first")
+        cluster.load("brain", rehearsal.seed_rows(bundle.schema("brain")), "seed")
+        cluster.boot("second")
+        cls.tokens = {actor: f"token-{actor}" for actor in bundle.policy_actors()}
+        cls.server = next_rehearsal.Server(cluster, {**next_rehearsal.plain_env(server), "OMNIGRAPH_EMBED_API_KEY": "x"}, cls.tokens)
+        cls.server.wait_ready(len(bundle.graphs()), 180)
+        cls.http_api = ".".join(version.split(".")[:2])
+        os.environ["OMNIGRAPH_HTTP_API"] = cls.http_api
+
+    @classmethod
     def tearDownClass(cls):
         cls.server.stop()
         cls.embedder.stop()
@@ -89,7 +120,7 @@ class RealServerWriters(unittest.TestCase):
         return sandbox, scripts
 
     def sh(self, script, sandbox):
-        env = {"PATH": os.environ["PATH"], "HOME": str(sandbox), "TMPDIR": str(sandbox), "OMNIGRAPH_URL": self.server.base, "NO_COLOR": "1"}
+        env = {"PATH": os.environ["PATH"], "HOME": str(sandbox), "TMPDIR": str(sandbox), "OMNIGRAPH_URL": self.server.base, "OMNIGRAPH_HTTP_API": self.http_api, "NO_COLOR": "1"}
         return subprocess.run(["sh", str(script)], capture_output=True, text=True, env=env, timeout=300)
 
     def fresh_plan_dir(self, sandbox):
