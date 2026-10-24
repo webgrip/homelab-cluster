@@ -110,7 +110,12 @@ GitHub-hosted Actions cannot reach it. The build-and-push therefore lives in **`
 
 3. **Consume in-cluster:** reference `harbor.${SECRET_DOMAIN}/webgrip/<image>:<tag>` with an
    `imagePullSecret` built from a pull-only robot (or make the project public for anonymous in-cluster pulls).
-4. **Migrate existing `ghcr.io/webgrip/*`** (optional, one-time): `skopeo copy --all
+4. **Talos node images** live in a separate **public** project, `talos`: Talos pulls an installer
+   with no registry credentials, and Harbor being LAN-only keeps "public" to the LAN. Its own
+   project robot `robot$talos+ci` (push, pull, `sbom:create`) is provisioned by the same CronJob and
+   reaches `webgrip/talos-kata-extension` as repo-level `HARBOR_ROBOT_*`
+   ([bridge](secrets-level-3-bridge.md#the-talos-image-robot)). Nothing private goes in `talos`.
+5. **Migrate existing `ghcr.io/webgrip/*`** (optional, one-time): `skopeo copy --all
    docker://ghcr.io/webgrip/<image>:<tag> docker://harbor.${SECRET_DOMAIN}/webgrip/<image>:<tag>`, or a
    Harbor *replication* pull-rule from the `ghcr` registry endpoint.
 

@@ -87,6 +87,20 @@ worth making; see its
 Until the table refactor named in the ADR lands, this is three edits in one file. When it
 lands, steps 2 and 3 collapse into one row plus one ExternalSecret; this runbook is updated then.
 
+## The Talos image robot
+
+`webgrip/talos-kata-extension` publishes to the Harbor project `talos`, not `webgrip`, so it gets a
+project robot of its own and repo-level `HARBOR_ROBOT_USER` / `HARBOR_ROBOT_TOKEN` that shadow the
+org-level pair.
+
+| Secret | Vault path | Secret name | Seed | Verify |
+| --- | --- | --- | --- | --- |
+| `HARBOR_ROBOT_*` (repo-level) | `secret/harbor/robot-talos` | `forgejo-harbor-robot-talos` | generated in the `harbor` namespace (`harbor-robot-talos`, generate-once) and set on `robot$talos+ci` by `harbor-proxy-config` | the Harbor token service must grant `push` on `talos/kata-containers` |
+
+Harbor's token service answers `200` for any credential, a wrong one included, and returns an
+anonymous token. The block therefore decodes the issued token and checks its `access` claim for
+`push` rather than trusting the status code.
+
 ## Naming
 
 - Forgejo rejects the reserved prefixes `FORGEJO_`, `GITHUB_`, `GITEA_`; the bot token is

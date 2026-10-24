@@ -174,6 +174,51 @@ data:
       fi
     }
 
+    ensure_public_project() {
+      _name="$$1"
+      if ! hc GET "/projects?name=$$_name" 2>/dev/null \
+          | jq -e ".[] | select(.name==\"$$_name\")" >/dev/null 2>&1; then
+        _body="{\"project_name\":\"$$_name\",\"public\":true,\"storage_limit\":-1,\"metadata\":{\"public\":\"true\"}}"
+        if _out="$$(hc POST "/projects" "$$_body" 2>&1)"; then
+          log "created public project '$$_name'"
+        else
+          log "WARN: failed to create project '$$_name': $$_out"; return 0
+        fi
+      fi
+      if hc PUT "/projects/$$_name" '{"metadata":{"public":"true"}}' >/dev/null 2>&1; then
+        log "project '$$_name' is public"
+      else
+        log "WARN: failed to make project '$$_name' public"
+      fi
+    }
+
+    ensure_project_robot() {
+      _project="$$1"; _robot="$$2"; _token="$$3"; _description="$$4"; _access="$$5"
+      [ -n "$$_token" ] || { log "no token for robot $$_robot on $$_project yet; skipping"; return 0; }
+      _pid="$$(hc GET "/projects?name=$$_project" 2>/dev/null | jq -r ".[] | select(.name==\"$$_project\") | .project_id" 2>/dev/null | head -n1)"
+      [ -n "$$_pid" ] && [ "$$_pid" != "null" ] || { log "WARN: project '$$_project' not found; skipping robot $$_robot"; return 0; }
+      _full="$$(printf 'robot$$%s+%s' "$$_project" "$$_robot")"
+      _perms="[{\"kind\":\"project\",\"namespace\":\"$$_project\",\"access\":$$_access}]"
+      _q="Level%3Dproject%2CProjectID%3D$$_pid"
+      _find() { hc GET "/robots?q=$$_q&page_size=100" 2>/dev/null | jq -r --arg n "$$_full" '.[] | select(.name==$$n) | .id' 2>/dev/null | head -n1; }
+      _rid="$$(_find)"
+      if [ -z "$$_rid" ]; then
+        hc POST "/robots" "{\"name\":\"$$_robot\",\"description\":\"$$_description\",\"duration\":-1,\"level\":\"project\",\"disable\":false,\"permissions\":$$_perms}" >/dev/null 2>&1 || true
+        _rid="$$(_find)"
+      fi
+      [ -n "$$_rid" ] || { log "WARN: robot $$_full not resolvable on '$$_project'"; return 0; }
+      if _out="$$(hc PUT "/robots/$$_rid" "{\"name\":\"$$_full\",\"description\":\"$$_description\",\"duration\":-1,\"level\":\"project\",\"disable\":false,\"permissions\":$$_perms}" 2>&1)"; then
+        log "robot $$_full (id=$$_rid) access converged"
+      else
+        log "WARN: failed to converge robot $$_full (id=$$_rid): $$_out"
+      fi
+      if _out="$$(hc PATCH "/robots/$$_rid" "$$(jq -nc --arg s "$$_token" '{secret:$$s}')" 2>&1)"; then
+        log "robot $$_full (id=$$_rid) secret ensured"
+      else
+        log "WARN: failed to set robot $$_full secret (id=$$_rid): $$_out"
+      fi
+    }
+
     # Ensure the webgrip CI robot exists, and that its access list + secret converge to the
     # desired spec. GET /robots lists only SYSTEM robots, so PROJECT robots must be queried
     # with q=Level=project,ProjectID=<id>; re-resolve after POST so a 409 still leads to PATCH.
@@ -385,6 +430,13 @@ data:
     ensure_retention webgrip
     ensure_project_scanning webgrip
     ensure_immutable_semver webgrip
+
+    ensure_public_project talos
+    ensure_project_robot talos ci "$${TALOS_CI_TOKEN:-}" "talos node image CI push/pull (managed)" \
+      '[{"resource":"repository","action":"push"},{"resource":"repository","action":"pull"},{"resource":"sbom","action":"create"}]'
+    ensure_retention talos
+    ensure_project_scanning talos
+    ensure_immutable_semver talos
 
     if [ "$$HEALTH_FAILED" != "0" ]; then
       log "reconcile finished but a credentialed upstream failed its check — exiting 1 (HarborProxyReconcileStale will fire)"
