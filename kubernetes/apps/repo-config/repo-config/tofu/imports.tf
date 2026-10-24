@@ -1,5 +1,5 @@
 import {
-  for_each = local.repos
+  for_each = { for name, repo in local.repos : name => repo if !contains(local.repos_created_by_tofu, name) }
   to       = forgejo_repository.repo[each.key]
   id       = "${local.owner}/${each.key}"
 }

@@ -1,5 +1,11 @@
+locals {
+  repos_readable_anonymously = {
+    for name, settings in local.repos : name => settings if !try(settings.private, false)
+  }
+}
+
 data "http" "live_repo" {
-  for_each = local.repos
+  for_each = local.repos_readable_anonymously
   url      = "${var.forgejo_url}/api/v1/repos/${local.owner}/${each.key}"
 }
 
@@ -14,7 +20,7 @@ locals {
   ]
 
   write_only_drift = flatten([
-    for name, settings in local.repos : [
+    for name, settings in local.repos_readable_anonymously : [
       for field in local.write_only_fields :
       format("%s.%s model=%s live=%s", name, field, settings[field], try(local.live[name][field], "unreadable"))
       if try(local.live[name][field], null) != settings[field]
@@ -29,7 +35,7 @@ locals {
   }
 
   resent_default_drift = flatten([
-    for name in keys(local.repos) : [
+    for name in keys(local.repos_readable_anonymously) : [
       for field, value in local.resent_provider_defaults :
       format("%s.%s sent=%s live=%s", name, field, value, try(local.live[name][field], "unreadable"))
       if try(local.live[name][field], null) != value

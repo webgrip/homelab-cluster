@@ -4,6 +4,10 @@ locals {
   model     = yamldecode(file("${local.model_dir}/repos.yaml"))
   owner     = local.model.forgejo.owner
 
+  repos_created_by_tofu = toset([
+    "talos-kata-extension",
+  ])
+
   forgejo_repos = {
     for name, repo in local.model.repos : name => repo if repo.forge == "forgejo"
   }
@@ -48,6 +52,8 @@ resource "forgejo_repository" "repo" {
   allow_fast_forward_only_merge     = each.value.allow_fast_forward_only_merge
   allow_squash_merge                = each.value.allow_squash_merge
   archived                          = try(each.value.archived, false)
+  private                           = try(each.value.private, false)
+  auto_init                         = contains(local.repos_created_by_tofu, each.key) ? false : null
   archive_on_destroy                = true
 
   lifecycle {
