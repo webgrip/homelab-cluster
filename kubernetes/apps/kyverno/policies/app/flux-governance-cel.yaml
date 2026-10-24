@@ -79,7 +79,7 @@ metadata:
     policies.kyverno.io/subject: OCIRepository,GitRepository,Kustomization,HelmRelease
     kyverno.io/kyverno-version: 1.18.1
     policies.kyverno.io/description: >-
-      Flux sources must be digest-pinned and trusted, Kustomizations must prune, and
+      Flux sources must be digest-pinned or signature-verified and trusted, Kustomizations must prune, and
       HelmReleases must declare remediation and an approved chart source.
 spec:
   validationActions:
@@ -121,8 +121,14 @@ spec:
     # Legacy pattern `sha256:*` is a glob, so startsWith is the faithful equivalent.
     - expression: >-
         object.kind != 'OCIRepository' ||
-        object.spec.?ref.orValue({}).?digest.orValue('').startsWith('sha256:')
-      message: "OCIRepository resources must pin spec.ref.digest."
+        object.spec.?ref.orValue({}).?digest.orValue('').startsWith('sha256:') ||
+        (object.spec.?ref.orValue({}).?semver.orValue('') != '' &&
+         object.spec.?verify.orValue({}).?provider.orValue('') == 'cosign' &&
+         object.spec.?verify.orValue({}).?secretRef.orValue({}).?name.orValue('') == 'cosign-webgrip-pub')
+      message: >-
+        OCIRepository resources must pin spec.ref.digest, or follow a spec.ref.semver
+        channel whose artifacts Flux verifies against the estate signing key
+        (spec.verify.provider cosign, secretRef cosign-webgrip-pub).
     # Two allowed URLs, PERMANENTLY: Forgejo is the steady-state source (ADR-0011)
     # and GitHub is the sanctioned break-glass/bootstrap source (ADR-0012) — the
     # break-glass repoint must pass admission (drilled 2026-07-14,
