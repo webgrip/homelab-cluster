@@ -42,11 +42,6 @@ spec:
   # Fixed in apps/forgejo/networkpolicy.yaml; don't re-derive the timeout theory from this
   # comment.
   #
-  # maxReplicaCount stays 6 and is NOT the effective ceiling: the worker pool is out of room
-  # (fringe-workstation 93% CPU / 96% memory requests, worker-1 98% CPU), and runner pods
-  # already hit FailedScheduling "Insufficient cpu, Insufficient memory" at this value.
-  # Raising it only manufactures Pending pods and makes KEDA's queue numbers lie. The lever
-  # that actually works is making CI do less work per push (see .forgejo/workflows/e2e.yml).
   # Back to 2 (2026-08-01). The 2->4 raise above was made because a Renovate wave drained at 2
   # runners for 2+ hours — but the CORRECTION recorded immediately above it establishes that the
   # cause was the `keda` namespace missing from forgejo-allow-ingress, so every scaler poll was
@@ -65,7 +60,7 @@ spec:
   # two of them a Ploeg Run fitted on only one worker node. One warm runner still
   # takes the next job instantly; a second concurrent job waits for a pod start.
   minReplicaCount: 1
-  maxReplicaCount: 6
+  maxReplicaCount: 8
   successfulJobsHistoryLimit: 3
   # 0: don't retain Failed runner Jobs. The warm-pool runner blocks on `one-job --wait`;
   # a real CI failure is visible in Forgejo's Actions UI, not worth a lingering k8s Job
@@ -115,6 +110,16 @@ spec:
             operator: Equal
             value: fringe
             effect: NoSchedule
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 50
+                preference:
+                  matchExpressions:
+                    - key: node.webgrip.io/cpu
+                      operator: In
+                      values:
+                        - "high"
         topologySpreadConstraints:
           - maxSkew: 1
             topologyKey: kubernetes.io/hostname
@@ -300,18 +305,9 @@ spec:
               # promote-by-digest (infrastructure ADR-0009) removed the release rebuild, the
               # sign job's scan IS the heaviest process in a release — this limit now sizes the
               # release path, not an edge case.
-              #
-              # REQUEST raised 512Mi -> 2Gi (2026-08-11, second finding from the same incident):
-              # the 6Gi limit did not save run 359 because the kill was NODE-level, not cgroup —
-              # worker-1 carried every runner pod (512Mi requests bin-pack densely), sat at 75%
-              # requested / 332% limit-overcommitted, took a pressure taint (TaintManagerEviction
-              # events 09:4xZ), and the kernel reaped the fattest processes: syft, then grype.
-              # There are THREE worker-pool nodes (~55Gi allocatable between them); an honest 2Gi
-              # request makes the scheduler spread scan-heavy jobs instead of stacking them onto
-              # whichever node bin-packs tightest.
               requests:
                 cpu: 250m
-                memory: 2Gi
+                memory: 1536Mi
               limits:
                 memory: 6Gi
         volumes:

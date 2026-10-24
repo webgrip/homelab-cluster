@@ -16,8 +16,8 @@ image builds. This is **Topology A, host-mode** from [ADR-0026](../adr/adr-0026-
 
 ```
 pollingInterval: 15        # scaler asks Forgejo "how many `docker` jobs are pending?" every 15s
-minReplicaCount: 2         # WARM POOL: always keep N runners blocked on `one-job --wait`
-maxReplicaCount: 6         # burst ceiling
+minReplicaCount: 1         # WARM POOL: always keep N runners blocked on `one-job --wait`
+maxReplicaCount: 8         # burst ceiling
 # NO activeDeadlineSeconds: the warm pool intentionally blocks on `one-job --wait`; a k8s deadline
 # would kill idle waiters as DeadlineExceeded (false KubeJobFailed churn). Job runtime is capped by
 # Forgejo's per-job timeout (config.yaml `timeout: 1h`). failedJobsHistoryLimit: 0 (don't retain).
@@ -30,11 +30,26 @@ maxReplicaCount: 6         # burst ceiling
   no-op for burst pods (their task is already pending).
 - **Burst.** When pending jobs exceed the warm pool, KEDA creates more Jobs up to
   `maxReplicaCount`. As each warm runner takes a job and exits, KEDA backfills to maintain the floor.
-- **Capacity bound.** Each pod reserves ~**500m CPU / ~1.0Gi** by *requests* (runner 250m/512Mi +
-  dind 250m/512Mi); neither container sets a CPU limit, so a lone build bursts into the idle node
-  (observed ~1 core). The worker pool is `fringe-workstation` (8c/~15Gi) + `worker-1` (4c) — the
-  warm pool + burst fit comfortably. Keep the dind memory *limit* modest (currently 1.5Gi): an
-  oversized limit inflates node memory pressure and leaves warm pods `Pending: Insufficient memory`.
+- **Capacity bound.** Memory requests, not CPU, decide how many runners fit. Measured
+  2026-10-24 over 14 days and 4,683 `docker` runner pods: median peak 49Mi, p95 1.1Gi,
+  29 pods above 1.5Gi, 4 above 3Gi (the release sign job's syft/grype scan, up to ~5.7Gi).
+  The runner requests **250m / 1.5Gi** with a **6Gi** limit; eight runners reserve the same
+  12Gi that six did at 2Gi. `docker-large` requests 3Gi for jobs known to scan.
+- **Do not size from `kube_node_status_allocatable` summed per node.** kube-state-metrics and
+  opencost both export it, so the sum is twice the node. Read `kubectl describe node`
+  (Allocated resources). Worker pool on 2026-10-24: fringe-workstation and worker-2 8c / ~15Gi,
+  worker-1 4c / ~23Gi; fringe at 98% and worker-2 at 87% memory requested.
+- **A 1-core CPU request does not fit.** Tried 2026-10-24 (d415ed68, reverted in a396dc8e):
+  2 runners scheduled, 8 sat `Pending`. A busy runner uses ~0.8 core, but the pool has no CPU
+  requests left to promise it.
+- **Placement.** Runners prefer `node.webgrip.io/cpu=high` nodes (fringe-workstation, worker-2):
+  worker-1 has 4 cores and runs at ~99% CPU when it carries most runners.
+- **Priority.** Runner pods run at the `ci-batch` PriorityClass (-100, `preemptionPolicy: Never`).
+  Ploeg runs and every default-priority pod schedule first and may preempt a runner when the pool
+  is full; under node memory pressure the kubelet evicts runners before them. CI never preempts.
+- **2026-08-11 node-level kill.** At 512Mi requests every runner bin-packed onto worker-1, the node
+  took a memory-pressure taint and the kernel killed syft, then grype, in a sign job despite the
+  6Gi limit. Keep the request honest enough that scan jobs spread across nodes.
 
 ## The runner identity (registration)
 
