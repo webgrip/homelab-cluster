@@ -1,0 +1,27 @@
+---
+# Disk encryption for the SOYO control planes (ADR-0080). Each N150 exposes a
+# TPM 2.0 (`talosctl ls /sys/class/tpm` -> tpm0), so the LUKS2 keys of STATE and
+# EPHEMERAL are sealed to it, bound to PCR 7 (the default). Secure Boot is off,
+# so PCR 7 records "disabled": a stolen disk or a machine booted into another OS
+# cannot unseal it, a firmware Secure Boot change also locks it (recover by
+# wiping and re-joining the node). Wire this into a node's `patches:` in
+# talos/nodes.yaml only in the commit that wipes it (runbooks/talos-disk-encryption.md):
+# Talos cannot encrypt a volume that already holds data.
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - slot: 0
+      tpm: {}
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - slot: 0
+      tpm: {}
+      lockToState: true
