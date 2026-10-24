@@ -1,0 +1,26 @@
+---
+# gVisor runtime class (ADR-0079). Pods declaring `runtimeClassName: gvisor`
+# run on gVisor's user-space kernel (the Sentry, systrap platform) via the
+# siderolabs/gvisor system extension, handler `runsc`. No KVM needed, so it is
+# the sandbox for light, short-lived agent pods here and the only sandbox on
+# VMs without nested virtualization elsewhere. Needs user.max_user_namespaces,
+# already set in talos/patches/global/machine-sysctls.yaml.
+#
+# overhead: the Sentry and gofer per pod; vendor figures are tens of MiB.
+# Re-measure with the Unfold kit's bench and correct this if it is off.
+#
+# scheduling.nodeSelector: the handler exists only where the extension is
+# installed; runtime.webgrip.io/gvisor is set per node in
+# talos/patches/worker/*.yaml after `talosctl get extensions` shows gvisor.
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+overhead:
+  podFixed:
+    memory: 64Mi
+    cpu: 50m
+scheduling:
+  nodeSelector:
+    runtime.webgrip.io/gvisor: "true"

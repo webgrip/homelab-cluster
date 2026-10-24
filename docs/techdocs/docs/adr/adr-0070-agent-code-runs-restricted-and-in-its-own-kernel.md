@@ -91,3 +91,4 @@ Kata**, because it closes both gaps with changes that already ship and are teste
 * Re-evaluate when a supported harness needs root, or when the `sandbox` provisioner is qualified.
 * 2026-10-19 — accepted by Ryan Grippeling.
 * 2026-10-24 — merged onto main, after Ploeg moved into the Unfold release.
+* 2026-10-24 — Refined by [ADR-0079](adr-0079-gvisor-runs-beside-kata-on-the-workers.md): gVisor joins Kata on the workers; Kata stays the runtime for workspaces and writers.
