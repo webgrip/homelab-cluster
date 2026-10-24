@@ -1,0 +1,42 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: omnigraph-next-bundle
+  namespace: ai
+  labels:
+    rules: logs
+spec:
+  groups:
+    - name: omnigraph.next.bundle
+      type: vlogs
+      interval: 1m
+      rules:
+        - alert: OmnigraphBundleNotApplied
+          expr: >-
+            _time:30m namespace:=ai container:=apply-and-optimize pod:omnigraph-next*
+            "omnigraph bundle not applied"
+            | stats count() as skipped
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "Omnigraph 0.14 started on its last applied bundle and skipped the new one (ai/omnigraph-next)"
+            description: |
+              What's happening:
+              - At its last start the omnigraph-next init container refused to apply the bundle in git and kept serving the last applied state.
+
+              Impact/risk:
+              - Schema, stored-query or policy changes in git are not live on omnigraph-next, so callers of a new or changed stored query get 404 or the old behaviour.
+
+              Likely causes:
+              - A schema change while a graph has a branch other than main (schema apply needs main alone).
+              - A graph removed from cluster.yaml without its resource in approved-deletions.
+              - A bundle that does not validate, or a cluster apply that failed after a clean plan.
+
+              First actions:
+              - kubectl -n ai logs deploy/omnigraph-next -c apply-and-optimize | grep "not applied"
+              - Merge or delete the open branches of the graph, then restart the pod: kubectl -n ai rollout restart deploy/omnigraph-next
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#omnigraph-014-omnigraph-next"

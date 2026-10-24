@@ -1,0 +1,170 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: omnigraph-next
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-next
+  annotations:
+    reloader.stakater.com/auto: "true"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: omnigraph-next
+  template:
+    metadata:
+      labels:
+        app: omnigraph-next
+        app.kubernetes.io/name: omnigraph-next
+    spec:
+      serviceAccountName: omnigraph
+      terminationGracePeriodSeconds: 45
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: apply-and-optimize
+          image: harbor.webgrip.dev/dockerhub/modernrelay/omnigraph-server:v0.14.0@sha256:b5c92f1cfe2f735f07bc7aa79ec69d8b8311772a18399dc90136bc23b4943e1a
+          imagePullPolicy: IfNotPresent
+          command:
+            - "sh"
+            - "/etc/omnigraph/bundle/bootstrap.sh"
+          env:
+            - name: OMNIGRAPH_BUNDLE_DIR
+              value: /var/lib/omnigraph/bundle
+            - name: OMNIGRAPH_STATE_DIR
+              value: /var/lib/omnigraph/state
+            - name: OMNIGRAPH_OPERATOR_ACTOR
+              value: act-gitops
+            - name: OMNIGRAPH_HOME
+              value: /tmp/omnigraph-home
+            - name: NO_COLOR
+              value: "1"
+            - name: OMNIGRAPH_EMBED_PROVIDER
+              value: openai-compatible
+            - name: OMNIGRAPH_EMBED_BASE_URL
+              value: http://litellm.ai.svc.cluster.local:4000/v1
+            - name: OMNIGRAPH_EMBED_MODEL
+              value: granite-embedding-97m-multilingual-r2
+            - name: OMNIGRAPH_EMBED_DEADLINE_MS
+              value: "20000"
+            - name: OMNIGRAPH_EMBED_TIMEOUT_MS
+              value: "10000"
+            - name: OMNIGRAPH_EMBED_RETRY_ATTEMPTS
+              value: "4"
+            - name: OMNIGRAPH_EMBED_RETRY_BACKOFF_MS
+              value: "500"
+            - name: OMNIGRAPH_BACKFILL_MAX_ROWS
+              value: "500"
+            - name: OMNIGRAPH_BACKFILL_PART_ROWS
+              value: "100"
+            - name: OMNIGRAPH_BACKFILL_DEADLINE_SECONDS
+              value: "150"
+            - name: OMNIGRAPH_CLEANUP_OLDER_THAN
+              value: 7d
+          envFrom:
+            - secretRef:
+                name: omnigraph-embed-key
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {memory: 4Gi}
+          volumeMounts:
+            - {name: bundle-source, mountPath: /etc/omnigraph/bundle, readOnly: true}
+            - {name: bundle, mountPath: /var/lib/omnigraph/bundle}
+            - {name: state, mountPath: /var/lib/omnigraph/state}
+            - {name: tmp, mountPath: /tmp}
+      containers:
+        - name: omnigraph
+          image: harbor.webgrip.dev/dockerhub/modernrelay/omnigraph-server:v0.14.0@sha256:b5c92f1cfe2f735f07bc7aa79ec69d8b8311772a18399dc90136bc23b4943e1a
+          imagePullPolicy: IfNotPresent
+          command:
+            - "omnigraph-server"
+          args:
+            - --cluster
+            - file:///var/lib/omnigraph/state
+            - --bind
+            - 0.0.0.0:8080
+            - --require-all-graphs
+          env:
+            - name: OMNIGRAPH_SERVER_BEARER_TOKENS_FILE
+              value: /run/secrets/omnigraph/tokens.json
+            - name: OMNIGRAPH_SHUTDOWN_GRACE_SECONDS
+              value: "25"
+            - name: OMNIGRAPH_HOME
+              value: /tmp/omnigraph-home
+            - name: NO_COLOR
+              value: "1"
+            - name: OMNIGRAPH_EMBED_DEADLINE_MS
+              value: "10000"
+            - name: OMNIGRAPH_EMBED_TIMEOUT_MS
+              value: "5000"
+            - name: OMNIGRAPH_EMBED_RETRY_ATTEMPTS
+              value: "3"
+            - name: OMNIGRAPH_EMBED_RETRY_BACKOFF_MS
+              value: "200"
+          envFrom:
+            - secretRef:
+                name: omnigraph-embed-key
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {memory: 4Gi}
+          volumeMounts:
+            - {name: state, mountPath: /var/lib/omnigraph/state}
+            - {name: tokens, mountPath: /run/secrets/omnigraph, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: bundle-source
+          configMap:
+            name: omnigraph-next-bundle
+        - name: bundle
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: state
+          persistentVolumeClaim:
+            claimName: omnigraph-next-state
+        - name: tokens
+          secret:
+            secretName: omnigraph-tokens
+            items:
+              - key: tokens.json
+                path: tokens.json
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi

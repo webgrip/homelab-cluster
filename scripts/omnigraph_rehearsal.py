@@ -777,9 +777,12 @@ def smoke_value(param, role, schema, inserted_keys):
     raise Finding(f"cannot synthesize a {kind} parameter {param['name']}")
 
 
+HTTP_CONTRACT_HEADERS = {}
+
+
 def request(url, token, payload=None, method=None):
     data = None if payload is None else json.dumps(payload).encode()
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {token}", **HTTP_CONTRACT_HEADERS}
     if data is not None:
         headers["content-type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers, method=method)

@@ -1,0 +1,71 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: omnigraph-next-ingress
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  podSelector:
+    matchLabels:
+      app: omnigraph-next
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: omnigraph-mcp
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: omnigraph-explorer
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: omnigraph-vault-import
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: omnigraph-forge-import
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: omnigraph-distill
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: omnigraph-brain-eval
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: brain-tools
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: network
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ploeg
+          podSelector:
+            matchLabels:
+              ploeg.webgrip.dev/component: daemon
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: omnigraph-next-egress
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  podSelector:
+    matchLabels:
+      app: omnigraph-next
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: litellm
+      ports:
+        - protocol: TCP
+          port: 4000

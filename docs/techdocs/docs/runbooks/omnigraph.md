@@ -18,6 +18,21 @@ Omnigraph v0.11 runs one server in namespace `ai` with five graphs: `memory` (sh
 - The PVC is enrolled in the `gitops-backup` Longhorn job (daily, 7 kept, offsite).
 - Renovate never automerges Omnigraph (image or mise CLI). Minor releases change the storage format.
 
+## Omnigraph 0.14 (`omnigraph-next`)
+
+The 0.14 cutover ([RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md), epic VIK-2323) runs 0.14 as a second Deployment, `omnigraph-next`, in the same app directory, beside the 0.11 `omnigraph` pod. It serves the same bundle (schemas, queries, policies) from its own 20Gi PVC `omnigraph-next-state` and Service `omnigraph-next:8080`, with the same `omnigraph-tokens` and embedding key. Nothing points at it until the flip; its graphs stay empty until the migration Job (T1.7) fills them.
+
+Its init container runs [next/bootstrap.sh](../../../../kubernetes/apps/ai/omnigraph/app/next/bootstrap.sh):
+
+1. Releases any cluster lock a previous process left. 0.14 keeps the lock after every direct write on a cluster root until an exact-ID `force-unlock`; the pod is the only writer of its RWO volume (`strategy: Recreate`), so the init container is the owner and releases after each direct write.
+2. On an empty volume: validates and creates the cluster with `cluster apply --target file:///var/lib/omnigraph/state --config <bundle> --as act-gitops`.
+3. On an existing volume: plans first and **keeps serving the last applied state** instead of failing when the bundle does not validate, the plan is refused (a schema change while a graph has a branch other than `main`), the plan deletes a resource not listed in `approved-deletions`, or the apply fails. It logs `omnigraph bundle not applied: <reason>` and `OmnigraphBundleNotApplied` fires.
+4. Fills missing vectors (same cap and deadline as 0.11), then `optimize`, a full-text rebuild when optimize asks, and `cleanup --older-than 7d` per graph.
+
+`act-gitops` needs `schema_apply` in every graph policy for 0.14's direct apply (rule `operators-apply-schema`); it has no HTTP token, and the rehearsal exempts the operator from the token check. The server boots from the state root (`--cluster file:///var/lib/omnigraph/state`), needs no bundle mount, and every HTTP client must send `Omnigraph-Http-Api: 0.14`.
+
+**Rehearsal.** [test_omnigraph_next_bootstrap.py](../../../../scripts/test_omnigraph_next_bootstrap.py) renders the app, takes the `omnigraph-next-bundle` ConfigMap and the Deployment's env, and runs the bootstrap with the 0.14 binaries of the pinned image version (`mise where github:ModernRelay/omnigraph@<version>`): create on an empty volume, a restart that embeds exactly the backfill cap and cleans every graph, a schema change with a branch open, a graph removal without approval and a bundle that does not validate (each skipped, never fatal), then serving and invoking every stored query with the 0.14 header. [test-omnigraph-next-bootstrap-mutation.sh](../../../../scripts/test-omnigraph-next-bootstrap-mutation.sh) requires it to fail on a bootstrap without the deletion gate, one that dies on a refused plan, one that keeps the lock, one without the backfill cap and one without cleanup, and to pass the unchanged script. Both run in pre-commit (`rehearse-omnigraph-next`).
+
 ## Rehearse a bundle change
 
 A bundle change is applied by the init container of the only Omnigraph pod. If the apply fails, every graph stops. Every change under [app/](../../../../kubernetes/apps/ai/omnigraph/app/) (the bundle files, `bootstrap.sh`, `deployment.yaml`, the kustomization) therefore passes a rehearsal before it is committed:

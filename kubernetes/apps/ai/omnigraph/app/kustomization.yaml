@@ -39,6 +39,11 @@ resources:
   - ./networkpolicy.yaml
   - ./maintenance-restart.rbac.yaml
   - ./maintenance-restart.cronjob.yaml
+  - ./next/pvc.yaml
+  - ./next/deployment.yaml
+  - ./next/service.yaml
+  - ./next/networkpolicy.yaml
+  - ./next/vmrule.yaml
 configMapGenerator:
   - name: omnigraph-bundle
     files:
@@ -64,6 +69,33 @@ configMapGenerator:
       - ./bundle/server.policy.yaml
       - ./bundle/approved-deletions
       - ./bundle/bootstrap.sh
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+  - name: omnigraph-next-bundle
+    files:
+      - ./bundle/cluster.yaml
+      - ./bundle/memory.pg
+      - ./bundle/memory.gq
+      - ./bundle/memory.policy.yaml
+      - ./bundle/brain.pg
+      - ./bundle/brain.gq
+      - ./bundle/brain.capture.gq
+      - ./bundle/brain.topics.gq
+      - ./bundle/brain.retrieval.gq
+      - ./bundle/brain.policy.yaml
+      - ./bundle/meetings.pg
+      - ./bundle/meetings.gq
+      - ./bundle/webgrip.policy.yaml
+      - ./bundle/tenant-knowledge.pg
+      - ./bundle/tenant-knowledge.gq
+      - ./bundle/webgrip-knowledge.policy.yaml
+      - ./bundle/tenant-notes.pg
+      - ./bundle/tenant-notes.gq
+      - ./bundle/webgrip-notes.policy.yaml
+      - ./bundle/server.policy.yaml
+      - ./bundle/approved-deletions
+      - bootstrap.sh=./next/bootstrap.sh
     options:
       annotations:
         kustomize.toolkit.fluxcd.io/substitute: disabled
