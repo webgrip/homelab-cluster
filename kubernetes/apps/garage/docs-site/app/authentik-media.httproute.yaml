@@ -1,0 +1,44 @@
+---
+# authentik media served from Garage on authentik's own host (VIK-2380).
+#
+# With AUTHENTIK_STORAGE__BACKEND=s3, authentik hands browsers presigned GetObject
+# URLs. AUTHENTIK_STORAGE__S3__CUSTOM_DOMAIN=authentik.<domain>/authentik-media makes
+# authentik sign the PUBLIC URL (host authentik.<domain>, path /authentik-media/...),
+# so this route only has to forward it unchanged: Envoy keeps the Host header the
+# signature covers, and Garage reads /authentik-media/<key> path-style. Same origin as
+# the login page, so no new DNS name, certificate or CSP entry.
+#
+# GET and HEAD only: the S3 API behind it would accept a signed write, and nothing
+# in a browser needs one. Writes stay on the in-cluster endpoint.
+#
+# Lives in the garage namespace (this ks substitutes ${SECRET_DOMAIN}) so the backend
+# is same-namespace: no ReferenceGrant, and the cross-namespace backend audit rule
+# stays quiet. Gateway API merges it with authentik's own route on the same host;
+# the longer path prefix wins.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: authentik-media
+  namespace: garage
+  annotations:
+    external-dns.alpha.kubernetes.io/exclude: "true"
+spec:
+  hostnames:
+    - authentik.${SECRET_DOMAIN}
+  parentRefs:
+    - name: envoy-internal
+      namespace: network
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /authentik-media/
+          method: GET
+        - path:
+            type: PathPrefix
+            value: /authentik-media/
+          method: HEAD
+      backendRefs:
+        - name: garage-s3
+          port: 3900

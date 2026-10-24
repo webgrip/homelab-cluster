@@ -109,3 +109,13 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
+    # In-cluster Garage S3 API: media and reports bucket (VIK-2380). A namespace
+    # rule, not the service-CIDR block above: Cilium enforces on the post-DNAT pod
+    # identity, so a Service CIDR rule does not cover it.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: garage
+      ports:
+        - protocol: TCP
+          port: 3900
