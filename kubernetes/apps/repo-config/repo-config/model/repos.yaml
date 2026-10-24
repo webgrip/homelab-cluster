@@ -2,23 +2,36 @@
 # yaml-language-server: $schema=./schema/repos.schema.json
 apiVersion: repo-config.webgrip.io/v1alpha1
 kind: RepoSet
-owner: webgrip
+forgejo:
+  owner: webgrip
+github:
+  owners:
+    ploeg-hq:
+      app_secret_path: github/ploeg-hq-app
+    webgrip:
+      app_secret_path: github/webgrip-app
 repos:
   ".profile":
+    forge: forgejo
     profile: baseline
   action-typescript-template:
+    forge: forgejo
     profile: baseline
   ai-skills:
+    forge: forgejo
     profile: baseline
   application-template:
+    forge: forgejo
     profile: baseline
     settings:
       archived: true
   backstage-application:
+    forge: forgejo
     profile: baseline
     settings:
       archived: true
   claude-config:
+    forge: forgejo
     profile: baseline
     settings:
       has_releases: false
@@ -26,58 +39,76 @@ repos:
       main:
         status_checks: []
   cloudflare:
+    forge: forgejo
     profile: baseline
   common-charts:
+    forge: forgejo
     profile: baseline
     settings:
       archived: true
   counterscale:
+    forge: forgejo
     profile: baseline
   freshrss-application:
+    forge: forgejo
     profile: baseline
     settings:
       archived: true
   frontend-toolkit:
+    forge: forgejo
     profile: baseline
   homelab-cluster:
+    forge: forgejo
     profile: homelab
   infrastructure:
+    forge: forgejo
     profile: baseline
   invoiceninja-application:
+    forge: forgejo
     profile: baseline
     settings:
       archived: true
   ledgerflow:
+    forge: forgejo
     profile: baseline
     settings:
       archived: true
   monitoring-platform:
+    forge: forgejo
     profile: baseline
     settings:
       archived: true
   renovate-config:
+    forge: forgejo
     profile: baseline
   searxng-application:
+    forge: forgejo
     profile: baseline
     settings:
       archived: true
   seekframe:
+    forge: forgejo
     profile: baseline
     settings:
       default_delete_branch_after_merge: false
   semantic-release-config:
+    forge: forgejo
     profile: baseline
   telemetry-service:
+    forge: forgejo
     profile: baseline
   traefik-local-development:
+    forge: forgejo
     profile: baseline
     settings:
       archived: true
   twente.dev:
+    forge: forgejo
     profile: baseline
     settings:
       allow_squash_merge: false
   unfold:
+    forge: forgejo
     profile: baseline
     branches:
       main:
@@ -92,13 +123,130 @@ repos:
           - "\\[Workflow\\] On Pull Request / ploeg-pin (pull_request)"
           - "\\[Workflow\\] On Pull Request / ploeg-docs (pull_request)"
   webgrip.nl:
+    forge: forgejo
     profile: baseline
   whisperx-application:
+    forge: forgejo
     profile: baseline
     settings:
       archived: true
   workflows:
+    forge: forgejo
     profile: baseline
     branches:
       main:
         status_checks: []
+  ploeg-hq/ploeg:
+    forge: github
+    profile: baseline
+    settings:
+      default_branch: development
+    rulesets:
+      protect-development:
+        id: 24451069
+        name: Protect development
+        target: branch
+        include:
+          - refs/heads/development
+        deletion: true
+        non_fast_forward: true
+        update: false
+        required_status_checks:
+          - context: verify
+            integration_id: 15368
+          - context: dco
+            integration_id: 15368
+        bypass_repository_role_ids:
+          - 5
+      protect-main:
+        id: 24445411
+        name: Protect main
+        target: branch
+        include:
+          - refs/heads/main
+        deletion: true
+        non_fast_forward: true
+        update: false
+        required_status_checks:
+          - context: verify
+            integration_id: 15368
+        bypass_repository_role_ids:
+          - 5
+      release-tags-immutable:
+        id: 24445407
+        name: Release tags are immutable
+        target: tag
+        include:
+          - refs/tags/v*
+        deletion: true
+        non_fast_forward: true
+        update: true
+        required_status_checks: []
+        bypass_repository_role_ids: []
+    release_consumers: >-
+      [{"forge":"forgejo","url":"https://forgejo.webgrip.dev","repo":"webgrip/unfold","base":"development","recipe":"scripts/consume-ploeg-release.sh","message":"fix(ploeg): update Ploeg to {version}"}]
+  webgrip/application-template:
+    forge: github
+    profile: baseline
+    mirror_of: application-template
+    settings:
+      archived: true
+  webgrip/backstage-application:
+    forge: github
+    profile: baseline
+    mirror_of: backstage-application
+    settings:
+      archived: true
+  webgrip/common-charts:
+    forge: github
+    profile: baseline
+    mirror_of: common-charts
+    settings:
+      archived: true
+  webgrip/freshrss-application:
+    forge: github
+    profile: baseline
+    mirror_of: freshrss-application
+    settings:
+      archived: true
+  webgrip/invoiceninja-application:
+    forge: github
+    profile: baseline
+    mirror_of: invoiceninja-application
+    settings:
+      archived: true
+  webgrip/ledgerflow:
+    forge: github
+    profile: baseline
+    mirror_of: ledgerflow
+    settings:
+      archived: true
+  webgrip/monitoring-platform:
+    forge: github
+    profile: baseline
+    mirror_of: monitoring-platform
+    settings:
+      archived: true
+  webgrip/searxng-application:
+    forge: github
+    profile: baseline
+    mirror_of: searxng-application
+    settings:
+      archived: true
+  webgrip/traefik-local-development:
+    forge: github
+    profile: baseline
+    mirror_of: traefik-local-development
+    settings:
+      archived: true
+  webgrip/twitch_exporter:
+    forge: github
+    profile: baseline
+    settings:
+      archived: true
+  webgrip/whisperx-application:
+    forge: github
+    profile: baseline
+    mirror_of: whisperx-application
+    settings:
+      archived: true

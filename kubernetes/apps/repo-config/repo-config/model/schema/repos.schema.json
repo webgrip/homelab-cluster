@@ -6,7 +6,8 @@
   "required": [
     "apiVersion",
     "kind",
-    "owner",
+    "forgejo",
+    "github",
     "repos"
   ],
   "properties": {
@@ -16,25 +17,66 @@
     "kind": {
       "const": "RepoSet"
     },
-    "owner": {
-      "const": "webgrip"
+    "forgejo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner"
+      ],
+      "properties": {
+        "owner": {
+          "const": "webgrip"
+        }
+      }
+    },
+    "github": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owners"
+      ],
+      "properties": {
+        "owners": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z0-9-]+$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "app_secret_path"
+            ],
+            "properties": {
+              "app_secret_path": {
+                "type": "string",
+                "pattern": "^github/[a-z0-9-]+-app$"
+              }
+            }
+          }
+        }
+      }
     },
     "repos": {
       "type": "object",
       "minProperties": 1,
       "required": [
         "homelab-cluster",
-        "unfold"
+        "unfold",
+        "ploeg-hq/ploeg"
       ],
-      "propertyNames": {
-        "pattern": "^[A-Za-z0-9._-]+$"
+      "patternProperties": {
+        "^[A-Za-z0-9._-]+$": {
+          "$ref": "#/$defs/forgejoRepo"
+        },
+        "^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$": {
+          "$ref": "#/$defs/githubRepo"
+        }
       },
-      "additionalProperties": {
-        "$ref": "#/$defs/repo"
-      },
+      "additionalProperties": false,
       "properties": {
         "homelab-cluster": {
-          "$ref": "#/$defs/repo",
           "properties": {
             "profile": {
               "const": "homelab"
@@ -59,22 +101,59 @@
     }
   },
   "$defs": {
-    "repo": {
+    "profileName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "forgejoRepo": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "forge",
         "profile"
       ],
       "properties": {
+        "forge": {
+          "const": "forgejo"
+        },
         "profile": {
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*$"
+          "$ref": "#/$defs/profileName"
         },
         "settings": {
           "$ref": "settings.schema.json"
         },
         "branches": {
           "$ref": "branch-protection.schema.json"
+        }
+      }
+    },
+    "githubRepo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "forge",
+        "profile"
+      ],
+      "properties": {
+        "forge": {
+          "const": "github"
+        },
+        "profile": {
+          "$ref": "#/$defs/profileName"
+        },
+        "mirror_of": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "settings": {
+          "$ref": "github-settings.schema.json"
+        },
+        "rulesets": {
+          "$ref": "github-rulesets.schema.json"
+        },
+        "release_consumers": {
+          "type": "string",
+          "minLength": 2
         }
       }
     }

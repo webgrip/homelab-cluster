@@ -1,5 +1,6 @@
 locals {
   read_app_credentials_from_vault = var.local_verification_github_token == ""
+  vault_role                      = var.vault_role != "" ? var.vault_role : "github-config-${var.github_owner}"
 }
 
 provider "vault" {
@@ -12,7 +13,7 @@ provider "vault" {
     content {
       path = "auth/kubernetes/login"
       parameters = {
-        role = var.vault_role
+        role = local.vault_role
         jwt  = file("/var/run/secrets/kubernetes.io/serviceaccount/token")
       }
     }
@@ -22,11 +23,11 @@ provider "vault" {
 ephemeral "vault_kv_secret_v2" "app" {
   count = local.read_app_credentials_from_vault ? 1 : 0
   mount = "secret"
-  name  = local.model.app_secret_path
+  name  = local.github_owner.app_secret_path
 }
 
 provider "github" {
-  owner    = local.owner
+  owner    = var.github_owner
   base_url = var.github_base_url
   token    = local.read_app_credentials_from_vault ? null : var.local_verification_github_token
 

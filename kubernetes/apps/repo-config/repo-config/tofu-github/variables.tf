@@ -1,3 +1,12 @@
+variable "github_owner" {
+  type = string
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9-]+$", var.github_owner))
+    error_message = "github_owner must be a GitHub organisation or user name listed under github.owners in the repo-config model."
+  }
+}
+
 variable "vault_address" {
   type    = string
   default = "http://openbao.security.svc.cluster.local:8200"
@@ -5,7 +14,7 @@ variable "vault_address" {
 
 variable "vault_role" {
   type    = string
-  default = "github-config-ploeg-hq"
+  default = ""
 }
 
 variable "vault_token" {

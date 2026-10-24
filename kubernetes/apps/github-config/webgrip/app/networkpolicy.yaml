@@ -1,0 +1,83 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: github-config-webgrip-allow-controller-to-runner
+  labels:
+    app.kubernetes.io/name: github-config-webgrip
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tf-runner
+      app.kubernetes.io/part-of: github-config-webgrip
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: flux-system
+      ports:
+        - protocol: TCP
+          port: 30000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: github-config-webgrip-runner-allow-openbao
+  labels:
+    app.kubernetes.io/name: github-config-webgrip
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tf-runner
+      app.kubernetes.io/part-of: github-config-webgrip
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: security
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openbao
+      ports:
+        - protocol: TCP
+          port: 8200
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: github-config-webgrip-runner-egress
+  labels:
+    app.kubernetes.io/name: github-config-webgrip
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: tf-runner
+      app.kubernetes.io/part-of: github-config-webgrip
+  egress:
+    - toEntities:
+        - kube-apiserver
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchName: api.github.com
+        - matchName: github.com
+        - matchName: registry.opentofu.org
+        - matchName: release-assets.githubusercontent.com
+        - matchName: objects.githubusercontent.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

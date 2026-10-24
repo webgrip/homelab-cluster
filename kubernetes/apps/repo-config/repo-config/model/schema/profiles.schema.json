@@ -28,29 +28,43 @@
         "$ref": "#/$defs/profile"
       },
       "properties": {
+        "baseline": {
+          "$ref": "#/$defs/profile",
+          "required": [
+            "forgejo",
+            "github"
+          ]
+        },
         "homelab": {
           "$ref": "#/$defs/profile",
           "required": [
-            "branches"
+            "forgejo"
           ],
           "properties": {
-            "branches": {
+            "forgejo": {
               "required": [
-                "main"
+                "branches"
               ],
               "properties": {
-                "main": {
-                  "properties": {
-                    "push": {
-                      "contains": {
-                        "const": "ryangr0"
-                      }
-                    }
-                  },
+                "branches": {
                   "required": [
-                    "push",
-                    "merge"
-                  ]
+                    "main"
+                  ],
+                  "properties": {
+                    "main": {
+                      "properties": {
+                        "push": {
+                          "contains": {
+                            "const": "ryangr0"
+                          }
+                        }
+                      },
+                      "required": [
+                        "push",
+                        "merge"
+                      ]
+                    }
+                  }
                 }
               }
             }
@@ -61,6 +75,19 @@
   },
   "$defs": {
     "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "forgejo": {
+          "$ref": "#/$defs/forgejo"
+        },
+        "github": {
+          "$ref": "#/$defs/github"
+        }
+      }
+    },
+    "forgejo": {
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -87,6 +114,23 @@
         },
         "branches": {
           "$ref": "branch-protection.schema.json"
+        }
+      }
+    },
+    "github": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "settings"
+      ],
+      "properties": {
+        "settings": {
+          "$ref": "github-settings.schema.json",
+          "not": {
+            "required": [
+              "default_branch"
+            ]
+          }
         }
       }
     }

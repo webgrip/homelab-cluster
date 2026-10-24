@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GitHubRulesets",
+  "type": "object",
+  "minProperties": 1,
+  "propertyNames": {
+    "pattern": "^[a-z][a-z0-9-]*$"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "id",
+      "name",
+      "target",
+      "include",
+      "deletion",
+      "non_fast_forward",
+      "update",
+      "required_status_checks",
+      "bypass_repository_role_ids"
+    ],
+    "properties": {
+      "id": { "type": "integer", "minimum": 1 },
+      "name": { "type": "string", "minLength": 1 },
+      "target": { "enum": ["branch", "tag"] },
+      "include": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": { "type": "string", "pattern": "^(refs/(heads|tags)/.+|~DEFAULT_BRANCH|~ALL)$" }
+      },
+      "deletion": { "type": "boolean" },
+      "non_fast_forward": { "type": "boolean" },
+      "update": { "type": "boolean" },
+      "required_status_checks": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["context", "integration_id"],
+          "properties": {
+            "context": { "type": "string", "minLength": 1 },
+            "integration_id": { "type": "integer", "minimum": 1 }
+          }
+        }
+      },
+      "bypass_repository_role_ids": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

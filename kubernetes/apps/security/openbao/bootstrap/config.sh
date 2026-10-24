@@ -33,6 +33,7 @@ bao policy write ci-twente-dev /scripts/ci-twente-dev.hcl
 bao policy write ci-cloudflare /scripts/ci-cloudflare.hcl
 bao policy write forgejo-repo-config /scripts/forgejo-repo-config.hcl
 bao policy write github-config-ploeg-hq /scripts/github-config-ploeg-hq.hcl
+bao policy write github-config-webgrip /scripts/github-config-webgrip.hcl
 bao policy write github-secrets-bridge /scripts/github-secrets-bridge.hcl
 bao policy write renovate-github-app-token-ploeg-hq /scripts/renovate-github-app-token-ploeg-hq.hcl
 
@@ -62,6 +63,9 @@ bao write auth/kubernetes/role/forgejo-repo-config \
 bao write auth/kubernetes/role/github-config-ploeg-hq \
   bound_service_account_names=github-config-ploeg-hq-runner bound_service_account_namespaces=github-config \
   policies=github-config-ploeg-hq ttl=30m >/dev/null
+bao write auth/kubernetes/role/github-config-webgrip \
+  bound_service_account_names=github-config-webgrip-runner bound_service_account_namespaces=github-config \
+  policies=github-config-webgrip ttl=30m >/dev/null
 bao write auth/kubernetes/role/github-secrets-bridge \
   bound_service_account_names=github-secrets-bridge bound_service_account_namespaces=github-secrets-bridge \
   policies=github-secrets-bridge ttl=10m >/dev/null

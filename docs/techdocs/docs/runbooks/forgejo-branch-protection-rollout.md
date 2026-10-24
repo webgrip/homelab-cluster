@@ -12,6 +12,12 @@ hourly by the `repo-config` Terraform object in namespace `repo-config` with
 and an `--all --only protect` sweep locked the owner out of homelab-cluster on 2026-08-05.
 Nothing scheduled ever ran the script.
 
+Every entry in `repos.yaml` names its `forge`. Forgejo entries are keyed by repository name and
+read the `forgejo` block of their profile; GitHub entries are keyed `<owner>/<name>` and are
+applied by a separate module (since 2026-10-24, VIK-2320): see
+[github-app-ploeg-hq](github-app-ploeg-hq.md#one-model-for-both-forges-since-2026-10-24) and
+[github-app-webgrip](github-app-webgrip.md).
+
 | Term | Meaning |
 | --- | --- |
 | **Push whitelist** | Identities allowed to push the branch directly — everyone else must open a PR. `push` in the model; absent means no whitelist. |

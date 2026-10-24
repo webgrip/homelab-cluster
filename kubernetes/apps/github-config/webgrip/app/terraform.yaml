@@ -1,0 +1,35 @@
+---
+apiVersion: infra.contrib.fluxcd.io/v1alpha2
+kind: Terraform
+metadata:
+  name: webgrip
+  labels:
+    app.kubernetes.io/name: github-config-webgrip
+spec:
+  suspend: true
+  interval: 1h
+  retryInterval: 15m
+  path: ./kubernetes/apps/repo-config/repo-config/tofu-github
+  vars:
+    - name: github_owner
+      value: webgrip
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  serviceAccountName: github-config-webgrip-runner
+  storeReadablePlan: human
+  alwaysCleanupRunnerPod: true
+  runnerPodTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: github-config-webgrip
+    spec:
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 1Gi

@@ -2,19 +2,23 @@ locals {
   model_dir = var.model_dir != "" ? var.model_dir : "${path.module}/../model"
   profiles  = yamldecode(file("${local.model_dir}/profiles.yaml")).profiles
   model     = yamldecode(file("${local.model_dir}/repos.yaml"))
-  owner     = local.model.owner
+  owner     = local.model.forgejo.owner
+
+  forgejo_repos = {
+    for name, repo in local.model.repos : name => repo if repo.forge == "forgejo"
+  }
 
   repos = {
-    for name, repo in local.model.repos : name => merge(
-      local.profiles[repo.profile].settings,
+    for name, repo in local.forgejo_repos : name => merge(
+      local.profiles[repo.profile].forgejo.settings,
       try(repo.settings, {}),
     )
   }
 
   branch_protections = merge([
-    for name, repo in local.model.repos : {
+    for name, repo in local.forgejo_repos : {
       for branch, rule in merge(
-        try(local.profiles[repo.profile].branches, {}),
+        try(local.profiles[repo.profile].forgejo.branches, {}),
         try(repo.branches, {}),
       ) : "${name}/${branch}" => merge(rule, { repo = name, branch = branch })
     }

@@ -8,7 +8,7 @@ waits for it.
 
 | Mechanism | Path | Owns | Runs |
 | --- | --- | --- | --- |
-| GitHub module | `kubernetes/apps/github-config/ploeg-hq/` (namespace `github-config`; `model/ploeg-hq.yaml`, `tofu/`) | the three rulesets, repository settings, default branch, Actions permissions, the `RELEASE_CONSUMERS` variable | tofu-controller `Terraform/ploeg-hq`, hourly, plan-only |
+| GitHub module | model: entry `ploeg-hq/ploeg` in `kubernetes/apps/repo-config/repo-config/model/repos.yaml` plus the `github` block of its profile; module: `kubernetes/apps/repo-config/repo-config/tofu-github/`; object: `kubernetes/apps/github-config/ploeg-hq/` (namespace `github-config`, `vars.github_owner: ploeg-hq`) | the three rulesets, repository settings, default branch, Actions permissions, the `RELEASE_CONSUMERS` variable | tofu-controller `Terraform/ploeg-hq`, hourly, `approvePlan: auto` |
 | GitHub secrets bridge | `kubernetes/apps/github-secrets-bridge/` (namespace `github-secrets-bridge`) | Actions secret `RELEASE_CONSUMER_TOKEN_FORGEJO` | CronJob `github-secrets-bridge`, hourly at :41 |
 
 They sit in separate namespaces on purpose: the tf-runner Role may read Secrets in its own
@@ -18,6 +18,20 @@ RFC §8.1). The module reads the App key through an ephemeral OpenBao read; the 
 over OpenBao Kubernetes auth, encrypts the token with the repository public key (libsodium
 sealed box) and keeps only a SHA-256 fingerprint of the source in ConfigMap
 `github-secrets-bridge-state`.
+
+## One model for both forges (since 2026-10-24)
+
+GitHub repositories are entries in the same repo-config model as the Forgejo ones
+([ADR-0078](../adr/adr-0078-one-release-recipe-four-kinds.md), VIK-2320). An entry's key is
+`<owner>/<name>` and it carries `forge: github`; its profile's `github.settings` block supplies the
+defaults and the entry adds `default_branch`, `rulesets` and `release_consumers`. The module
+`tofu-github` serves one GitHub owner per Terraform object, chosen by the `github_owner` variable;
+the owner's App key path is `github.owners.<owner>.app_secret_path` in `repos.yaml`, and the
+OpenBao role is `github-config-<owner>`. `moved` blocks in `tofu-github/moved.tf` carry the
+state of the old single-repository module over, so the switch planned no change: proven on
+2026-10-24 with a local plan on state imported from the live repository
+(`Plan: 0 to add, 0 to change, 0 to destroy`, eight moves). The `webgrip` owner has its own
+object and App: [github-app-webgrip](github-app-webgrip.md).
 
 ## State until the App exists
 
@@ -100,20 +114,21 @@ That is all the owner has to do. The rest can be done by an agent.
 Today Unfold's Renovate Ploeg group is the single writer of Unfold's Ploeg pin (unfold#437
 interim). The producer path (ploeg#173 reads `RELEASE_CONSUMERS` and uses
 `RELEASE_CONSUMER_TOKEN_FORGEJO`) must not run at the same time, or two writers race on the same
-pin. The model holds the variable behind `release_consumers_enabled: false`. Switch in this order,
+pin. The model holds the variable as the `release_consumers` field of the `ploeg-hq/ploeg` entry; absent means
+unmanaged. Switch in this order,
 with no Ploeg release in flight:
 
 1. Confirm `RELEASE_CONSUMER_TOKEN_FORGEJO` exists (bridge step above) and the module applies
    with `approvePlan: auto`.
-2. Set `release_consumers_enabled: true` in `model/ploeg-hq.yaml`, commit, push. The next plan
-   shows `1 to add` (`github_actions_variable.release_consumers["RELEASE_CONSUMERS"]`); once
+2. Add `release_consumers` to the `ploeg-hq/ploeg` entry in `repos.yaml`, commit, push. The next plan
+   shows `1 to add` (`github_actions_variable.release_consumers["ploeg-hq/ploeg"]`); once
    applied, `gh api repos/ploeg-hq/ploeg/actions/variables/RELEASE_CONSUMERS` returns it. Nothing
    reads it yet, so this step alone changes no behaviour.
 3. Revert unfold#437 so Renovate stops bumping Ploeg in Unfold.
 4. Merge ploeg#173. From the next Ploeg release the producer opens the Unfold PR.
 
 Between steps 3 and 4 a release would get no bump at all (a gap, not a race); do them back to
-back. To roll back, revert ploeg#173 first, then restore unfold#437, then set the flag to false.
+back. To roll back, revert ploeg#173 first, then restore unfold#437, then remove the `release_consumers` field.
 
 ## The Renovate App
 

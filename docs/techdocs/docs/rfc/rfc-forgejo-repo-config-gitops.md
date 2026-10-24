@@ -1,7 +1,8 @@
 # RFC: Forgejo repository settings as GitOps — profiles in git, one reconciler
 
 > Status: **Accepted** (2026-09-28, option B; [decisions](#7-decisions-2026-09-28); amended the same day:
-> [full replacement](#8-full-replacement-amendment-2026-09-28)) · Date: 2026-09-28 ·
+> [full replacement](#8-full-replacement-amendment-2026-09-28); 2026-10-24: GitHub repositories join the
+> model, [§8.5](#85-github-repositories-in-the-same-model-2026-10-24)) · Date: 2026-09-28 ·
 > Epic: VIK-1302 · Refines the
 > enforcement half of [ADR-0050](../adr/adr-0050-per-repo-delivery-contract.md) · Reuses the
 > shape of [ADR-0058](../adr/adr-0058-access-plane-one-module-one-model.md)
@@ -571,6 +572,28 @@ once providers are mirrored in-cluster (the tofu part only; upstream PRs always 
    and derived state. Confirm that "everything the script does" does not include them.
 4. **Upstream work on the estate's GitHub identity.** Upstream PRs are opened as `ryangr0`, or as
    an agent identity? This decides whether VIK-1329 and the #155 follow-up can ever be Glide work.
+
+### 8.5 GitHub repositories in the same model (2026-10-24)
+
+Owner decision with [ADR-0078](../adr/adr-0078-one-release-recipe-four-kinds.md) (VIK-2320): GitHub
+repository settings live in this model, not in a second one.
+
+- Every entry in `repos.yaml` names its `forge`. Forgejo entries keep their repository name as key
+  (no state address changed); GitHub entries are keyed `<owner>/<name>`, and the schema ties the
+  key shape to the forge.
+- A profile carries one block per forge: `forgejo` (settings, branches) and `github` (settings).
+  A GitHub entry adds `default_branch`, `rulesets`, `release_consumers` and, for a push mirror,
+  `mirror_of`, which the validator holds to the archive state of its Forgejo source.
+- `github.owners` lists each GitHub owner with the OpenBao path of its App key. The module
+  `tofu-github` serves one owner per tofu-controller object (`Terraform/ploeg-hq`,
+  `Terraform/webgrip` in namespace `github-config`), so one owner's missing or broken key never
+  blocks another owner's plan.
+- The former `kubernetes/apps/github-config/ploeg-hq/{model,tofu}` is gone. `moved` blocks carry
+  its state, and a local plan on state imported from the live repository showed eight moves and
+  no change.
+- Archived GitHub entries write `archived = true` and ignore every other attribute. The `webgrip`
+  object is suspended until the organisation has its own App
+  ([runbook](../runbooks/github-app-webgrip.md)).
 
 ## 9. References
 

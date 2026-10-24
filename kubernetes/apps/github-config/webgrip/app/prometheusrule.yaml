@@ -1,0 +1,48 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: github-config-webgrip
+  labels:
+    app.kubernetes.io/name: github-config-webgrip
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: github-config-webgrip.rules
+      rules:
+        - alert: GitHubConfigWebgripNotReady
+          expr: |
+            max by (terraform_namespace, terraform_name) (
+              tofu_terraform_status_condition{
+                terraform_namespace="github-config",
+                terraform_name="webgrip",
+                type="Ready",
+                status!="True",
+                reason!~"TerraformPlannedWithChanges|TerraformAppliedSucceed"
+              }
+            ) == 1
+          for: 3h
+          labels:
+            severity: warning
+            owner: platform
+            service: github-config
+          annotations:
+            summary: "GitHub webgrip Terraform not Ready for 3h (github-config/webgrip)"
+            description: |-
+              What's happening:
+              - The webgrip Terraform object in namespace github-config has not been Ready for three hourly reconciles.
+              - A plan waiting for approval and the hour after an apply are excluded.
+
+              Impact/risk:
+              - The webgrip GitHub repositories in the repo-config model (archived push mirrors and forks) drift without being planned or corrected.
+
+              Likely causes:
+              - OpenBao login failed (role github-config-webgrip) or secret/github/webgrip-app lacks app_id, installation_id or private_key
+              - The App lost its installation on a modelled repository, or its Administration permission
+              - A model edit that fails the provider schema or prevent_destroy
+
+              First actions:
+              - kubectl -n github-config get terraform webgrip -o yaml
+              - kubectl -n github-config logs -l app.kubernetes.io/part-of=github-config-webgrip,app.kubernetes.io/name=tf-runner
+              - docs/techdocs/docs/runbooks/github-app-webgrip.md
