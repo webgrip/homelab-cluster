@@ -18,6 +18,18 @@ locals {
         return {"litellm_role": "internal_user"}
       EOT
     }
+    vikunja-groups = {
+      scope_name  = "vikunja_groups"
+      description = "Emits vikunja_groups, the teams Vikunja syncs at every sign-in; homelab-users is the team the shared boards are given to."
+      expression  = <<-EOT
+        return {
+            "vikunja_groups": [
+                {"name": group.name, "oidcID": group.name}
+                for group in request.user.ak_groups.filter(name__in=["homelab-users"])
+            ],
+        }
+      EOT
+    }
     ploeg-read = {
       scope_name  = "ploeg:read"
       description = "Read Ploeg through ploeg-mcp; carries the groups that map a person to an operator consumer."
@@ -122,7 +134,7 @@ locals {
       signing_key   = true
       grant_types   = ["authorization_code", "refresh_token"]
       redirects     = [{ matching_mode = "strict", url = "https://vikunja.${var.SECRET_DOMAIN}/auth/openid/authentik" }]
-      extra_scopes  = []
+      extra_scopes  = ["vikunja-groups"]
     }
     litellm = {
       provider_name          = "litellm-oidc"

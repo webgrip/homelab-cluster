@@ -66,9 +66,16 @@ This is yours.
 | Harbor | Membership of each registry project their projects own | the broker's next interval |
 | Forgejo | The account, and the `Developers` or `Owners` team | at their first sign-in, re-checked every sign-in |
 | Grafana, LiteLLM, Backstage, Vikunja | The account with the role their groups map to | at their first sign-in |
+| Vikunja boards | Membership of the `Webgrip` team, which the shared boards are given to | at their first sign-in, re-checked every sign-in |
 
 The `Developers` team itself is kept by the `developers-team-provisioner` CronJob in `forgejo`,
 not by hand: Forgejo skips a mapped team that does not exist, silently.
+
+The Vikunja side works the same way. Authentik emits a `vikunja_groups` claim for members of
+`homelab-users`; Vikunja joins them to the team whose external id matches and drops them from it
+when the claim stops naming it. The `vikunja-board-shares` CronJob in `vikunja` keeps that team
+and its board shares: `SHARED_BOARDS` lists the Vikunja project ids, read and write. Adding a
+board is adding its id there; removing it unshares it on the next hour.
 
 ### Verify against the live systems
 
@@ -87,7 +94,6 @@ them to sign in at Authentik; a refusal after Google means the email differs byt
 | Step | Why it is not in Git yet |
 | --- | --- |
 | A WireGuard peer on the router | OPNsense is outside the cluster and has no reconciler here |
-| Sharing Vikunja boards | Vikunja has no team sync from Authentik groups configured |
 
 ## Mover
 

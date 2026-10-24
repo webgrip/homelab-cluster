@@ -1,0 +1,120 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vikunja-board-shares
+spec:
+  schedule: "29 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: vikunja-board-shares
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: psql
+              image: docker.io/library/postgres:18.4-alpine3.23@sha256:996d0920e4ff9df1fc19dacb904492f3c1ec0ec1cc338f0ad7123be7731c5f5e
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - "ALL"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 128Mi
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+              env:
+                - name: HOME
+                  value: /tmp
+                - name: PGHOST
+                  value: vikunja-db-rw
+                - name: PGPORT
+                  value: "5432"
+                - name: PGDATABASE
+                  value: app
+                - name: PGSSLMODE
+                  value: require
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: vikunja-db-app
+                      key: username
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: vikunja-db-app
+                      key: password
+                - name: TEAM_EXTERNAL_ID
+                  value: homelab-users
+                - name: TEAM_ISSUER
+                  value: https://authentik.${SECRET_DOMAIN}/application/o/vikunja/
+                - name: TEAM_OWNER_PROJECT
+                  value: "3"
+                - name: SHARED_BOARDS
+                  value: "3,4,6,9,10"
+                - name: READ_WRITE
+                  value: "1"
+              command:
+                - /bin/sh
+                - -ceu
+              args:
+                - |
+                  psql -v ON_ERROR_STOP=1 \
+                    -v external_id="$TEAM_EXTERNAL_ID" \
+                    -v issuer="$TEAM_ISSUER" \
+                    -v owner_project="$TEAM_OWNER_PROJECT" \
+                    -v boards="$SHARED_BOARDS" \
+                    -v permission="$READ_WRITE" <<'SQL'
+                  BEGIN;
+                  INSERT INTO teams (name, description, created_by_id, external_id, issuer, created, updated, is_public)
+                  SELECT 'Webgrip', 'Everyone the access plane grants tasks-use; membership is synced from Authentik at each sign-in', p.owner_id, :'external_id', :'issuer', now(), now(), false
+                  FROM projects p
+                  WHERE p.id = :'owner_project'::bigint
+                    AND NOT EXISTS (SELECT 1 FROM teams WHERE external_id = :'external_id' AND issuer = :'issuer');
+                  CREATE TEMP TABLE wanted ON COMMIT DROP AS
+                  SELECT t.id AS team_id, b.project_id
+                  FROM teams t
+                  CROSS JOIN unnest(string_to_array(:'boards', ',')::bigint[]) AS b(project_id)
+                  JOIN projects p ON p.id = b.project_id
+                  WHERE t.external_id = :'external_id' AND t.issuer = :'issuer';
+                  INSERT INTO team_projects (team_id, project_id, permission, created, updated)
+                  SELECT w.team_id, w.project_id, :'permission'::bigint, now(), now()
+                  FROM wanted w
+                  WHERE NOT EXISTS (SELECT 1 FROM team_projects tp WHERE tp.team_id = w.team_id AND tp.project_id = w.project_id);
+                  UPDATE team_projects tp SET permission = :'permission'::bigint, updated = now()
+                  FROM wanted w
+                  WHERE tp.team_id = w.team_id AND tp.project_id = w.project_id AND tp.permission <> :'permission'::bigint;
+                  DELETE FROM team_projects tp
+                  USING teams t
+                  WHERE tp.team_id = t.id AND t.external_id = :'external_id' AND t.issuer = :'issuer'
+                    AND NOT EXISTS (SELECT 1 FROM wanted w WHERE w.project_id = tp.project_id);
+                  SELECT 'shared board ' || tp.project_id || ' with team ' || t.name || ' at permission ' || tp.permission
+                  FROM team_projects tp JOIN teams t ON t.id = tp.team_id
+                  WHERE t.external_id = :'external_id' AND t.issuer = :'issuer'
+                  ORDER BY tp.project_id;
+                  COMMIT;
+                  SQL
+          volumes:
+            - {name: tmp, emptyDir: {}}

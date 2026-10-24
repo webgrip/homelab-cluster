@@ -129,8 +129,9 @@ The roadmap is a board in [Vikunja](https://vikunja.webgrip.dev), not a file in 
 stack, `ready` means a ticket can be started as written, `needs-refinement` means ask first.
 Commit messages carry the ticket as a `VIK-<id>` trailer.
 
-Boards are shared per project. If you sign in and see no projects, ask the owner to share
-**Homelab Roadmap** with you.
+Your first sign-in puts you in the `Webgrip` team, which has Homelab Roadmap, Erfbeeld, Vellum,
+CI/CD and Unfold shared with it, read and write. A board missing from that list is not shared
+with the team; ask.
 
 ## When something is wrong
 
