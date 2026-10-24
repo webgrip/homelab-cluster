@@ -1,0 +1,62 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: omnigraph-tenant-copy-a
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-migrate
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 604800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: omnigraph-migrate
+        app.kubernetes.io/part-of: omnigraph
+    spec:
+      serviceAccountName: omnigraph
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: copy
+          image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:01ddf82b43479870a7ea87037b7d68472bef12cc244941843c26bb75bf9a9b04
+          imagePullPolicy: IfNotPresent
+          command:
+            - "python3"
+            - "-I"
+            - "/etc/omnigraph-tenant-copy/copy.py"
+          env:
+            - {name: OMNIGRAPH_GRAPHS, value: "webgrip webgrip-knowledge webgrip-notes"}
+            - {name: OMNIGRAPH_SOURCE_URL, value: "http://omnigraph.ai.svc.cluster.local:8080"}
+            - {name: OMNIGRAPH_TARGET_URL, value: "http://omnigraph-next.ai.svc.cluster.local:8080"}
+            - {name: OMNIGRAPH_HTTP_API, value: "0.14"}
+            - {name: OMNIGRAPH_TOKEN_FILE, value: /run/secrets/omnigraph/token}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 50m, memory: 256Mi}
+            limits: {memory: 1Gi}
+          volumeMounts:
+            - {name: script, mountPath: /etc/omnigraph-tenant-copy, readOnly: true}
+            - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+      volumes:
+        - name: script
+          configMap:
+            name: omnigraph-tenant-copy
+        - name: token
+          secret:
+            secretName: omnigraph-migrate-token
+            items:
+              - {key: token, path: token}
