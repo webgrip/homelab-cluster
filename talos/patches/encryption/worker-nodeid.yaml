@@ -1,0 +1,26 @@
+---
+# Disk encryption for the workers (ADR-0080). None of the three exposes a TPM
+# (no /sys/class/tpm entry on 2026-10-24), so the key is derived from the node's
+# UUID: it protects a disk that leaves the house on its own (sold, RMA, binned),
+# not a stolen machine. Switch to controlplane-tpm.yaml's tpm key when the
+# board's firmware TPM (Intel PTT) is enabled and tpm0 appears. EPHEMERAL holds
+# /var/lib/longhorn here. Wire this into a node's `patches:` in talos/nodes.yaml
+# only in the commit that wipes it (runbooks/talos-disk-encryption.md).
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: STATE
+encryption:
+  provider: luks2
+  keys:
+    - slot: 0
+      nodeID: {}
+---
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+encryption:
+  provider: luks2
+  keys:
+    - slot: 0
+      nodeID: {}
+      lockToState: true

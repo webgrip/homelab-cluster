@@ -62,6 +62,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [Authentik OIDC login failures](authentik-oidc-login.md)
 - [agent-sandbox and Ploeg's sandbox executor](agent-sandbox.md)
 - [gVisor next to Kata on the workers](gvisor-runtime.md)
+- [Talos disk encryption, one node at a time](talos-disk-encryption.md)
 - [Runtime detection (Tetragon on agent pods)](runtime-detection.md)
 
 ## Network / DNS / certs
