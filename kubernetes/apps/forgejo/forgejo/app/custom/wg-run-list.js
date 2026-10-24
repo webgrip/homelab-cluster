@@ -48,7 +48,7 @@
   var decorateQueued = false;
 
   function runPathOf(row) {
-    var link = row.querySelector('a.flex-item-title');
+    var link = row.querySelector('a.flex-item-title, .flex-item-title > a');
     if (!link) return null;
     var m = new URL(link.getAttribute('href'), location.href).pathname.match(/^(.*[/]actions[/]runs[/]\d+)/);
     return m ? m[1] : null;
