@@ -69,6 +69,21 @@ spec:
                     --from-file=cosign.pub=/tmp/cosign.pub \
                     --dry-run=client -o yaml | kubectl apply -f -
                   echo "[cosign-pubkey] published cosign-webgrip-pub ($count trusted key version(s))"
+                  mkdir -p /tmp/flux-keys
+                  printf '%s' "$resp" | jq -r '
+                    (.data.min_decryption_version // 0) as $min
+                    | .data.keys | to_entries[] | select((.key | tonumber) >= $min)
+                    | "\(.key)\t\(.value.public_key | @base64)"' \
+                    | while IFS="$(printf '\t')" read -r version encoded; do
+                        printf '%s' "$encoded" | base64 -d > "/tmp/flux-keys/v$version.pub"
+                      done
+                  for namespace in ploeg; do
+                    kubectl -n "$namespace" create secret generic cosign-webgrip-pub \
+                      --from-file=/tmp/flux-keys \
+                      --dry-run=client -o yaml | kubectl apply -f - \
+                      && echo "[cosign-pubkey] published Secret $namespace/cosign-webgrip-pub for Flux" \
+                      || echo "[cosign-pubkey] Secret $namespace/cosign-webgrip-pub not writable yet; retry next tick"
+                  done
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
