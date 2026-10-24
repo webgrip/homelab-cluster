@@ -3,7 +3,7 @@ set -uo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 bundle=$root/kubernetes/apps/ai/omnigraph/app/bundle
 validator=(python3 "$root/scripts/validate_omnigraph_policies.py")
-cross_client=(--cross-client-actor act-admin --cross-client-actor act-ryan --cross-client-actor act-ingest --cross-client-actor act-gitops)
+cross_client=(--cross-client-actor act-admin --cross-client-actor act-ryan --cross-client-actor act-ingest --cross-client-actor act-gitops --cross-client-actor act-migrate)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 wrong=0
