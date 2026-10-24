@@ -1,6 +1,6 @@
 # RFC: Omnigraph 0.14 — the upgrade, what we take from the cookbooks, and how knowledge is tiered
 
-> Status: **Proposed** · Date: 2026-10-24 · Epic: VIK-1259 (second brain) and VIK-1858 (agents learn
+> Status: **Accepted** (D1–D4 accepted by Ryan on 2026-10-24; D5–D7 as recommended) · Date: 2026-10-24 · Epic: VIK-1259 (second brain) and VIK-1858 (agents learn
 > from a knowledge base) · Replaces the open ticket VIK-2054 with the plan below · Builds on the
 > [knowledge system](../general/knowledge-system.md), the [Omnigraph runbook](../runbooks/omnigraph.md),
 > the [branch workflow RFC](rfc-omnigraph-branch-workflow.md), the
@@ -162,49 +162,44 @@ old. The upgraded standalone copy is the **export route for `brain`**, because 0
 cannot read `Artifact` (VIK-2054) and the copy-out upgrade is cheap (85 KB of legacy history on
 the test graph; brain's is larger but bounded by the limits in the upgrade guide).
 
-### 4.1 Cutover design: parallel root, same deployment
+### 4.1 Cutover design: a second deployment beside the first
 
-1. **Prepare (git, no cluster effect).** A new bundle directory `app/bundle` keeps the same
-   `cluster.yaml`, schemas, queries and policies (they validate on 0.14 as they are). `storage:`
-   is dropped and the state root is selected by `--target`. `bootstrap.sh` becomes:
-   `cluster validate` → if no ledger: `cluster apply --target ROOT --config DIR --as act-gitops`,
-   read its lock id, `force-unlock` it → else `cluster plan` (refuse on any graph removal unless
-   named in `approved-deletions`) → `cluster apply` → `optimize` and bounded `cleanup` per graph
-   → `rebuild-full-text-indexes` when optimize asks. The vector backfill stays capped exactly as
-   today (VIK-1348's structural fix is separate).
-2. **Rehearsal first.** `rehearse-omnigraph-bundle.sh` and `omnigraph_rehearsal.py` are ported to
-   the 0.14 CLI (targets, operator file in a temp `OMNIGRAPH_HOME`, the `Omnigraph-Http-Api`
-   header, `access` instead of probe curls). Its mutation test must still fail every case it fails
-   today and pass the unchanged bundle. The CI job runs the same.
-3. **Clients in step.** brain-tools, explorer, ploegd, brain-eval, forge-import's HTTP path and
-   the blackbox probes send `Omnigraph-Http-Api: 0.14`. Explorer and ploegd release first with the
-   header behind the image pin of their next release; LiteLLM's `mcp_servers` get the native
-   `/mcp` entries (one per actor: `omnigraph_brain` as `act-brain-agent`, `omnigraph_memory` as
-   `act-agent`, `omnigraph_glide` as `act-glide`, `omnigraph_brain_eval`) with the bridge entries
-   removed; the omnigraph-mcp deployment is deleted in the same change.
-4. **Data migration Job (hands-on, hook-blocked for agents).** With the deployment scaled to 0 and
-   a Longhorn backup taken: a Job with the 0.11 image exports `memory`, `webgrip`,
-   `webgrip-knowledge`, `webgrip-notes` as JSONL to a scratch PVC; for `brain` it copies
-   `graphs/brain.omni` to the scratch PVC, and a second container with the 0.14 image runs
-   `omnigraph upgrade` on the copy and exports it. The exports are checked: entity counts per
-   type against the 0.11 `snapshot`, no sub-millisecond `DateTime`, every `@embed` row keeps its
-   vector.
-5. **New root.** The PVC is replaced by `omnigraph-state-v16` (20Gi). The 0.14 pod boots, the
-   init container creates the cluster, the same Job loads each export with `load --mode overwrite`
-   (one request per type batch under 32 MiB, through `/load/ndjson`), then re-embeds every
-   `@embed` row with the raw-text format (D3). The old PVC stays until the eval gate passes.
-6. **Gate.** The brain retrieval eval runs on the new root pinned to its first commit and is
-   compared with the last 0.11 run; the smoke eval on answers runs once. Only then does the
-   maintenance Job replace the 03:15 restart.
-7. **Rollback** is scaling to 0, pointing the deployment back at the old PVC and the 0.11 image,
-   and restoring the explorer and ploegd pins. Nothing written on 0.14 survives a rollback; the
-   importers refill `brain` within an hour.
+Revised on 2026-10-24 after D1–D4 were accepted. Instead of stopping the 0.11 pod and rebuilding
+its volume in place, 0.14 runs as a second app, `omnigraph-next`, with its own volume, bundle and
+Service, while 0.11 keeps serving. Every step is a manifest on `main`; nothing is scaled or copied
+by hand.
 
-### 4.2 What stays hook-blocked and is handed over
+1. **`omnigraph-next` (T1.1).** `kubernetes/apps/ai/omnigraph-next/` holds the same schemas,
+   queries and policies (they validate on 0.14 unchanged), a 0.14 `bootstrap.sh` on ledger v2
+   (fresh `cluster apply --target ROOT --config DIR` and `force-unlock` of its own retained lock
+   before the server starts; later starts apply the bundle the same way; `optimize` and
+   `cleanup` per graph), its own 20Gi PVC, the same `omnigraph-tokens` and embedding key, and
+   `omnigraph-server` with `--mcp-allow-writes`. Its own rehearsal runs the 0.14 binaries from
+   the pinned image. The mise CLI pin stays on 0.11 until the old app is gone.
+2. **Clients in step (T1.2–T1.6).** Each client learns the 0.14 contract behind a URL switch, so
+   it can point at either server.
+3. **Data (T1.7).** A PVC cloned from `omnigraph-state` by Longhorn (`dataSource`) gives a
+   crash-consistent copy while 0.11 keeps writing; Omnigraph publishes a commit with one manifest
+   write, so the copy is the state at some commit. A Job with the 0.11 image exports `memory`,
+   `webgrip`, `webgrip-knowledge` and `webgrip-notes` from the copy; for `brain` a 0.14 container
+   runs `omnigraph upgrade` on the copied graph and exports it (0.11 cannot export `Artifact`).
+   Counts per type are checked, then each export loads into `omnigraph-next` over HTTP. T1.8
+   re-embeds every row in the raw-text format (D3).
+4. **Gate.** The brain retrieval eval runs against `omnigraph-next` and is compared with the last
+   0.11 run.
+5. **Flip.** One commit points LiteLLM, brain-tools, the explorer, ploegd and the importers at
+   `omnigraph-next`. Writes that reached 0.11 between the clone and the flip are the only loss:
+   the importers rebuild theirs within an hour, so only chat captures and Ploeg notes of that
+   window are at risk; the clone is therefore re-run right before the flip.
+6. **Retire.** After a week on 0.14 the old app, its volume and the npm bridge are removed, the
+   mise pin moves to 0.14, and the maintenance Job replaces the 03:15 restart (T1.9).
+7. **Rollback** before step 6 is reverting the flip commit; 0.11 never stopped.
 
-Scaling the deployment, running the migration Job and deleting the old PVC are imperative cluster
-actions that the agent hooks block. They come as one ordered command set in the P1 ticket, each
-step with its read-only check, and are run by Ryan with an agent watching the output.
+### 4.2 Nothing is done by hand
+
+The revised design needs no imperative step: the clone, the export and load Job, the flip and the
+retirement are commits Flux applies. That replaces the hand-run command set this section first
+described.
 
 ## 5. The cookbooks: what we have, what we lack, what we make
 
@@ -481,6 +476,8 @@ policy group maps to exactly one tier; T4.2 the `company` MCP access group and k
 graphs (a test).
 
 ## 9. Decisions for Ryan
+
+Ryan accepted D1–D4 on 2026-10-24 ("D1–D4 yes"); D5–D7 stand as recommended.
 
 | # | Question | Recommendation |
 |---|---|---|
