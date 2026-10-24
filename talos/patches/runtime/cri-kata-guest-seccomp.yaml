@@ -1,0 +1,51 @@
+---
+machine:
+  files:
+    - op: create
+      path: /etc/cri/conf.d/20-customization.part
+      content: |
+        [plugins."io.containerd.cri.v1.images"]
+          discard_unpacked_layers = false
+        [plugins."io.containerd.cri.v1.runtime"]
+          device_ownership_from_security_context = true
+        [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata.options]
+          ConfigPath = "/var/lib/kata-guest-seccomp/configuration.toml"
+    - op: create
+      path: /var/lib/kata-guest-seccomp/configuration.toml
+      permissions: 0o644
+      content: |-
+        [hypervisor.clh]
+        path = "/usr/local/bin/cloud-hypervisor"
+        kernel = "/usr/local/share/kata-containers/vmlinux.container"
+        image = "/usr/local/share/kata-containers/kata-containers.img"
+        rootfs_type="ext4"
+        disable_selinux=false
+        disable_guest_selinux=true
+        enable_annotations = ["enable_iommu", "virtio_fs_extra_args", "kernel_params"]
+        valid_hypervisor_paths = ["/usr/local/bin/cloud-hypervisor"]
+        kernel_params = "cgroup_no_v1=all systemd.unified_cgroup_hierarchy=1"
+        default_vcpus = 1
+        default_maxvcpus = 0
+        default_memory = 2048
+        default_maxmemory = 0
+        shared_fs = "virtio-fs"
+        virtio_fs_daemon = "/usr/local/libexec/virtiofsd"
+        valid_virtio_fs_daemon_paths = ["/usr/local/libexec/virtiofsd"]
+        virtio_fs_cache_size = 0
+        virtio_fs_queue_size = 1024
+        virtio_fs_extra_args = ["--thread-pool-size=1", "--announce-submounts"]
+        virtio_fs_cache = "auto"
+        block_device_driver = "virtio-blk"
+        [agent.kata]
+        dial_timeout = 45
+        [runtime]
+        internetworking_model="tcfilter"
+        disable_guest_seccomp=false
+        sandbox_cgroup_only=false
+        static_sandbox_resource_mgmt=false
+        sandbox_bind_mounts=[]
+        vfio_mode="guest-kernel"
+        disable_guest_empty_dir=false
+        experimental=[]
+        create_container_timeout = 60
+        dan_conf = "/run/kata-containers/dans"
