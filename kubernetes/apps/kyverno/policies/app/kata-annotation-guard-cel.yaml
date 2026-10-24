@@ -4,7 +4,7 @@ kind: ValidatingPolicy
 metadata:
   name: kata-annotation-guard
   annotations:
-    policies.kyverno.io/title: Kata Containers — No Sandbox Overrides From Pod Annotations
+    policies.kyverno.io/title: Sandbox Runtimes — No Overrides From Pod Annotations
     policies.kyverno.io/category: Pod Security, Agent Plane
     policies.kyverno.io/severity: high
     policies.kyverno.io/subject: Pod
@@ -12,9 +12,10 @@ metadata:
     policies.kyverno.io/description: >-
       Kata Containers reads pod annotations under io.katacontainers. as overrides of the
       sandbox's runtime and hypervisor settings, and the Talos kata-containers extension
-      forwards every one of them to the runtime. No workload in this cluster sets them, so
-      a pod or pod template that carries one is refused in every namespace. The sandbox
-      configuration then comes only from the node's configuration file.
+      forwards every one of them to the runtime. gVisor reads annotations under dev.gvisor.
+      as overrides of runsc flags when its handler forwards them. No workload in this
+      cluster sets either, so a pod or pod template that carries one is refused in every
+      namespace. Sandbox configuration then comes only from the node's configuration files.
 spec:
   validationActions:
     - Deny
@@ -68,3 +69,8 @@ spec:
         Pod annotations under io.katacontainers. are refused: they would override the Kata
         sandbox's runtime and hypervisor settings, which must come only from the node's
         configuration.
+    - expression: >-
+        !variables.podAnnotations.exists(k, k.startsWith('dev.gvisor.'))
+      message: >-
+        Pod annotations under dev.gvisor. are refused: they would override gVisor's runsc
+        flags, which must come only from the node's configuration.

@@ -121,3 +121,44 @@ spec:
       containers:
         - name: worker
           image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gvisor-flag-override-pod
+  namespace: ploeg
+  annotations:
+    dev.gvisor.flag.debug: "true"
+spec:
+  runtimeClassName: gvisor
+  containers:
+    - name: worker
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gvisor-annotated-job
+  namespace: ploeg
+spec:
+  template:
+    metadata:
+      annotations:
+        dev.gvisor.flag.host-uds: all
+    spec:
+      runtimeClassName: gvisor
+      restartPolicy: Never
+      containers:
+        - name: worker
+          image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: plain-gvisor-pod
+  namespace: ploeg
+spec:
+  runtimeClassName: gvisor
+  containers:
+    - name: worker
+      image: ghcr.io/acme/app:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
