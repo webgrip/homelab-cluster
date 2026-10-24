@@ -179,6 +179,16 @@ spec:
 
     worker:
       replicas: 1
+      # `ak healthcheck` starts a Python process, and on the cpu=high nodes under
+      # memory pressure it took longer than the chart's 3 s: the worker was
+      # killed five times in an hour on 2026-10-24 while it worked. 10 s keeps
+      # the probe a liveness check instead of a load test.
+      livenessProbe:
+        timeoutSeconds: 10
+      readinessProbe:
+        timeoutSeconds: 10
+      startupProbe:
+        timeoutSeconds: 10
       serviceAccountName: authentik-app
       containerSecurityContext:
         allowPrivilegeEscalation: false
