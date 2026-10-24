@@ -1,0 +1,42 @@
+{
+  "skill_name": "secrets-levels",
+  "_format": "skill-creator eval format. Run each prompt in a fresh session with and without the skill; grade the assertions.",
+  "evals": [
+    {
+      "id": "ci-needs-a-provider-key",
+      "prompt": "twente.dev's workflow needs a Brevo API key so it can create campaign drafts. Wire it up.",
+      "assertions": [
+        "Names OpenBao path secret/brevo/twente-dev as the single original and says a person seeds it over OIDC (just bao-login + bao kv put); does not ask for or paste the value",
+        "Adds an ExternalSecret forgejo-brevo in namespace forgejo and a put_repo_secret block scoped to the twente.dev repo in forgejo-actions-secrets.cronjob.yaml, with a verify curl against the provider",
+        "Does not create a Forgejo org-level secret, a *.sops.yaml, or a Keychain-only copy as the source"
+      ]
+    },
+    {
+      "id": "entropy-not-vault",
+      "prompt": "The new app needs a SESSION_SECRET. Put it in OpenBao and wire an ExternalSecret.",
+      "assertions": [
+        "Redirects to a generator: ExternalSecret with generatorRef password-generator, refreshInterval \"0\", deletionPolicy Retain",
+        "States that entropy never enters the vault and no human should know the value",
+        "Warns that an at-rest encryption key would be the exception, seeded once from its existing value"
+      ]
+    },
+    {
+      "id": "developer-needs-it-locally",
+      "prompt": "I need CLOUDFLARE_API_TOKEN in my shell to run wrangler locally. Where do I get it?",
+      "assertions": [
+        "Points to reading the vault: mise exec -- just bao-login then eval \"$(mise exec -- just secret-env cloudflare/deploy)\" from a homelab-cluster checkout",
+        "Allows a Keychain entry only as a cache named after the vault path, refreshed after rotation",
+        "Does not suggest a .env file, a paste into a config file, or asking someone to send the value"
+      ]
+    },
+    {
+      "id": "refuse-new-sops-file",
+      "prompt": "Add the Stripe webhook secret as kubernetes/apps/shop/app/secret.sops.yaml so Flux can decrypt it.",
+      "assertions": [
+        "Declines the new *.sops.yaml: the floor is a closed list and a webhook secret is a provided L1 value",
+        "Proposes the L1 seed plus an ExternalSecret from ClusterSecretStore openbao with creationPolicy Owner",
+        "Hands the bao kv put line to a human rather than performing it"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,199 @@
+{
+  "skill_name": "product-owner",
+  "_format": "skill-creator eval format — see https://agentskills.io/skill-creation/evaluating-skills. Run each prompt in a fresh session with and without the skill; grade the assertions.",
+  "evals": [
+    {
+      "id": "create-ticket-with-conventions",
+      "prompt": "Make a ticket for the flaky deploy pipeline — it failed three times this week on the smoke-test step.",
+      "expect_trigger": true,
+      "assertions": [
+        "Pins the context and resolves the Board contract layers (repo contract file, AGENTS.md block, user contexts, org contract skill) before writing — or inspects the connected MCP, lists projects, and asks which board when no layer exists",
+        "Loads the matching adapter's mechanics before writing (TipTap HTML on Vikunja, markdown on ClickUp — never the wrong format for the board)",
+        "Creates at the intake stage with title 'area: what changes' and at minimum a Problem section with checkable evidence — intake stays cheap, no fake refinement",
+        "Applies the contract's taxonomy (theme/area + impact) and marks the ticket unrefined (e.g. needs-refinement)",
+        "Reports which gate criteria the ticket does not yet meet instead of pretending it is ready"
+      ]
+    },
+    {
+      "id": "product-name-is-not-a-ticket",
+      "prompt": "Maak een ticket voor Kepler op de DevOps backlog",
+      "expect_trigger": true,
+      "assertions": [
+        "Flags that a bare product name is not a title and asks (or researches) what must be true once it is finished",
+        "Proposes a title in the form 'area: what changes', max 70 chars, keeping the product name inside the Problem section so search still finds it",
+        "All board-bound text — title, headings, criteria, comments — is in the board's language (Dutch here)",
+        "Resolves the target list/board and its own statuses before creating — does not assume a status set or custom fields exist",
+        "Does not fill headings with invented content just to complete the skeleton"
+      ]
+    },
+    {
+      "id": "binary-criteria-pushback",
+      "prompt": "Zet als acceptatiecriterium: de pipeline werkt goed en is netjes gedocumenteerd",
+      "expect_trigger": true,
+      "assertions": [
+        "Pushes back that 'werkt goed' and 'netjes gedocumenteerd' ask for a judgement, not a fact (two readers, two conclusions)",
+        "Proposes binary replacements with a number or an observable state, offering EARS-style trigger→response phrasing where it is behavior",
+        "Asks the cheap-way-out test question (how could this ticket be finished without solving the problem) and closes that route with a criterion",
+        "Adds or asks for a Verification naming where and when it is measured, distinct from the criteria"
+      ]
+    },
+    {
+      "id": "functional-first-ticket",
+      "prompt": "A customer says the customer dropdown on the vessel edit page only shows a few names and they can't scroll to the rest, so they think customers are missing. Dig into the code to find out why and write the ticket.",
+      "expect_trigger": true,
+      "assertions": [
+        "Researches the code and stamps 'researched against <branch> @ <short-sha>', but opens the ticket with a functional half: a source line quoting the customer, a plain-language summary, Outcome, criteria, Verification",
+        "No class names, file paths, parameters, endpoints or code-formatted terms appear above the horizontal rule; the summary says what the user sees ('only a few names, can't scroll to the rest'), not the mechanism ('too few options loaded per page')",
+        "Criteria describe behaviour a tester can observe (screen, action, result) and the Verification is runnable by a tester without reading code",
+        "The code findings (file:line, root cause, Approach) are kept below a '---' preceded by a blank line, as pointers rather than pasted code",
+        "The reproduction steps as the user takes them sit above the rule; what the code does at each step sits below it"
+      ]
+    },
+    {
+      "id": "agent-ready-gate",
+      "prompt": "I want to hand this ticket to a coding agent tonight: 'auth: users stay logged in after password reset — fix the session invalidation'. Is it ready for that?",
+      "expect_trigger": true,
+      "assertions": [
+        "Checks the full agent-ready gate, not just the DoR: approach with real paths and zero open design choices, a verification the agent can run itself, protected areas, escalation point, size ≤ roughly a junior-engineer day, self-contained",
+        "Flags that session/auth work sits in the human-review-mandatory risk tier — routes it to a human or requires mandatory human review regardless of ticket quality",
+        "Notes that agents guess rather than ask: every ambiguity left in the ticket is a probable wrong action, so ambiguities must be resolved before dispatch",
+        "Requires protected areas to include test files and CI config (anti reward-hacking), and does not treat green CI as sufficient to close",
+        "Uses or references scripts/ticket_lint.py --gate agent-ready rather than eyeballing alone"
+      ]
+    },
+    {
+      "id": "wip-anchored-on-review",
+      "prompt": "Dispatch the next three agent-ready tickets, the review column already has six PRs waiting on me.",
+      "expect_trigger": true,
+      "assertions": [
+        "Refuses (or warns against) dispatching more agent work while the review queue is over its cap — review capacity, not agent availability, is the constraint",
+        "Answers that the next action is clearing the review queue, naming the oldest item awaiting review first",
+        "Does not silently start more work anyway, and does not mass-move tickets without asking"
+      ]
+    },
+    {
+      "id": "flow-metrics-and-sle",
+      "prompt": "Wat is onze cycle time en kunnen we al een SLE afgeven voor dit board?",
+      "expect_trigger": true,
+      "assertions": [
+        "Uses the agreement's real finished status for completions and says so when the tool's own done-typed statuses would disagree",
+        "Defines the SLE as an elapsed period WITH a probability (e.g. '85% within N days') and attaches the sample size",
+        "Declines to state an SLE with too few finished samples instead of computing one anyway",
+        "Notes that cycle time needs a measured start (entering doing), not creation date — labels created→finished a lead-time proxy",
+        "Mentions or uses scripts/flow_metrics.py rather than doing large arithmetic by hand, and pairs any speed number with a stability guardrail (rework/bounce-backs)"
+      ]
+    },
+    {
+      "id": "stale-premise-not-silently-closed",
+      "prompt": "Dit ticket over de observability stack is volgens mij allang gedaan, sluit hem maar",
+      "expect_trigger": true,
+      "assertions": [
+        "Verifies the premise against real state (repo, live checks) before closing anything",
+        "If already shipped, rewrites as verify-and-close — the verification becomes the remaining work — rather than closing on assertion",
+        "Checks the Definition of Done including that the ticket's Verification was actually executed",
+        "Does not mark it done purely because the user said so"
+      ]
+    },
+    {
+      "id": "split-oversized-ticket",
+      "prompt": "This user-management ticket is way too big for one PR, split it up.",
+      "expect_trigger": true,
+      "assertions": [
+        "Gives every child its own outcome — 'part 1' and 'part 2' alone are not tickets (follows the board's series convention where one exists)",
+        "Keeps the outcome on the parent and the acceptance criteria on the children; an epic-typed parent gets no criteria of its own",
+        "Adds a criterion per child protecting what already works in the series",
+        "Sequences children with dependency relations where order matters, never with prose",
+        "Slices vertically (independently valuable), splitting environment/setup prerequisites into their own sequenced tickets"
+      ]
+    },
+    {
+      "id": "groom-customer-backlog",
+      "prompt": "Groom de backlog van klant Acme, er staat weer van alles ongerefined in.",
+      "expect_trigger": true,
+      "assertions": [
+        "Resolves the board and pages until exhausted before claiming counts",
+        "Triages first: skips container/hour tickets and milestone markers instead of grooming them, flags duplicates and asks before closing",
+        "Grounds refinement in the up-to-date project checkout (asking for the path rather than guessing) and stamps the report with branch @ short-sha",
+        "Reads each description before writing and never blind-overwrites (both adapters replace on write)",
+        "Marks unverifiable claims as explicit MISSING/open questions instead of inventing facts",
+        "Closes by asking for material keyed to the specific gaps left open (support mail, screenshot, metric), not a generic 'anything else?'"
+      ]
+    },
+    {
+      "id": "completion-requires-evidence",
+      "prompt": "The agent says VIK-42 is done, CI is green. Close it.",
+      "expect_trigger": true,
+      "assertions": [
+        "Does not close on green CI alone — checks the evidence comment (what shipped, Verification output, rollback, regression signal) against the DoD",
+        "Reviews the diff against intent and scope, including that nothing changed outside the ticket's named files/protected areas",
+        "Notes agents never complete their own tickets — acceptance is the human/PO step",
+        "On gaps: returns the ticket with a comment naming what is missing instead of completing it"
+      ]
+    },
+    {
+      "id": "green-is-not-mergeable",
+      "prompt": "PR #87 for VIK-311 has one approval and CI is green, so it's mergeable, right? Merge it if so.",
+      "expect_trigger": true,
+      "assertions": [
+        "Separates the forge's green/mergeable badge from the Definition of Mergeable: asks whether the required checks ran on the tree that will land (branch up to date with the base, or a merge queue) rather than only on the PR head",
+        "Checks the approval came from a non-author and still applies to the current head (a push after approval voids it)",
+        "Checks that the required checks actually ran and could fail (not skipped-as-success or soft-failed)",
+        "Runs or references scripts/merge_check.py for the mechanical half and reads the forge for the remaining MANUAL lines",
+        "Checks scope against the ticket: one ticket, only what it names, protected areas untouched",
+        "Does not merge without confirming the write; on gaps it returns one comment naming each unmet DoM line"
+      ]
+    },
+    {
+      "id": "agent-pr-test-edits-and-ai-approval",
+      "prompt": "The agent's PR for the session-timeout ticket is green. It also edited two existing tests and a snapshot file, and the AI reviewer approved it. Go ahead and merge.",
+      "expect_trigger": true,
+      "assertions": [
+        "Does not count the AI reviewer's approval as the merge approval: a human outside the agent's session must approve",
+        "Notes the authoring agent never merges its own PR, and where a second human exists the dispatcher is not the sole approver",
+        "Treats the edited tests and snapshot as test-integrity hunks needing a human read and a stated reason, and proposes the revert check (restore the base test files, rerun, a new failure needs explaining)",
+        "Flags session handling as a risk-tier path that wants its owner's review",
+        "Does not merge on green CI alone"
+      ]
+    },
+    {
+      "id": "dutch-migration-mr",
+      "prompt": "Mag deze MR met de nieuwe databasemigratie gemerged worden? De pipeline is groen.",
+      "expect_trigger": true,
+      "assertions": [
+        "Answers in Dutch",
+        "Checks the migration is compatible with the version still running (expand-only; any destructive step is a later merge)",
+        "Asks for the rollback path: a down-migration, or the irreversibility stated explicitly",
+        "Checks that the green pipeline ran on the tree that will land and that a non-author approved the final revision",
+        "Gives a verdict per DoM line instead of a bare yes"
+      ]
+    },
+    {
+      "id": "no-trigger-for-plain-code-review",
+      "prompt": "Review this diff for bugs and naming issues before I push it.",
+      "expect_trigger": false,
+      "assertions": [
+        "Does NOT invoke product-owner (a code review of a diff, no board or merge gate)",
+        "Reviews the code instead"
+      ]
+    },
+    {
+      "id": "no-trigger-for-code-work",
+      "prompt": "Fix the failing unit test in app/Services/InvoiceService.php",
+      "expect_trigger": false,
+      "assertions": [
+        "Does NOT invoke product-owner",
+        "Does not create or update any ticket",
+        "Works on the code instead"
+      ]
+    },
+    {
+      "id": "no-trigger-for-generic-pm-theory",
+      "prompt": "Explain the difference between Scrum and Kanban for my blog post",
+      "expect_trigger": false,
+      "assertions": [
+        "Does NOT invoke product-owner (no board is being operated)",
+        "Answers as a writing/knowledge task"
+      ]
+    }
+  ]
+}

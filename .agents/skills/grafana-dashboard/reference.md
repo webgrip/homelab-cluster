@@ -1,0 +1,72 @@
+# Grafana dashboard reference — queries, panels, tables, metric catalogs
+
+Contents: [Log queries](#log-queries-logsql) · [Panel hygiene](#panel-hygiene) · [Multi-query tables](#multi-query-tables-merge--organize)
+· [k8s capacity metrics](#k8s-capacity-metrics-verified-present) · [Claude Code metrics](#claude-code-metrics)
+
+All hook-checked rules live in SKILL.md (shape, folderRef, Flux escaping). The below are NOT hook-checked.
+
+## Log queries (LogsQL)
+
+Log panels query VictoriaLogs (datasource uid `victorialogs`, LogsQL — not LogQL). Language rules,
+queryType mapping, and the LogQL→LogsQL translation table live in the `victorialogs` skill
+(single source; migrated 2026-07-10, ADR-0041).
+
+## PromQL anti-patterns (boolean gauges & empty sets)
+- **`count()` over a boolean gauge counts SERIES, not the ones that are "true".** `count(up == 1)` and
+  `count(up)` return the same number; a `0`/`1` gauge is `1` for the series-exists-and-matches case, so
+  `count()` just tallies series. To count how many are *true*, use **`sum()`** (`sum(up)` = how many are up;
+  `count(up)` = how many exist). Same for any `==1`/threshold gauge.
+- **`count()`/`sum()` over an empty filtered set returns NoData, not 0.** If the label filter matches no
+  series, the whole vector is empty → the panel/alert sees **NoData** (not `0`). Append **`or vector(0)`**
+  to floor it at 0 (`sum(up{job="x"} == 0) or vector(0)`) — *unless* you intentionally want a missing-data
+  alert, in which case leave it off and set `noDataState: Alerting`. (Phantom-0 caveat below still applies:
+  `or vector(0)` belongs on `stat` panels, not timeseries/table.)
+
+## Panel hygiene
+- `or vector(0)` on `stat` panels only — on timeseries/table/bargauge it adds a phantom 0 series.
+- `allValue: ".*"` (or omit) for `includeAll` vars; never `$$__all` (logic bug → No data).
+- Variable queries must scope to a **real, existing** metric — `label_values(<metric>, <label>)`, never bare `label_values(<label>)` (scans every series, so e.g. `model` picks up node-exporter disk models → polluted dropdown). Verify the metric exists first via MCP — our kube-state-metrics has no `kube_namespace_labels`; use `kube_namespace_status_phase`.
+- MTD: `time:{from:now/M,to:now}` → `$$__range`=MTD; projection `(<expr>)*$$days_in_month*86400/$$__range_s` (noisy early-month — label estimate + show MTD actual).
+- `sum(A) + sum(B)` returns **empty** if either operand has zero series (e.g. a namespace with a Deployment but no StatefulSet) — Prom drops the whole vector. For a combined total give each metric its own target/series; don't `+` them. (`or vector(0)` on a timeseries adds a phantom 0 line, so that's not the fix either.)
+- `histogram_quantile()` needs `le` buckets — confirm they exist via MCP. Some exporters ship only `_sum`/`_count` (e.g. Harbor `harbor_core_http_request_duration_seconds`, no `_bucket`); with no buckets show avg `rate(_sum)/rate(_count)`, not a fake p95.
+- Verify panel metric **names** via MCP before authoring — don't copy from an old dashboard or upstream docs, they drift. (Harbor: real is `harbor_project_quota_usage_byte` not `harbor_quota_usage_byte`; totals are `harbor_statistics_*`.)
+
+## Multi-query tables (`merge` + `organize`)
+- N near-identical series / many instant queries → generate JSON from a small Python rate-table. Pattern: each metric a `format:"table",instant:true` target (refId A,B,…) → transform `merge` → `organize` `renameByName` the value cols (`Value #A`→friendly) + `indexByName` for order. Confirmed working in prod.
+- Per-column units/colour = `fieldConfig.overrides` `byName` (the *renamed* display name). Default unit `short` SI-suffixes bytes as `Mil/Bil/K` — every byte/Bps/percent column needs an explicit override or it's unreadable.
+- **`groupToNestedTable` (expandable rows) has two traps — prefer two flat tables for mixed-unit data:** (1) aggregated parent columns are renamed `X (sum)`, so add overrides for *both* `X` and `X (sum)`; sort by `X (sum)`. (2) **field overrides do NOT reach the nested subframe** — expanded rows fall back to the default unit (bytes → `Mil/Bil`, percentunit → `0.02`), and no single default fits CPU+bytes+%+Bps. No way to keep a metric in *both* parent (aggregated) and nested (raw) without querying it twice. Net: for a per-app cost breakdown use a flat ranked table (`Namespace`,`Workload`,abs+`% of cluster` via `… / scalar(sum(…))`) — overrides work, filterable/sortable — not nested.
+
+## k8s capacity metrics (verified present)
+`kube_node_status_allocatable`/`_capacity{resource,unit}`, `kube_pod_container_resource_requests`/`_limits{resource,unit,node}` (carry a **`node`** label → per-node req/lim with no join), `container_cpu_usage_seconds_total`/`container_memory_working_set_bytes` (carry **`node`** too), `kubelet_volume_stats_{used,capacity,available}_bytes{persistentvolumeclaim}`, `container_cpu_cfs_{throttled_,}periods_total`. Pod→workload rollup: `… * on(namespace,pod) group_left(workload,workload_type) namespace_workload_pod:kube_pod_owner:relabel` (rule value 1). No `kube_namespace_labels` here — namespace var = `label_values(kube_namespace_status_phase, namespace)`.
+
+## Flux / GitOps metrics (verified — this cluster runs flux-operator)
+
+`gotk_reconcile_condition` / `gotk_suspend_status` are **NOT exposed here** — only `gotk_reconcile_duration_seconds_{bucket,count,sum}` (p95 by `kind`; `HelmChart` le-buckets can be NaN) and `gotk_event_*`. Resource health = **`flux_resource_info`** (flux-operator), value always 1, labels: `kind`,`name`,**`exported_namespace`** (the resource's real ns — `namespace` is flux-system, where the operator runs),`ready="True|False"`,`reason`,`suspended="True|False"`,`revision`,`source_name`,`path`. Failing reconcilers → `flux_resource_info{ready="False"}` (table: `max by (exported_namespace,kind,name,reason)`, rename exported_namespace→namespace); suspended → `{suspended="True"}`; scoreboard → `count(flux_resource_info{ready="False"}) or vector(0)`. Real example: `dashboards/cluster-ops-overview.yaml` (Flux section).
+
+## Pod termination / OOM caveats (verified names)
+
+`kube_pod_container_status_last_terminated_finished_time` does **NOT exist** — use `kube_pod_container_status_last_terminated_timestamp` (epoch, `unit: dateTimeFromEpoch`), gated by `… and on(namespace,pod,container) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}==1)`. For OOM *counts* use `increase(container_oom_events_total[24h])`. The reason series only exists while a container's last termination was OOM → empty table = no recent OOMs (correct, not broken).
+
+## Verify what envsubst actually produced
+
+Single-`$` vs `$$` confusion: read the **deployed** query via MCP `get_dashboard_panel_queries(uid, panelId)` — it returns post-substitution text, so you see whether `$$token`→`$token` landed (it does) without guessing. Guard still requires `$$` in source regardless.
+
+## App / per-namespace dashboards
+
+One dashboard per app, every panel scoped to a single `namespace`. All apps share ONE baseline built
+only from metrics present for any namespace, so generate the whole family from one Python script (titles/
+queries/layout identical; only the namespace + an app-specific section differ). Folders: user-facing apps
+→ `apps`; platform services (git, registry, CI) → `infrastructure`. Baseline sections + their source:
+
+- **Health** (stat, `or vector(0)`): `kube_pod_status_phase{phase=...}`, `increase(kube_pod_container_status_restarts_total[1h])`, `increase(container_oom_events_total[24h])` (OOM kills), `kube_pod_container_status_waiting`.
+- **CPU / Memory**: usage `rate(container_cpu_usage_seconds_total{image!=""}[…])` / `container_memory_working_set_bytes` vs `kube_pod_container_resource_{requests,limits}{resource="cpu"|"memory"}`; throttle `rate(container_cpu_cfs_throttled_periods_total)/rate(container_cpu_cfs_periods_total)`; mem-vs-limit % flags OOM risk.
+- **Network**: `rate(container_network_{receive,transmit}_{bytes,errors,packets_dropped}_total[…])`.
+- **Storage**: `kubelet_volume_stats_{used,capacity,available}_bytes`, inodes `kubelet_volume_stats_inodes{,_free}`.
+- **Database** (CNPG, per-namespace, present when the app has a `Cluster`): `cnpg_collector_up`, `cnpg_pg_database_size_bytes`, `cnpg_backends_total`/`_waiting_total`, `rate(cnpg_pg_stat_database_{xact_commit,xact_rollback,blks_hit,blks_read,tup_*})`, `cnpg_pg_stat_archiver_{archived,failed}_count`, `cnpg_pg_replication_lag`.
+- **App-specific** only where an exporter is scraped: `gitea_*` (Forgejo) + `go_*`/`process_*` on `job="forgejo-http"`, `harbor_*`/`harbor_statistics_*`, `a2s_*` (Zomboid). No exporter (searxng, invoiceninja) → baseline only. Check `up{namespace=…}` and `kube_pod_container_info` first to see what's scraped / which DB engine (not every app is CNPG — invoiceninja=mariadb, searxng=valkey).
+
+## Claude Code metrics
+Prom counters → `increase()`/`rate()`:
+`claude_code_token_usage_tokens_total{type=input|output|cacheRead|cacheCreation,model,query_source,session_id}`, `…cost_usage_USD_total` (same minus `type`), `…active_time_seconds_total{type=user|cli}`, `…session_count_total{start_type,session_id}`, `…{lines_of_code,commit,pull_request}_count_total`, `…code_edit_tool_decision_total{decision}`.
+- `session_id` is on every metric → count sessions via `count(count by (session_id)(max_over_time(claude_code_session_count_total[$$__range])))`, not `sum(increase(...))`.
+- Cost = tokens × list price (estimate; notional on Pro/Max — label it).
