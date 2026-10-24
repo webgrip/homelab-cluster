@@ -20,9 +20,12 @@ QUESTION = "kustomization reconciliation drift"
 STAMP = "2026-09-30T08:00:00Z"
 
 
+CONTRACT_HEADERS = {}
+
+
 def http(url, payload=None, token=None, timeout=30):
     data = None if payload is None else json.dumps(payload).encode()
-    headers = {"content-type": "application/json", "accept": "application/json, text/event-stream"}
+    headers = {"content-type": "application/json", "accept": "application/json, text/event-stream", **CONTRACT_HEADERS}
     if token:
         headers["authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, data=data, headers=headers, method="POST" if data is not None else "GET")
@@ -89,20 +92,24 @@ class RealServerBrainTools(unittest.TestCase):
         rehearsal = importlib.import_module("omnigraph_rehearsal")
         cls.scratch = tempfile.TemporaryDirectory(prefix="brain-tools-real-")
         workdir = Path(cls.scratch.name)
-        rendered = rehearsal.kustomize(ROOT / rehearsal.APP_PATH, "working")
-        bundle = rehearsal.Bundle(rendered.bundle_files(), "working")
-        init_env = rendered.plain_env(rehearsal.INIT_CONTAINER, init=True)
-        cls.embedder = rehearsal.FakeEmbedder(init_env.get("OMNIGRAPH_EMBED_MODEL", "x"))
-        embed_url = cls.embedder.start()
-        (workdir / "cluster").mkdir()
-        cluster = rehearsal.Rehearsal(workdir / "cluster", embed_url, init_env.get("OMNIGRAPH_OPERATOR_ACTOR", "act-gitops"))
-        cluster.bootstrap(bundle, rendered, "first")
-        cluster.load("brain", brain_rows(rehearsal.unit_vector), "brain-tools")
-        bundle_dir, _, _ = cluster.bootstrap(bundle, rendered, "second")
-        cls.tokens = {actor: f"token-{actor}" for actor in bundle.policy_actors()}
-        env = {"PATH": os.environ["PATH"], "HOME": str(workdir), **rendered.plain_env(rehearsal.SERVER_CONTAINER), "OMNIGRAPH_EMBED_API_KEY": "x"}
-        cls.server = rehearsal.Server(bundle_dir, cls.tokens, env, workdir / "cluster")
-        cls.server.wait_ready(len(bundle.graphs()), 180)
+        if os.environ.get("BRAIN_TOOLS_OMNIGRAPH") == "next":
+            cls.start_next(workdir)
+        else:
+            rendered = rehearsal.kustomize(ROOT / rehearsal.APP_PATH, "working")
+            bundle = rehearsal.Bundle(rendered.bundle_files(), "working")
+            init_env = rendered.plain_env(rehearsal.INIT_CONTAINER, init=True)
+            cls.embedder = rehearsal.FakeEmbedder(init_env.get("OMNIGRAPH_EMBED_MODEL", "x"))
+            cls.embed_url = cls.embedder.start()
+            (workdir / "cluster").mkdir()
+            cluster = rehearsal.Rehearsal(workdir / "cluster", cls.embed_url, init_env.get("OMNIGRAPH_OPERATOR_ACTOR", "act-gitops"))
+            cluster.bootstrap(bundle, rendered, "first")
+            cluster.load("brain", brain_rows(rehearsal.unit_vector), "brain-tools")
+            bundle_dir, _, _ = cluster.bootstrap(bundle, rendered, "second")
+            cls.tokens = {actor: f"token-{actor}" for actor in bundle.policy_actors()}
+            env = {"PATH": os.environ["PATH"], "HOME": str(workdir), **rendered.plain_env(rehearsal.SERVER_CONTAINER), "OMNIGRAPH_EMBED_API_KEY": "x"}
+            cls.server = rehearsal.Server(bundle_dir, cls.tokens, env, workdir / "cluster")
+            cls.server.wait_ready(len(bundle.graphs()), 180)
+        embed_url = cls.embed_url
         cls.mcp_port, cls.rest_port = free_port(), free_port()
         cls.rest = f"http://127.0.0.1:{cls.rest_port}"
         cls.mcp = f"http://127.0.0.1:{cls.mcp_port}/mcp"
@@ -110,7 +117,7 @@ class RealServerBrainTools(unittest.TestCase):
         cls.log = cls.log_path.open("w")
         tool_env = {
             "PATH": os.environ["PATH"],
-            "HOME": str(workdir),
+            "HOME": os.environ.get("HOME", str(workdir)),
             "OMNIGRAPH_URL": cls.server.base,
             "OMNIGRAPH_TOKEN": cls.tokens["act-brain-reader"],
             "LITELLM_URL": embed_url.rsplit("/v1", 1)[0],
@@ -120,6 +127,7 @@ class RealServerBrainTools(unittest.TestCase):
             "REST_LISTEN": f"127.0.0.1:{cls.rest_port}",
             "BRAIN_EXPLORER_URL": "https://graph.example.test",
             "BRAIN_TOOLS_PROFILE": "p1",
+            **({"OMNIGRAPH_HTTP_API": cls.http_api} if getattr(cls, "http_api", None) else {}),
         }
         cls.tools = subprocess.Popen([shutil.which("node") or "node", str(SERVER_MAIN)], env=tool_env, stdout=cls.log, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 60
@@ -136,6 +144,32 @@ class RealServerBrainTools(unittest.TestCase):
             time.sleep(0.3)
         else:
             raise AssertionError(f"brain-tools never became ready: {last}\n{cls.log_path.read_text()}")
+
+    @classmethod
+    def start_next(cls, workdir):
+        next_rehearsal = importlib.import_module("test_omnigraph_next_bootstrap")
+        rehearsal = importlib.import_module("omnigraph_rehearsal")
+        docs = next_rehearsal.documents(next_rehearsal.APP_DIR)
+        pod_spec = next_rehearsal.named(docs, "Deployment", next_rehearsal.DEPLOYMENT)["spec"]["template"]["spec"]
+        init = next_rehearsal.container(pod_spec, next_rehearsal.INIT_CONTAINER, init=True)
+        server = next_rehearsal.container(pod_spec, next_rehearsal.SERVER_CONTAINER, init=False)
+        version = next_rehearsal.SERVER_IMAGE.search(server["image"])["version"]
+        bin_dir = next_rehearsal.binaries(version, os.environ.get("OMNIGRAPH_NEXT_BIN_DIR"))
+        files = dict(next_rehearsal.named(docs, "ConfigMap", next_rehearsal.BUNDLE_CONFIGMAP, generated=True).get("data") or {})
+        bundle = rehearsal.Bundle({k: v for k, v in files.items() if k != "bootstrap.sh"}, "omnigraph-next")
+        init_env = next_rehearsal.plain_env(init)
+        cls.embedder = rehearsal.FakeEmbedder(init_env.get("OMNIGRAPH_EMBED_MODEL", "x"))
+        cls.embed_url = cls.embedder.start()
+        (workdir / "next").mkdir()
+        cluster = next_rehearsal.Cluster(workdir / "next", bin_dir, files, init_env, cls.embed_url, files["bootstrap.sh"])
+        cluster.boot("first")
+        cluster.load("brain", brain_rows(rehearsal.unit_vector), "brain-tools")
+        cluster.boot("second")
+        cls.tokens = {actor: f"token-{actor}" for actor in bundle.policy_actors()}
+        cls.server = next_rehearsal.Server(cluster, {**next_rehearsal.plain_env(server), "OMNIGRAPH_EMBED_API_KEY": "x"}, cls.tokens)
+        cls.server.wait_ready(len(bundle.graphs()), 180)
+        cls.http_api = ".".join(version.split(".")[:2])
+        CONTRACT_HEADERS["Omnigraph-Http-Api"] = cls.http_api
 
     @classmethod
     def tearDownClass(cls):

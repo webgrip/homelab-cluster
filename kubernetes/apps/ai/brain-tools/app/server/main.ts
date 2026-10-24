@@ -40,7 +40,7 @@ function start(): void {
   registry.set(METRICS.build, { version: config.version, profile: config.defaultProfile }, 1);
   const record = (upstream: string, outcome: string): void => registry.increment(METRICS.upstream, { upstream, outcome });
   const contract = readContract(config.contractFile);
-  const omnigraph = new Omnigraph({ baseUrl: config.omnigraphUrl, graph: config.graph, token: config.readerToken, record });
+  const omnigraph = new Omnigraph({ baseUrl: config.omnigraphUrl, graph: config.graph, token: config.readerToken, httpApi: config.omnigraphHttpApi, record });
   const embedder = new Embedder({ baseUrl: config.litellmUrl, key: config.litellmKey, model: contract?.model ?? '', dimensions: contract?.dimensions ?? 0, record });
   const caches = new Caches({ omnigraph, deadlineMs: config.deadlineMs });
   const service = new BrainService({

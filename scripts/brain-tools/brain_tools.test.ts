@@ -83,6 +83,12 @@ describe('contract and config', () => {
     assert.equal(config.deadlineMs, 8000);
   });
 
+  test('config sends the Omnigraph HTTP contract only when one is named, and refuses a malformed one', () => {
+    assert.equal(loadConfig({ OMNIGRAPH_TOKEN: 'reader-token-0123456789' }).omnigraphHttpApi, null);
+    assert.equal(loadConfig({ OMNIGRAPH_TOKEN: 'reader-token-0123456789', OMNIGRAPH_HTTP_API: '0.14' }).omnigraphHttpApi, '0.14');
+    assert.throws(() => loadConfig({ OMNIGRAPH_TOKEN: 'reader-token-0123456789', OMNIGRAPH_HTTP_API: 'latest' }), ConfigError);
+  });
+
   test('refs parse into kinds and anything else is refused', () => {
     assert.deepEqual(parseRef('doc:forge/acme/app/doc/runbook#2'), { kind: 'doc', slug: 'forge/acme/app/doc/runbook', chunk: 2 });
     assert.deepEqual(parseRef('note:obsidian/garden#0'), { kind: 'note', slug: 'obsidian/garden', chunk: 0 });

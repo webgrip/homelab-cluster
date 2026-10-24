@@ -28,7 +28,7 @@ export interface ToolResponse {
 export const MAX_QUESTION_CHARS = 500;
 export const DEFAULT_LIMIT = 8;
 export const MAX_LIMIT: Record<Surface, number> = { mcp: 20, rest: 40 };
-const SNAPSHOT = /^[0-9A-Za-z]{10,64}$/;
+const SNAPSHOT = /^[0-9A-Za-z][0-9A-Za-z._-]{9,127}$/;
 
 export const MESSAGES = {
   unavailable: 'The brain is unavailable right now (it may be restarting). Tell Ryan you could not check his brain; do not answer from memory.',

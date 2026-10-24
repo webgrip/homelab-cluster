@@ -11,6 +11,7 @@ export interface Listen {
 
 export interface Config {
   omnigraphUrl: string;
+  omnigraphHttpApi: string | null;
   graph: string;
   readerToken: string;
   litellmUrl: string;
@@ -32,6 +33,7 @@ export type Env = Record<string, string | undefined>;
 
 const TOKEN = /^[A-Za-z0-9._~+/=-]{16,4096}$/;
 const GRAPH = /^[A-Za-z0-9_-]{1,64}$/;
+const HTTP_API = /^[0-9]+\.[0-9]+$/;
 
 function address(raw: string, name: string): Listen {
   const match = /^([A-Za-z0-9.:[\]-]+):(\d{1,5})$/.exec(raw);
@@ -76,8 +78,11 @@ export function loadConfig(env: Env, read: (path: string) => string = (path) => 
   const profile = env['BRAIN_TOOLS_PROFILE'] ?? 'p0';
   if (!PROFILES.includes(profile as Profile)) throw new ConfigError(`BRAIN_TOOLS_PROFILE must be one of ${PROFILES.join(', ')}, got '${profile}'`);
   const explorer = env['BRAIN_EXPLORER_URL']?.trim();
+  const httpApi = env['OMNIGRAPH_HTTP_API']?.trim() || null;
+  if (httpApi !== null && !HTTP_API.test(httpApi)) throw new ConfigError(`OMNIGRAPH_HTTP_API must be a contract version such as 0.14, got '${httpApi}'`);
   return {
     omnigraphUrl: url(env['OMNIGRAPH_URL'] ?? 'http://omnigraph.ai.svc.cluster.local:8080', 'OMNIGRAPH_URL'),
+    omnigraphHttpApi: httpApi,
     graph,
     readerToken,
     litellmUrl: url(env['LITELLM_URL'] ?? 'http://litellm.ai.svc.cluster.local:4000', 'LITELLM_URL'),

@@ -82,6 +82,7 @@ export interface OmnigraphOptions {
   baseUrl: string;
   graph: string;
   token: string;
+  httpApi?: string | null;
   record: Recorder;
   fetch?: typeof fetch;
 }
@@ -90,6 +91,7 @@ export class Omnigraph {
   private readonly baseUrl: string;
   private readonly graph: string;
   private readonly token: string;
+  private readonly httpApi: string | null;
   private readonly record: Recorder;
   private readonly fetchImpl: typeof fetch;
 
@@ -97,12 +99,15 @@ export class Omnigraph {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.graph = options.graph;
     this.token = options.token;
+    this.httpApi = options.httpApi ?? null;
     this.record = options.record;
     this.fetchImpl = options.fetch ?? fetch;
   }
 
   private headers(): Record<string, string> {
-    return { Authorization: `Bearer ${this.token}`, Accept: 'application/json' };
+    const base: Record<string, string> = { Authorization: `Bearer ${this.token}`, Accept: 'application/json' };
+    if (this.httpApi !== null) base['Omnigraph-Http-Api'] = this.httpApi;
+    return base;
   }
 
   async stored(name: string, params: Record<string, unknown>, snapshot: string | null, signal: AbortSignal): Promise<QueryResult> {
