@@ -679,7 +679,11 @@ class Omnigraph:
         self.calls = []
 
     def headers(self):
-        return {"Authorization": f"Bearer {self.token}"}
+        sent = {"Authorization": f"Bearer {self.token}"}
+        contract = os.environ.get("OMNIGRAPH_HTTP_API", "").strip()
+        if contract:
+            sent["Omnigraph-Http-Api"] = contract
+        return sent
 
     def post(self, path, payload, retries=2):
         for attempt in range(retries + 1):
