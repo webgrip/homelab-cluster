@@ -191,5 +191,13 @@ d=$(tree no-deadline)
 sed -i 's/^    if \[ "\$left" -le 0 \]; then$/    if false; then/; s/if timeout "\$left" omnigraph embed/if omnigraph embed/' "$d/$app/bundle/bootstrap.sh"
 expect_drill fail "bootstrap.sh ignores the backfill deadline" "over the 15s budget" "$d"
 
+d=$(tree no-cleanup-env)
+sed -i '/OMNIGRAPH_CLEANUP_OLDER_THAN/,+1d' "$d/$app/deployment.yaml"
+expect fail "init container without a cleanup window" "nothing reclaims old table versions" "$d"
+
+d=$(tree no-cleanup)
+sed -i '/omnigraph cleanup --cluster/,+2d' "$d/$app/bundle/bootstrap.sh"
+expect fail "bootstrap.sh never cleans up" "reported no cleanup for" "$d"
+
 echo "wrong verdicts: $wrong"
 [ "$wrong" -eq 0 ]

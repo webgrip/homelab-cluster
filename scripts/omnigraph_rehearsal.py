@@ -34,6 +34,7 @@ TYPE_BINDING = re.compile(r"^\$(\w+)\s*:\s*[A-Z]\w*")
 OPEN_BRANCH = "rehearsal-open"
 SEARCH_WORD = "rehearsal"
 BACKFILL_CAPPED = re.compile(r"vector backfill capped: (\d+) (\S+) (\S+) rows left for writers")
+CLEANUP_REPORT = re.compile(r"^cleanup \S*/graphs/([A-Za-z0-9_-]+)\.omni \(remove anything older than \S+\) — removed (\d+) versions", re.M)
 REQUIRED_BUNDLE_FILES = ("cluster.yaml", "bootstrap.sh", "approved-deletions")
 BUNDLE_KINDS = (".pg", ".gq", ".policy.yaml")
 LOAD_FILE_ROWS = 3000
@@ -907,6 +908,17 @@ def check_backfill(output, rendered, probe_graph, probe_type, extra, state_dir, 
     return seeded - left, left
 
 
+def check_cleanup(output, rendered, bundle):
+    env = rendered.plain_env(INIT_CONTAINER, init=True)
+    if "OMNIGRAPH_CLEANUP_OLDER_THAN" not in env:
+        raise Finding("the init container sets no OMNIGRAPH_CLEANUP_OLDER_THAN: nothing reclaims old table versions and the state volume fills (2026-10-23, 20 hours down)")
+    cleaned = {m.group(1): int(m.group(2)) for m in CLEANUP_REPORT.finditer(output)}
+    missing = sorted(set(bundle.graphs()) - set(cleaned))
+    if missing:
+        raise Finding(f"bootstrap.sh reported no cleanup for {', '.join(missing)}; their old table versions are never reclaimed:\n{tail(output, 12)}")
+    return f"every graph cleaned, versions older than {env['OMNIGRAPH_CLEANUP_OLDER_THAN']} removed ({sum(cleaned.values())} this run)"
+
+
 def stage(name, action):
     started = time.monotonic()
     try:
@@ -995,6 +1007,7 @@ def rehearse(args):
             if extra:
                 stage("capped backfill", lambda: "{} embedded, {} left for writers".format(*check_backfill(output, next_rendered, probe_graph, probe_type, extra, rehearsal.state, operator)))
                 stage("small backlogs filled", lambda: "every other embedding type got its vectors" if check_every_type_filled(next_bundle, probe_graph, probe_type, rehearsal.state, operator) == 0 else "")
+            stage("cleanup", lambda: check_cleanup(output, next_rendered, next_bundle))
             tokens = {actor: secrets.token_hex(16) for actor in next_bundle.policy_actors()}
             server_env = {
                 "PATH": os.environ["PATH"],

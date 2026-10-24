@@ -122,4 +122,7 @@ for graph_dir in "$OMNIGRAPH_STATE_DIR"/graphs/*.omni; do
   if echo "$report" | grep -q rebuild-full-text-indexes; then
     omnigraph rebuild-full-text-indexes --cluster "file://$OMNIGRAPH_STATE_DIR" --graph "$graph" --branch main --as "$OMNIGRAPH_OPERATOR_ACTOR"
   fi
+  if ! omnigraph cleanup --cluster "file://$OMNIGRAPH_STATE_DIR" --graph "$graph" --older-than "${OMNIGRAPH_CLEANUP_OLDER_THAN:-7d}" --confirm --quiet; then
+    echo "cleanup of $graph failed; its old table versions stay on the volume until the next start" >&2
+  fi
 done
