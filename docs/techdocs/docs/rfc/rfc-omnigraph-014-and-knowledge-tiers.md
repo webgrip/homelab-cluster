@@ -447,6 +447,16 @@ uncertainty/med, needs-refinement until the others merge.
 load; the embedding contract test updated; retrieval eval gate. Labels: theme/ingest, impact/M,
 effort/S, time/hours, uncertainty/low, ready.
 
+**T1.8 outcome (2026-10-24).** The gate ran on the 0.14 brain: experiment E1 (job
+`omnigraph-brain-eval-experiment-e1-014d`, 18 dev cases, candidate pools re-embedded in memory)
+scored raw text minus `type:`-prefixed text at −0.010 nDCG@8, 3 wins and 8 losses (sign test
+p 0.23), with `about`, `connect` and `docs-en` losing more than one case. That repeats the 0.11 run
+of 2026-09-29 (−0.011, 6 wins, 7 losses). No re-embed: the writers keep the prefixed format of the
+embedding contract. One gap stays: the 0.14 bootstrap backfill embeds with `omnigraph embed`, which
+writes raw text, so a row the writers leave vectorless across a restart would get a vector in the
+other format. On 2026-10-24 it embedded nothing (the writers heal vectorless rows first); closing that
+gap is a follow-up, not this ticket.
+
 **T1.9 omnigraph: nightly maintenance Job replaces the 03:15 restart.** After T1.7: `optimize`
 and bounded `cleanup` from a Job on the volume's node while the server serves; closes VIK-1406 and
 VIK-1573 and the restart half of VIK-1348. Labels: theme/ingest, impact/M, effort/S, time/days,
@@ -483,7 +493,7 @@ Ryan accepted D1–D4 on 2026-10-24 ("D1–D4 yes"); D5–D7 stand as recommende
 |---|---|---|
 | D1 | Accept the history loss of the rebuild (four weeks of commit history and open branches; rows, vectors and blobs kept) | Yes. The alternative is to wait for an upstream in-place cluster route that 0.14 says has "no in-place route yet" |
 | D2 | Importers on 0.14: call the HTTP API directly, or terminate TLS in the pod so the CLI's HTTPS rule is met | Direct HTTP. The importers are Python; the typed `disposition` is better than parsing CLI output; no in-cluster CA to manage |
-| D3 | One embedding text format for all rows: raw source text (what 0.14 `embed` and a text `nearest` use), re-embedding ~20k rows once | Yes, gated by the retrieval eval |
+| D3 | One embedding text format for all rows: raw source text (what 0.14 `embed` and a text `nearest` use), re-embedding ~20k rows once | Yes, gated by the retrieval eval. **Gate failed on 0.14 (2026-10-24): not adopted**, see T1.8 |
 | D4 | Reshape `webgrip` and the client graphs on the `company-brain` cookbook (claims before facts, actors, supersede-once) | Yes, in the 0.14 root; the meeting extractor already produces quotes, it will produce claims |
 | D5 | Add `@check` slug prefixes and the guard-edge cardinalities in the new root's schemas (a rebuild is the only time this is cheap) | Yes |
 | D6 | `beads`: not adopted; patterns folded into Ploeg and the write rules | Agree, with the re-evaluation trigger named in 5.3 |
