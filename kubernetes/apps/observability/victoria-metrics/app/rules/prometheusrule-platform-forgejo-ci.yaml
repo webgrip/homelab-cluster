@@ -52,9 +52,7 @@ spec:
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
 
         - alert: ForgejoCIQueueBacklog
-          # 6 = maxReplicaCount; sustained demand beyond the ceiling is a node-bound backlog. The
-          # ScaledJob comment is explicit: the lever is doing less CI work, not raising max.
-          expr: max(keda_scaler_metrics_value{scaledObject="forgejo-runner"}) > 6
+          expr: max(keda_scaler_metrics_value{scaledObject="forgejo-runner"}) > 10
           for: 20m
           labels:
             severity: warning
@@ -64,7 +62,7 @@ spec:
             summary: "Forgejo CI queue backlogged beyond runner ceiling (forgejo-runner)"
             description: |
               What's happening:
-              - Pending Actions jobs have exceeded maxReplicaCount (6) for 20m.
+              - Pending Actions jobs have exceeded maxReplicaCount (10) for 20m.
 
               Impact/risk:
               - CI wall-time climbs; releases and previews queue.
