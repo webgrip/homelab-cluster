@@ -4,7 +4,14 @@ locals {
     "access-plane.webgrip.io/managed"   = "true"
     "access-plane.webgrip.io/principal" = "human"
   }
+
+  live_namespace_bindings = {
+    for key, binding in module.model.namespace_bindings : key => binding
+    if contains(data.kubernetes_all_namespaces.live.namespaces, binding.namespace)
+  }
 }
+
+data "kubernetes_all_namespaces" "live" {}
 
 resource "kubernetes_cluster_role_binding_v1" "human" {
   for_each = module.model.cluster_bindings
@@ -31,7 +38,7 @@ resource "kubernetes_cluster_role_binding_v1" "human" {
 }
 
 resource "kubernetes_role_binding_v1" "human" {
-  for_each = module.model.namespace_bindings
+  for_each = local.live_namespace_bindings
 
   metadata {
     name      = "human-${each.value.role}"
