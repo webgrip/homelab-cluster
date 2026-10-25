@@ -110,24 +110,51 @@ mise exec -- kubectl -n security get cm wireguard-peers -o jsonpath='{.data.ap-j
 The validator refuses a malformed key, the same key on two devices, a device declared twice and a
 peer name over OPNsense's 64 characters.
 
+#### One-time setup of the VPN server
+
+The router holds the one WireGuard instance the reconciler adds peers to. It was set up by hand on
+2026-10-25 with these values; rebuild it from this table if the router is ever replaced.
+
+| Where in OPNsense | Setting |
+| --- | --- |
+| **VPN → WireGuard → Settings** | **Enable WireGuard** |
+| **VPN → WireGuard → Instances** | Name `access-plane`, generated key pair, listen port `51820`, tunnel address `10.10.10.1/24`, no peers, routes enabled |
+| **VPN → WireGuard → Peer generator** | Instance `access-plane`, endpoint `vpn.webgrip.dev:51820`, DNS `10.0.0.1` |
+| **Firewall → Rules → WAN** | Pass, IPv4 UDP, source any, destination *WAN address*, port `51820`, `WireGuard access-plane` |
+| **Firewall → Rules → WireGuard (Group)** | Pass, IPv4 any, source `10.10.10.0/24`, destination *LAN net*, `VPN devices to LAN` |
+
+`10.10.10.0/24` is unused elsewhere: the LAN is `10.0.0.0/24`, pods `10.42.0.0/16`, services
+`10.43.0.0/16`. Devices route only the LAN through the tunnel (`AllowedIPs = 10.0.0.0/24`).
+
+The WAN address is assigned by the ISP and changes. `vpn.webgrip.dev` follows it through the
+`wan-address` CronJob in `network`, which reads the address Cloudflare sees every five minutes and
+writes it into the `wan-address` DNSEndpoint for external-dns to publish (DNS only, not proxied).
+More hostnames that must follow the WAN address go into its `WAN_HOSTNAMES`, comma separated:
+`kubernetes/apps/network/cloudflare-dns/app/wan-address/cronjob.yaml`.
+
 #### One-time setup of the reconciler
 
 The reconciler holds one credential: an OPNsense API key for a user that can do nothing but
 WireGuard. It is the only thing created by hand, once.
 
-1. OPNsense, **System → Access → Users**: add `access-plane` with a random password nobody keeps, no shell, and
-   **Effective Privileges** `VPN: WireGuard: Configuration` only.
-2. On that user, **API keys → +**. The browser downloads `key` and `secret`.
-3. Store them, then delete the download:
+1. OPNsense, **System → Access → Users** (`https://10.0.0.1/ui/auth/user`): add `access-plane`
+   with a random password nobody keeps, no shell, and **Privileges** `VPN: WireGuard: Configuration`
+   only.
+2. In the user's row, the API key command downloads `<hostname>_apikey.txt` with `key=` and
+   `secret=` lines. The **ApiKeys** tab only lists and deletes keys.
+3. Store them without printing them, then delete the download:
 
    ```sh
+   f=~/Downloads/OPNsense.internal_access-plane_apikey.txt
    export BAO_ADDR=https://openbao.webgrip.dev
-   mise exec -- bao login -method=oidc
-   mise exec -- bao kv put secret/opnsense/wireguard-reconciler key=<key> secret=<secret>
+   mise exec -- bao token lookup >/dev/null 2>&1 || mise exec -- bao login -method=oidc
+   mise exec -- bao kv put -mount=secret opnsense/wireguard-reconciler \
+     key="$(sed -n 's/^key=//p' "$f")" secret="$(sed -n 's/^secret=//p' "$f")"
+   shred -u "$f"
+   mise exec -- kubectl annotate externalsecret -n security opnsense-wireguard-api force-sync="$(date +%s)" --overwrite
    ```
 
-4. Within the hour External Secrets writes `opnsense-wireguard-api` and the next run succeeds:
-   `kubectl -n security logs job/<latest wireguard-peers job>`.
+4. The next run succeeds: `kubectl -n security logs job/<latest wireguard-peers job>`.
 
 #### Symptom → cause
 
@@ -135,7 +162,9 @@ WireGuard. It is the only thing created by hand, once.
 | --- | --- | --- |
 | Pod in `CreateContainerConfigError` | `opnsense-wireguard-api` does not exist yet | The one-time setup above |
 | `public key does not match pinned public key` | OPNsense's web certificate was replaced with a new key | Pin the new key in `OPNSENSE_PINNED_PUBKEY` (command below) and commit |
+| `OPNsense has 0 WireGuard instances` | The VPN server is missing or WireGuard is disabled | The VPN server setup above |
 | `OPNsense has 2 WireGuard instances` | A second instance was added | Set `WG_SERVER_NAME` on the CronJob |
+| `wan-address` Job fails with `no public IPv4 address` | Cloudflare unreachable, or the WAN is behind another NAT | `vpn.webgrip.dev` keeps its last address; check the WAN in **Interfaces → Overview** |
 | `401` from the API | The key was revoked or lacks the WireGuard privilege | Recreate it and store it again |
 | `404` on `getServerInfo` | OPNsense older than the peer generator API | Upgrade OPNsense |
 
