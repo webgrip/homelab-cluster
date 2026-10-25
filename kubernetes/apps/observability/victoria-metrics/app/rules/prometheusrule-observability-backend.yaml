@@ -98,3 +98,67 @@ spec:
               - Check the operator release notes for a fix before working around it
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/information-radiators/"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health"
+
+    - name: observability.dashboards
+      rules:
+        - alert: GrafanaPanelsStoppedShowingData
+          expr: |
+            count by (dashboard_uid, dashboard) (
+              max_over_time(grafana_panel_has_data[3h]) == 0
+              unless on (dashboard_uid, panel_id) (grafana_panel_empty_expected == 1)
+              and on (dashboard_uid, panel_id) (max_over_time(grafana_panel_has_data[7d]) == 1)
+            ) > 0
+          labels:
+            severity: warning
+            owner: platform
+            service: observability
+          annotations:
+            summary: "{{ $value }} panel(s) on a dashboard stopped showing data ({{ $labels.dashboard }})"
+            description: |
+              What's happening:
+              - On dashboard {{ $labels.dashboard }} ({{ $labels.dashboard_uid }}), {{ $value }} panel(s) returned data in the last 7 days and have returned nothing or an error for the last 3 hours of checks.
+
+              Impact/risk:
+              - Someone reading this dashboard sees blanks or stale tiles and may act on a wrong picture.
+
+              Likely causes:
+              - A metric renamed or dropped (exporter upgrade, relabelling, a scrape that stopped)
+              - A datasource that no longer answers (database removed, token rotated)
+              - A query that now times out against VictoriaMetrics
+
+              First actions:
+              - grafana_panel_has_data{dashboard_uid="{{ $labels.dashboard_uid }}"} == 0 names the panels
+              - kubectl -n observability logs deploy/grafana-panel-health for the query error text
+              - Fix the query or the source; if empty is a healthy state for that panel, give it a specific noValue text
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/information-radiators/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/{{ $labels.dashboard_uid }}"
+
+        - alert: GrafanaPanelCheckStale
+          expr: |
+            (time() - max(grafana_panel_check_last_success_timestamp_seconds) > 3 * 3600)
+            or absent_over_time(grafana_panel_check_last_success_timestamp_seconds[30m])
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: observability
+          annotations:
+            summary: "The Grafana panel check has not completed for 3 hours (grafana-panel-health)"
+            description: |
+              What's happening:
+              - grafana-panel-health has not finished a check of all dashboards for over 3 hours, or is not being scraped.
+
+              Impact/risk:
+              - Dashboards that break go unnoticed, which is the failure this check exists to catch.
+
+              Likely causes:
+              - The Grafana service-account token secret is missing or rejected
+              - The pod is crashlooping or not scheduled
+              - Grafana is down, so the check cannot list dashboards
+
+              First actions:
+              - kubectl -n observability get pods -l app.kubernetes.io/name=grafana-panel-health
+              - kubectl -n observability logs deploy/grafana-panel-health
+              - Check the GrafanaServiceAccount grafana-panel-health and its token secret
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/information-radiators/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health"

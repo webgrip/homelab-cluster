@@ -197,6 +197,30 @@ them. The pre-commit hook re-runs `--check` when that manifest changes.
 | The Glide "ploegd gauges" row says "ploegd not scraped" | The ploeg chart's ServiceMonitor is off, or its scrape is failing |
 | Run wall-clock looks worse than time to green | It is every run, every outcome and event: the exporter's histogram has no status label |
 
+## Panel health check
+
+`grafana-panel-health` (`kubernetes/apps/observability/grafana-panel-health/`) runs every query of
+every dashboard in Grafana once an hour through Grafana's own `/api/ds/query`, as the Viewer
+service account `grafana-panel-health`. Going through Grafana means every datasource type is
+checked the way a browser sees it: PromQL, LogsQL, PostgreSQL and Infinity alike. Per panel it
+exports `grafana_panel_has_data`, `grafana_panel_query_error` and `grafana_panel_empty_expected`.
+
+- **`GrafanaPanelsStoppedShowingData`** fires per dashboard when a panel that returned data in
+  the last 7 days has returned nothing for 3 hours of checks. A panel that never had data does not
+  alert: the alert catches regressions, not the backlog of dead panels.
+- **Empty can be healthy.** A panel whose `noValue` is a specific sentence ("Nothing is firing
+  for anything.") declares that empty is a normal state, and never alerts. Generic texts
+  (`no data`, `0`, `-`) do not count.
+- **`GrafanaPanelCheckStale`** fires when no full check finished for 3 hours, so a dead checker
+  is not mistaken for healthy dashboards.
+- Dashboard variables are filled with their saved values (`All` becomes the variable's
+  `allValue`, else `.*`); a panel's relative time override is honoured. Library panels and
+  expression-only panels are skipped.
+- Tests with mutations: `sh scripts/test-grafana-panel-health-exporter.sh` (CI's e2e workflow).
+
+Before this check existed, eight dashboard failures sat unnoticed until a manual review on
+2026-10-25: costs 730× too high, alert walls counting 0 alerts, a table empty since it was added.
+
 ## Known gaps
 
 - **No per-job queue wait or failure reason for Forgejo CI.** Forgejo stamps a task with its
@@ -205,7 +229,8 @@ them. The pre-commit hook re-runs `--check` when that manifest changes.
   retries and per-job queue wait.
 - **No BuildKit cache hit ratio.** Job step output never reaches VictoriaLogs, and the BuildKit
   daemons export no metrics.
-- **Claude Code telemetry has not arrived since 2026-09-26**, so there is no Claude Code wall yet.
+- **There is no Claude Code wall.** Claude Code telemetry arrives again (checked 2026-10-25); the
+  Claude Code dashboards in the AI folder are the place for it until a wall is built.
 - **The Roadmap wall is SQL against Vikunja** and was written against Vikunja's schema without a
   live run. Check it in the browser after a schema change.
 

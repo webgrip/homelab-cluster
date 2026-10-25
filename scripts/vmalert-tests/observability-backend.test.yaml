@@ -85,3 +85,57 @@ tests:
               controller: grafanamanifest
             exp_annotations:
               summary: "grafana-operator keeps failing to sync grafanamanifest resources (grafanamanifest)"
+
+  - name: a panel that had data and went empty fires per dashboard; expected-empty and never-had-data panels do not
+    interval: 5m
+    input_series:
+      - series: 'grafana_panel_has_data{dashboard_uid="costs", dashboard="Costs", panel_id="1", panel="Run-rate"}'
+        values: "1x12 0x60"
+      - series: 'grafana_panel_has_data{dashboard_uid="costs", dashboard="Costs", panel_id="2", panel="Idle"}'
+        values: "1x12 0x60"
+      - series: 'grafana_panel_has_data{dashboard_uid="costs", dashboard="Costs", panel_id="3", panel="Never had data"}'
+        values: "0x72"
+      - series: 'grafana_panel_has_data{dashboard_uid="walls", dashboard="Walls", panel_id="4", panel="Firing now"}'
+        values: "1x12 0x60"
+      - series: 'grafana_panel_empty_expected{dashboard_uid="walls", dashboard="Walls", panel_id="4", panel="Firing now"}'
+        values: "1x72"
+      - series: 'grafana_panel_has_data{dashboard_uid="ok", dashboard="Ok", panel_id="5", panel="Fine"}'
+        values: "1x72"
+    alert_rule_test:
+      - eval_time: 2h
+        groupname: observability.dashboards
+        alertname: GrafanaPanelsStoppedShowingData
+        exp_alerts: []
+      - eval_time: 5h
+        groupname: observability.dashboards
+        alertname: GrafanaPanelsStoppedShowingData
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              owner: platform
+              service: observability
+              dashboard_uid: costs
+              dashboard: Costs
+            exp_annotations:
+              summary: "2 panel(s) on a dashboard stopped showing data (Costs)"
+
+  - name: the panel check going stale fires, a fresh check does not
+    interval: 5m
+    input_series:
+      - series: 'grafana_panel_check_last_success_timestamp_seconds'
+        values: "0+300x20 6000x50"
+    alert_rule_test:
+      - eval_time: 90m
+        groupname: observability.dashboards
+        alertname: GrafanaPanelCheckStale
+        exp_alerts: []
+      - eval_time: 5h
+        groupname: observability.dashboards
+        alertname: GrafanaPanelCheckStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              owner: platform
+              service: observability
+            exp_annotations:
+              summary: "The Grafana panel check has not completed for 3 hours (grafana-panel-health)"
