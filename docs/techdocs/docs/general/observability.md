@@ -63,6 +63,36 @@ Secrets are **ESO-managed** (no SOPS): `grafana-admin.externalsecret.yaml` (admi
 wiring/troubleshooting → `authentik-oidc` skill + [Authentik OIDC login runbook](../runbooks/authentik-oidc-login.md)
 (DNS resolution of `authentik.${SECRET_DOMAIN}` from the pod is the usual failure — [split-DNS runbook](../runbooks/dns-split-dns.md)).
 
+## Cost model (OpenCost) and the Executive dashboards
+
+- **Pricing is hourly.** `customPricing.costModel` in `kubernetes/apps/observability/opencost/app/helmrelease.yaml`
+  holds EUR per core-hour (`CPU`), per GB-hour (`RAM`) and per GB-hour (`storage`). OpenCost 1.121
+  emits them verbatim as `node_cpu_hourly_cost`, `node_ram_hourly_cost` and `pv_hourly_cost`, and
+  the Allocation API prices with the same numbers. From 2026-06-30 to 2026-10-25 the values were
+  monthly rates read as hourly, so every cost figure was 730× too high (a EUR 80k/month homelab).
+  Bump `exporter.extraEnv.pricingRev` with every price change: OpenCost reads the ConfigMap only
+  at start-up.
+- **The rates** (EUR 0.003/core-hour, EUR 0.0006/GB-hour, EUR 0.00002/GB-hour of PVC) model about
+  EUR 1,300 a year for the cluster: power at roughly EUR 3 per continuous watt per year plus hardware
+  amortisation. Kepler's measured CPU+DRAM power on the FinOps dashboard is the floor to check
+  them against.
+- **Dashboards read recording rules**, not raw joins (`opencost/app/prometheusrule-opencost.yaml`):
+  `opencost:node_hourly_cost:sum`, `opencost:allocated_hourly_cost:sum`,
+  `opencost:namespace_allocated_hourly_cost:sum`, `cluster:kube_pod_running_resource_requests:sum`,
+  `namespace:kube_pod_running_resource_requests:sum` and `cluster:kube_node_status_allocatable:sum`.
+  The raw per-container joins over a 7-day window time out.
+- **Requests double-count twice.** OpenCost re-exports `kube_pod_container_resource_requests` and
+  `kube_node_status_allocatable` under `job="opencost"`, so a bare `sum()` is 2×; and
+  kube-state-metrics keeps requests for Succeeded and Failed pods (finished CI runners and Renovate
+  jobs, about 35 GiB on 2026-10-25). The `kube_pod_running_resource_requests` rules keep
+  `job="kube-state-metrics"` and Running pods only. Before the fix, "memory headroom" read −23%
+  while the real figure was about +25%.
+- **VMSingle query concurrency.** VictoriaMetrics derives `-search.maxConcurrentRequests` from its
+  CPU limit (2 cores → 4 slots). With vmalert, Grafana alerting and dashboards sharing those slots,
+  queries queued for 10 s and failed with 429, so panels showed "No data" and Grafana alert rules
+  failed to evaluate (9,735 limit hits and 294 timeouts in the 24 h before 2026-10-25). The VMSingle
+  CR sets 8 slots and a 30 s queue; watch `vm_concurrent_select_limit_timeout_total`.
+
 ## VictoriaLogs
 
 - VLSingle CR: `kubernetes/apps/observability/victorialogs/app/vlsingle.yaml` (managed by vm-operator; apiVersion `operator.victoriametrics.com/v1`).

@@ -10,6 +10,44 @@ metadata:
     release: kube-prometheus-stack
 spec:
   groups:
+    - name: opencost.recording
+      interval: 1m
+      rules:
+        - record: opencost:node_hourly_cost:sum
+          expr: sum(node_total_hourly_cost)
+
+        - record: opencost:allocated_hourly_cost:sum
+          expr: |
+            sum(container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost)
+            + sum(container_memory_allocation_bytes / 1024^3 * on(node) group_left() node_ram_hourly_cost)
+
+        - record: opencost:namespace_allocated_hourly_cost:sum
+          expr: |
+            sum by (namespace) (container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost)
+            + sum by (namespace) (container_memory_allocation_bytes / 1024^3 * on(node) group_left() node_ram_hourly_cost)
+
+        - record: cluster:kube_pod_running_resource_requests:sum
+          expr: |
+            sum by (resource) (
+              kube_pod_container_resource_requests{job="kube-state-metrics", resource=~"cpu|memory"}
+              * on(exported_namespace, exported_pod) group_left()
+              (kube_pod_status_phase{job="kube-state-metrics", phase="Running"} == 1)
+            )
+
+        - record: namespace:kube_pod_running_resource_requests:sum
+          expr: |
+            label_replace(
+              sum by (exported_namespace, resource) (
+                kube_pod_container_resource_requests{job="kube-state-metrics", resource=~"cpu|memory"}
+                * on(exported_namespace, exported_pod) group_left()
+                (kube_pod_status_phase{job="kube-state-metrics", phase="Running"} == 1)
+              ),
+              "namespace", "$$1", "exported_namespace", "(.+)"
+            )
+
+        - record: cluster:kube_node_status_allocatable:sum
+          expr: sum by (resource) (kube_node_status_allocatable{job="kube-state-metrics", resource=~"cpu|memory"})
+
     - name: opencost.finops
       rules:
         # Cluster modelled run-rate jumped sharply vs 6h ago — a new heavy
@@ -45,13 +83,7 @@ spec:
         # Paying for a lot of reserved-but-unallocated capacity (idle cost).
         - alert: OpenCostHighIdleCost
           expr: |
-            (
-              sum(node_total_hourly_cost)
-              - (
-                  sum(container_cpu_allocation * on(node) group_left() node_cpu_hourly_cost)
-                  + sum(container_memory_allocation_bytes / 1024^3 * on(node) group_left() node_ram_hourly_cost)
-                )
-            ) * 730 > 30
+            (opencost:node_hourly_cost:sum - opencost:allocated_hourly_cost:sum) * 730 > 30
           for: 2h
           labels:
             severity: warning
@@ -82,10 +114,10 @@ spec:
           expr: |
             (
               sum by (namespace) (rate(container_cpu_usage_seconds_total{container!=""}[1h]))
-              / sum by (namespace) (label_replace(kube_pod_container_resource_requests{job="kube-state-metrics", resource="cpu"}, "namespace", "$$1", "exported_namespace", "(.+)"))
+              / sum without (exported_namespace, resource) (namespace:kube_pod_running_resource_requests:sum{resource="cpu"})
             ) < 0.15
             and
-            sum by (namespace) (label_replace(kube_pod_container_resource_requests{job="kube-state-metrics", resource="cpu"}, "namespace", "$$1", "exported_namespace", "(.+)")) > 1
+            sum without (exported_namespace, resource) (namespace:kube_pod_running_resource_requests:sum{resource="cpu"}) > 1
           for: 12h
           labels:
             severity: info

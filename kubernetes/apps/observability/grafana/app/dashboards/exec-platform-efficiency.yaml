@@ -69,28 +69,28 @@ spec:
         {
           "id": 21, "type": "stat", "title": "CPU reserved-but-idle", "description": "Share of requested CPU that sits unused (requests - usage / requests). The right-sizing opportunity.", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 9},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "(sum(kube_pod_container_resource_requests{resource=\"cpu\"}) - sum(rate(container_cpu_usage_seconds_total{container!=\"\"}[$$__rate_interval]))) / sum(kube_pod_container_resource_requests{resource=\"cpu\"}) * 100", "instant": true}],
+          "targets": [{"refId": "A", "expr": "(sum(cluster:kube_pod_running_resource_requests:sum{resource=\"cpu\"}) - sum(rate(container_cpu_usage_seconds_total{container!=\"\"}[5m]))) / sum(cluster:kube_pod_running_resource_requests:sum{resource=\"cpu\"}) * 100", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 80}]}}, "overrides": []}
         },
         {
           "id": 22, "type": "stat", "title": "Memory reserved-but-idle", "description": "Share of requested memory that sits unused (requests - working-set / requests).", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 9},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "(sum(kube_pod_container_resource_requests{resource=\"memory\"}) - sum(container_memory_working_set_bytes{container!=\"\"})) / sum(kube_pod_container_resource_requests{resource=\"memory\"}) * 100", "instant": true}],
+          "targets": [{"refId": "A", "expr": "(sum(cluster:kube_pod_running_resource_requests:sum{resource=\"memory\"}) - sum(container_memory_working_set_bytes{container!=\"\"})) / sum(cluster:kube_pod_running_resource_requests:sum{resource=\"memory\"}) * 100", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 80}]}}, "overrides": []}
         },
         {
           "id": 23, "type": "stat", "title": "CPU headroom free", "description": "Allocatable CPU not yet reserved by requests.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 9},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "(1 - sum(kube_pod_container_resource_requests{resource=\"cpu\"}) / sum(kube_node_status_allocatable{resource=\"cpu\"})) * 100", "instant": true}],
+          "targets": [{"refId": "A", "expr": "(1 - sum(cluster:kube_pod_running_resource_requests:sum{resource=\"cpu\"}) / sum(cluster:kube_node_status_allocatable:sum{resource=\"cpu\"})) * 100", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 10}, {"color": "green", "value": 20}]}}, "overrides": []}
         },
         {
           "id": 24, "type": "stat", "title": "Memory headroom free", "description": "Allocatable memory not yet reserved by requests.", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 9},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "(1 - sum(kube_pod_container_resource_requests{resource=\"memory\"}) / sum(kube_node_status_allocatable{resource=\"memory\"})) * 100", "instant": true}],
+          "targets": [{"refId": "A", "expr": "(1 - sum(cluster:kube_pod_running_resource_requests:sum{resource=\"memory\"}) / sum(cluster:kube_node_status_allocatable:sum{resource=\"memory\"})) * 100", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 10}, {"color": "green", "value": 20}]}}, "overrides": []}
         },
@@ -98,8 +98,8 @@ spec:
           "id": 25, "type": "timeseries", "title": "CPU — allocatable vs requested vs used", "description": "Cluster CPU cores: node allocatable, sum of requests, and actual usage. The gap between requests and usage is recoverable.", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 13},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "expr": "sum(kube_node_status_allocatable{resource=\"cpu\"})", "legendFormat": "allocatable"},
-            {"refId": "B", "expr": "sum(kube_pod_container_resource_requests{resource=\"cpu\"})", "legendFormat": "requested"},
+            {"refId": "A", "expr": "sum(cluster:kube_node_status_allocatable:sum{resource=\"cpu\"})", "legendFormat": "allocatable"},
+            {"refId": "B", "expr": "sum(cluster:kube_pod_running_resource_requests:sum{resource=\"cpu\"})", "legendFormat": "requested"},
             {"refId": "C", "expr": "sum(rate(container_cpu_usage_seconds_total{container!=\"\"}[$$__rate_interval]))", "legendFormat": "used"}
           ],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
@@ -109,8 +109,8 @@ spec:
           "id": 26, "type": "timeseries", "title": "Memory — allocatable vs requested vs used", "description": "Cluster memory: node allocatable, sum of requests, and actual working-set. The gap between requests and usage is recoverable.", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 13},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "expr": "sum(kube_node_status_allocatable{resource=\"memory\"})", "legendFormat": "allocatable"},
-            {"refId": "B", "expr": "sum(kube_pod_container_resource_requests{resource=\"memory\"})", "legendFormat": "requested"},
+            {"refId": "A", "expr": "sum(cluster:kube_node_status_allocatable:sum{resource=\"memory\"})", "legendFormat": "allocatable"},
+            {"refId": "B", "expr": "sum(cluster:kube_pod_running_resource_requests:sum{resource=\"memory\"})", "legendFormat": "requested"},
             {"refId": "C", "expr": "sum(container_memory_working_set_bytes{container!=\"\"})", "legendFormat": "used"}
           ],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},

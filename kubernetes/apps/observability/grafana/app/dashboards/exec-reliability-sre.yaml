@@ -18,7 +18,7 @@ spec:
       "tags": ["executive", "reliability", "sre", "slo"],
       "editable": true,
       "graphTooltip": 1,
-      "refresh": "1m",
+      "refresh": "5m",
       "time": {"from": "now-7d", "to": "now"},
       "links": [
         {"title": "◀ Scorecard", "url": "/d/exec-kpi-scorecard", "type": "link", "icon": "dashboard"},
@@ -53,7 +53,7 @@ spec:
         {
           "id": 13, "type": "stat", "title": "Customer-visible incident minutes", "description": "Estimated downtime minutes across probed services over the window.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(sum_over_time((probe_success == bool 0)[$$__range:30s])) * 30 / 60", "instant": true}],
+          "targets": [{"refId": "A", "expr": "sum(1 - avg_over_time(probe_success[$$__range])) * $$__range_s / 60", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "m", "decimals": 1, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}
         },
@@ -89,8 +89,8 @@ spec:
           "id": 31, "type": "timeseries", "title": "Probe latency p50 / p90", "description": "Probe round-trip latency distribution across all endpoints.", "gridPos": {"h": 7, "w": 12, "x": 0, "y": 18},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [
-            {"refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(prober_probe_duration_seconds_bucket[$$__rate_interval])))", "legendFormat": "p50"},
-            {"refId": "B", "expr": "histogram_quantile(0.90, sum by (le) (rate(prober_probe_duration_seconds_bucket[$$__rate_interval])))", "legendFormat": "p90"}
+            {"refId": "A", "expr": "quantile(0.50, avg_over_time(probe_duration_seconds[$$__rate_interval]))", "legendFormat": "p50"},
+            {"refId": "B", "expr": "quantile(0.90, avg_over_time(probe_duration_seconds[$$__rate_interval]))", "legendFormat": "p90"}
           ],
           "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi", "sort": "desc"}},
           "fieldConfig": {"defaults": {"unit": "s", "decimals": 3, "custom": {"lineWidth": 1, "fillOpacity": 10, "showPoints": "never"}}, "overrides": []}
@@ -98,7 +98,7 @@ spec:
         {
           "id": 32, "type": "bargauge", "title": "p90 latency by endpoint", "description": "p90 probe latency per endpoint over the window.", "gridPos": {"h": 7, "w": 12, "x": 12, "y": 18},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "histogram_quantile(0.90, sum by (le, instance) (rate(prober_probe_duration_seconds_bucket[$$__rate_interval])))", "instant": true, "legendFormat": "{{instance}}"}],
+          "targets": [{"refId": "A", "expr": "topk(15, max by (job) (quantile_over_time(0.90, probe_duration_seconds[$$__range])))", "instant": true, "legendFormat": "{{job}}"}],
           "options": {"orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "displayMode": "gradient", "valueMode": "color"},
           "fieldConfig": {"defaults": {"unit": "s", "decimals": 3, "color": {"mode": "continuous-GrYlRd"}}, "overrides": []}
         },

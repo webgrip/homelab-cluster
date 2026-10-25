@@ -18,22 +18,21 @@ spec:
       "tags": ["executive", "kpi", "scorecard", "dora", "finops"],
       "editable": true,
       "graphTooltip": 1,
-      "refresh": "1m",
+      "refresh": "5m",
       "time": {"from": "now-7d", "to": "now"},
       "links": [
         {"title": "Value Flow & Delivery", "url": "/d/exec-value-flow-delivery", "type": "link", "icon": "external link"},
         {"title": "Reliability & SRE", "url": "/d/exec-reliability-sre", "type": "link", "icon": "external link"},
         {"title": "Security & Supply Chain", "url": "/d/exec-security-supply-chain", "type": "link", "icon": "external link"},
         {"title": "Platform & Efficiency", "url": "/d/exec-platform-efficiency", "type": "link", "icon": "external link"},
-        {"title": "FinOps & Cost", "url": "/d/exec-finops", "type": "link", "icon": "external link"},
-        {"title": "Engineering Experience (DevEx)", "url": "/d/devex-scorecard", "type": "link", "icon": "external link"}
+        {"title": "FinOps & Cost", "url": "/d/exec-finops", "type": "link", "icon": "external link"}
       ],
       "annotations": {"list": [{"builtIn": 1, "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": true, "hide": true, "iconColor": "rgba(0, 211, 255, 1)", "name": "Annotations & Alerts", "type": "dashboard"}]},
       "templating": {"list": []},
       "panels": [
         {
           "id": 1, "type": "text", "title": "", "gridPos": {"h": 3, "w": 24, "x": 0, "y": 0},
-          "options": {"mode": "markdown", "content": "## DevOps KPI Operating System — Executive Scorecard\nSix value dimensions on one screen — **value flow · reliability · security risk · platform leverage · cost efficiency · developer experience** — measured together, never as isolated vanity numbers. Tiles are red/amber/green against action thresholds; click a dimension header link (top-right) to drill into diagnosis. Cost & AI figures are API-equivalent **estimates** (token volume × list price), not billed spend. Default window: 7 days."}
+          "options": {"mode": "markdown", "content": "## DevOps KPI Operating System — Executive Scorecard\nSix value dimensions on one screen — **value flow · reliability · security risk · platform leverage · cost efficiency · AI engineering leverage** — measured together, never as isolated vanity numbers. Tiles are red/amber/green against action thresholds; click a dimension header link (top-right) to drill into diagnosis. Cost & AI figures are API-equivalent **estimates** (token volume × list price), not billed spend. Default window: 7 days."}
         },
 
         {"id": 10, "type": "row", "title": "Value flow & delivery (DORA)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 3}, "panels": []},
@@ -52,7 +51,7 @@ spec:
           "fieldConfig": {"defaults": {"unit": "s", "decimals": 1, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 30}, {"color": "red", "value": 120}]}}, "overrides": []}
         },
         {
-          "id": 13, "type": "stat", "title": "Change failure rate", "description": "Share of Flux-managed resources currently not Ready=True — a point-in-time release-safety proxy. Clean cluster reads 0%; spikes during a bad rollout.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4},
+          "id": 13, "type": "stat", "title": "GitOps objects not Ready (now)", "description": "Share of Flux-managed resources currently not Ready=True — a point-in-time release-safety proxy. Clean cluster reads 0%; spikes during a bad rollout.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 4},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [{"refId": "A", "expr": "100 * (count(flux_resource_info{ready!=\"True\"}) or vector(0)) / count(flux_resource_info)", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
@@ -82,9 +81,9 @@ spec:
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 2, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 1}]}}, "overrides": []}
         },
         {
-          "id": 23, "type": "stat", "title": "Customer-visible incident minutes", "description": "Estimated downtime minutes across probed services over the window (failed 30s scrapes x 0.5 min).", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 9},
+          "id": 23, "type": "stat", "title": "Customer-visible incident minutes", "description": "Estimated downtime minutes across probed services over the window (unavailability x window length, summed over probes).", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 9},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "sum(sum_over_time((probe_success == bool 0)[$$__range:30s])) * 30 / 60", "instant": true}],
+          "targets": [{"refId": "A", "expr": "sum(1 - avg_over_time(probe_success[$$__range])) * $$__range_s / 60", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "m", "decimals": 1, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []}
         },
@@ -153,14 +152,14 @@ spec:
         {
           "id": 51, "type": "stat", "title": "CPU reserved-but-idle (waste)", "description": "Share of requested CPU that sits unused (requests − usage ÷ requests). The right-sizing opportunity.", "gridPos": {"h": 4, "w": 8, "x": 0, "y": 24},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "(sum(kube_pod_container_resource_requests{resource=\"cpu\"}) - sum(rate(container_cpu_usage_seconds_total{container!=\"\"}[$$__rate_interval]))) / sum(kube_pod_container_resource_requests{resource=\"cpu\"}) * 100", "instant": true}],
+          "targets": [{"refId": "A", "expr": "(sum(cluster:kube_pod_running_resource_requests:sum{resource=\"cpu\"}) - sum(rate(container_cpu_usage_seconds_total{container!=\"\"}[5m]))) / sum(cluster:kube_pod_running_resource_requests:sum{resource=\"cpu\"}) * 100", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 80}]}}, "overrides": []}
         },
         {
           "id": 52, "type": "stat", "title": "Memory reserved-but-idle (waste)", "description": "Share of requested memory that sits unused (requests − working-set ÷ requests).", "gridPos": {"h": 4, "w": 8, "x": 8, "y": 24},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
-          "targets": [{"refId": "A", "expr": "(sum(kube_pod_container_resource_requests{resource=\"memory\"}) - sum(container_memory_working_set_bytes{container!=\"\"})) / sum(kube_pod_container_resource_requests{resource=\"memory\"}) * 100", "instant": true}],
+          "targets": [{"refId": "A", "expr": "(sum(cluster:kube_pod_running_resource_requests:sum{resource=\"memory\"}) - sum(container_memory_working_set_bytes{container!=\"\"})) / sum(cluster:kube_pod_running_resource_requests:sum{resource=\"memory\"}) * 100", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 50}, {"color": "red", "value": 80}]}}, "overrides": []}
         },
@@ -172,40 +171,32 @@ spec:
           "fieldConfig": {"defaults": {"unit": "currencyUSD", "decimals": 2, "color": {"mode": "fixed", "fixedColor": "green"}}, "overrides": []}
         },
 
-        {"id": 60, "type": "row", "title": "Developer experience & leverage", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 28}, "panels": []},
+        {"id": 60, "type": "row", "title": "AI engineering leverage", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 28}, "panels": []},
         {
-          "id": 61, "type": "stat", "title": "AI-assisted commits", "description": "Git commits produced through Claude Code over the window.", "gridPos": {"h": 4, "w": 6, "x": 0, "y": 29},
+          "id": 61, "type": "stat", "title": "AI-assisted commits", "description": "Git commits produced through Claude Code over the window.", "gridPos": {"h": 4, "w": 8, "x": 0, "y": 29},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [{"refId": "A", "expr": "sum(increase(claude_code_commit_count_total[$$__range])) or vector(0)", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "area"},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "purple"}}, "overrides": []}
         },
         {
-          "id": 62, "type": "stat", "title": "AI-assisted lines of code", "description": "Lines of code added/changed through Claude Code over the window.", "gridPos": {"h": 4, "w": 6, "x": 6, "y": 29},
+          "id": 62, "type": "stat", "title": "AI-assisted lines of code", "description": "Lines of code added/changed through Claude Code over the window.", "gridPos": {"h": 4, "w": 8, "x": 8, "y": 29},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [{"refId": "A", "expr": "sum(increase(claude_code_lines_of_code_count_total[$$__range])) or vector(0)", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "area"},
           "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []}
         },
         {
-          "id": 63, "type": "stat", "title": "AI edit accept-rate", "description": "Accepted ÷ all code-edit decisions over the window — a trust/quality signal for AI-suggested changes.", "gridPos": {"h": 4, "w": 6, "x": 12, "y": 29},
+          "id": 63, "type": "stat", "title": "AI edit accept-rate", "description": "Accepted ÷ all code-edit decisions over the window — a trust/quality signal for AI-suggested changes.", "gridPos": {"h": 4, "w": 8, "x": 16, "y": 29},
           "datasource": {"type": "prometheus", "uid": "prometheus"},
           "targets": [{"refId": "A", "expr": "(sum(increase(claude_code_code_edit_tool_decision_total{decision=\"accept\"}[$$__range])) or vector(0)) / clamp_min(sum(increase(claude_code_code_edit_tool_decision_total[$$__range])) or vector(0), 1) * 100", "instant": true}],
           "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "colorMode": "background", "graphMode": "none"},
           "fieldConfig": {"defaults": {"unit": "percent", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 50}, {"color": "green", "value": 80}]}}, "overrides": []}
         },
-        {
-          "id": 64, "type": "stat", "title": "DevEx index (pulse)", "description": "Real developer-experience signal: composite of the monthly anonymous SPACE/DevEx pulse (0–100), most recent surveyed month, all teams. Drill: Engineering Experience folder.", "gridPos": {"h": 4, "w": 6, "x": 18, "y": 29},
-          "datasource": {"type": "grafana-postgresql-datasource", "uid": "postgres-devex"},
-          "targets": [{"refId": "A", "format": "table", "rawSql": "SELECT normalized_score FROM grafana_devex_org WHERE dimension='devex_index' ORDER BY month DESC LIMIT 1"}],
-          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": ""}, "textMode": "value", "colorMode": "background", "graphMode": "none"},
-          "links": [{"title": "DevEx scorecard", "url": "/d/devex-scorecard", "targetBlank": false}],
-          "fieldConfig": {"defaults": {"unit": "none", "decimals": 0, "min": 0, "max": 100, "color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 55}, {"color": "green", "value": 70}]}}, "overrides": []}
-        },
 
         {
           "id": 70, "type": "text", "title": "", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 33},
-          "options": {"mode": "markdown", "content": "### Instrumentation roadmap — KPIs not yet wired (honest gaps)\nEverything above is live from systems of record; nothing is manual status reporting. The whitepaper's remaining executive KPIs need new joins — sequenced 30 / 90 / 180 days:\n\n- **0–30 days:** customer feature lead time (work-tracker → PR → deploy join); KEV remediation time (CISA KEV enrichment on Dependency-Track).\n- **31–90 days:** golden-path completion time & self-service success (platform portal analytics); SBOM signature **coverage** (image-verify PolicyReports are defined but not currently emitting results — 32 verify rules are active).\n- **91–180 days:** cost-to-serve & unit cost in EUR (OpenCost / billing allocation — no cloud bill exists in a homelab).\n\n✅ **Developer satisfaction is now wired** — the monthly anonymous SPACE/DevEx pulse feeds the DevEx index tile above and the [Engineering Experience](/d/devex-scorecard) dashboards (survey ↔ DORA/CI/PR telemetry).\n\n_Showing the gap is the point: baseline first, transform later._"}
+          "options": {"mode": "markdown", "content": "### Instrumentation roadmap — KPIs not yet wired (honest gaps)\nEverything above is live from systems of record; nothing is manual status reporting. The whitepaper's remaining executive KPIs need new joins — sequenced 30 / 90 / 180 days:\n\n- **0–30 days:** customer feature lead time (work-tracker → PR → deploy join); KEV remediation time (CISA KEV enrichment on Dependency-Track).\n- **31–90 days:** golden-path completion time & self-service success (platform portal analytics); SBOM signature **coverage** (image-verify PolicyReports are defined but not currently emitting results).\n- **91–180 days:** cost-to-serve & unit cost in EUR (OpenCost / billing allocation — no cloud bill exists in a homelab).\n- **Not measured:** developer satisfaction. The DevEx pulse warehouse was removed on 2026-08-13.\n\n_Showing the gap is the point: baseline first, transform later._"}
         }
       ]
     }
