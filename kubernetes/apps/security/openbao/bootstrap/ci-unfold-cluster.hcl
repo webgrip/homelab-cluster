@@ -45,3 +45,7 @@ path "secret/data/unfold-cluster/metal/*" {
 path "secret/data/unfold-cluster/metal-image-pull" {
   capabilities = ["read"]
 }
+
+path "secret/data/unfold-cluster/disk-kms" {
+  capabilities = ["create", "read"]
+}
