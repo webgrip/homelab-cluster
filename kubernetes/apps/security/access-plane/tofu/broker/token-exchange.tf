@@ -5,7 +5,7 @@
 # per consumer:
 #
 #   <consumer>-exchange    confidential client the consumer's SERVER authenticates
-#                          as; may exchange tokens its sign-in provider issued
+#                          as; may exchange tokens its sign-in providers issued
 #                          (jwt_federation_providers), and nothing else
 #   ploeg-for-<consumer>   the target: aud = azp = its client_id, issued only by
 #                          exchange (no redirect URIs, no grant of its own)
@@ -24,16 +24,16 @@
 locals {
   exchange_consumers = {
     unfold = {
-      sign_in       = "unfold"
-      exchange_name = "Unfold (token exchange)"
-      target_name   = "Ploeg, for Unfold"
-      description   = "Unfold's server trades a signed-in person's token for one Ploeg verifies."
+      sign_in_providers = ["unfold", "unfold-mcp"]
+      exchange_name     = "Unfold (token exchange)"
+      target_name       = "Ploeg, for Unfold"
+      description       = "Unfold's server trades a signed-in person's token for one Ploeg verifies."
     }
     ploeg-mcp = {
-      sign_in       = "ploeg-mcp"
-      exchange_name = "Ploeg MCP (token exchange)"
-      target_name   = "Ploeg, for Ploeg MCP"
-      description   = "ploeg-mcp trades the caller's token for one Ploeg verifies before an action."
+      sign_in_providers = ["ploeg-mcp"]
+      exchange_name     = "Ploeg MCP (token exchange)"
+      target_name       = "Ploeg, for Ploeg MCP"
+      description       = "ploeg-mcp trades the caller's token for one Ploeg verifies before an action."
     }
   }
 
@@ -55,7 +55,7 @@ resource "authentik_provider_oauth2" "exchange_client" {
   grant_types              = ["urn:ietf:params:oauth:grant-type:token-exchange"]
   access_token_validity    = "minutes=5"
   refresh_token_validity   = "minutes=5"
-  jwt_federation_providers = [authentik_provider_oauth2.app[each.value.sign_in].id]
+  jwt_federation_providers = [for provider in each.value.sign_in_providers : authentik_provider_oauth2.app[provider].id]
   authentication_flow      = var.google_login ? authentik_flow.webgrip_authentication[0].uuid : data.authentik_flow.authentication.id
   authorization_flow       = data.authentik_flow.authorization_implicit_consent.id
   invalidation_flow        = data.authentik_flow.invalidation.id
@@ -103,7 +103,7 @@ resource "authentik_application" "exchange_target" {
   name               = each.value.target_name
   slug               = "ploeg-for-${each.key}"
   protocol_provider  = authentik_provider_oauth2.exchange_target[each.key].id
-  meta_description   = "The audience of person tokens ${each.value.sign_in} presents to Ploeg."
+  meta_description   = "The audience of person tokens ${each.key} presents to Ploeg."
   meta_launch_url    = "blank://blank"
   policy_engine_mode = "any"
 }
