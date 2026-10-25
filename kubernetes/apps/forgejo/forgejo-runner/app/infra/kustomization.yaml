@@ -4,6 +4,11 @@ kind: Kustomization
 resources:
   - ../base
 nameSuffix: -infra
+images:
+  - name: harbor.webgrip.dev/webgrip/ci-runner
+    newName: harbor.webgrip.dev/webgrip/infra-runner
+    newTag: "0.1.0"
+    digest: sha256:d98987878aa40983b26ac4aa23dde1f105edd72dc4721d85fa18436b5db07140
 patches:
   - target:
       kind: ScaledJob
@@ -47,6 +52,20 @@ patches:
                   name: forgejo-runner-secret
                   items:
                     - {key: cache-secret, path: cache-secret}
+      - op: test
+        path: /spec/jobTargetRef/template/spec/containers/0/name
+        value: runner
+      - op: add
+        path: /spec/jobTargetRef/template/spec/containers/0/securityContext
+        value:
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          seccompProfile:
+            type: RuntimeDefault
       - op: test
         path: /spec/jobTargetRef/template/spec/volumes/5/name
         value: ci-shared
