@@ -1,0 +1,774 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: unfold-supply-chain
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: unfold
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Unfold supply chain",
+      "uid": "unfold-supply-chain",
+      "timezone": "browser",
+      "tags": [
+        "unfold",
+        "security",
+        "supply-chain",
+        "trivy",
+        "kyverno"
+      ],
+      "editable": true,
+      "graphTooltip": 0,
+      "refresh": "5m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "links": [
+        {
+          "title": "Unfold cluster",
+          "url": "/d/unfold-cluster",
+          "type": "link",
+          "icon": "dashboard"
+        }
+      ],
+      "annotations": {
+        "list": []
+      },
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "text",
+          "title": "",
+          "gridPos": {
+            "h": 3,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "options": {
+            "mode": "markdown",
+            "content": "**Unfold supply chain** (unfold-cluster). Trivy Operator scans every running image for HIGH and CRITICAL vulnerabilities and baked-in secrets, audits workload config and RBAC, and keeps an SBOM per image; Kyverno checks that webgrip images carry the estate's cosign signature (Audit). Runbooks: unfold-cluster `docs/runbooks/vulnerability-scanning.md` and `docs/runbooks/image-signatures.md`."
+          }
+        },
+        {
+          "id": 2,
+          "type": "row",
+          "title": "Now",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 3
+          },
+          "panels": []
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Workloads with fixable criticals",
+          "description": "Workloads running an image with at least one CRITICAL vulnerability that has a fixed version.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "count(count by (namespace, resource_kind, resource_name) (trivy_vulnerability_id{cluster=\"unfold\", severity=\"Critical\", fixed_version!=\"\"})) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Critical findings",
+          "description": "CRITICAL vulnerabilities across every scanned container, fixable or not.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(trivy_image_vulnerabilities{cluster=\"unfold\", severity=\"Critical\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "High findings",
+          "description": "HIGH vulnerabilities across every scanned container, fixable or not.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(trivy_image_vulnerabilities{cluster=\"unfold\", severity=\"High\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1000000
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Secrets in images",
+          "description": "Secrets Trivy found in image layers. Any is a leak.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(trivy_image_exposedsecrets{cluster=\"unfold\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "Images scanned",
+          "description": "Distinct image digests with a current vulnerability report.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "count(count by (image_repository, image_digest) (trivy_image_info{cluster=\"unfold\"})) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1000000
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Unsigned webgrip images, 24 h",
+          "description": "Pods whose webgrip image failed the cosign signature check in the last 24 hours. Audit: they were admitted.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 4
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(increase(kyverno_image_validating_policy_results_total{cluster=\"unfold\", policy_name=~\"webgrip-image-signatures.*\", result=~\"fail|error\"}[24h])) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "value",
+            "graphMode": "none",
+            "textMode": "value",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 9,
+          "type": "row",
+          "title": "Vulnerabilities",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 8
+          },
+          "panels": []
+        },
+        {
+          "id": 10,
+          "type": "table",
+          "title": "Fixable CRITICAL vulnerabilities",
+          "description": "One row per vulnerability, package and workload. Fix by moving to the fixed version.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 9
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "count by (namespace, resource_kind, resource_name, container_name, image_repository, image_tag, vuln_id, resource, installed_version, fixed_version) (trivy_vulnerability_id{cluster=\"unfold\", severity=\"Critical\", fixed_version!=\"\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        },
+        {
+          "id": 11,
+          "type": "table",
+          "title": "HIGH and CRITICAL by container",
+          "description": "Per container image: the count of each severity, fixable or not.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 18
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum by (namespace, resource_kind, resource_name, container_name, image_repository, image_tag, severity) (trivy_image_vulnerabilities{cluster=\"unfold\", severity=~\"Critical|High\"}) > 0",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        },
+        {
+          "id": 12,
+          "type": "row",
+          "title": "Configuration and access",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 27
+          },
+          "panels": []
+        },
+        {
+          "id": 13,
+          "type": "table",
+          "title": "Failed config checks",
+          "description": "Workloads and objects with HIGH or CRITICAL failed checks (Trivy's Kubernetes checks).",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 28
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum by (namespace, resource_kind, resource_name, severity) (trivy_resource_configaudits{cluster=\"unfold\", severity=~\"Critical|High\"}) > 0",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        },
+        {
+          "id": 14,
+          "type": "table",
+          "title": "RBAC findings",
+          "description": "Roles and cluster roles with HIGH or CRITICAL findings.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 28
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "(sum by (namespace, name, severity) (trivy_role_rbacassessments{cluster=\"unfold\", severity=~\"Critical|High\"}) > 0) or (sum by (name, severity) (trivy_clusterrole_clusterrbacassessments{cluster=\"unfold\", severity=~\"Critical|High\"}) > 0)",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        },
+        {
+          "id": 15,
+          "type": "row",
+          "title": "Signatures and reports",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 37
+          },
+          "panels": []
+        },
+        {
+          "id": 16,
+          "type": "table",
+          "title": "Signature checks, 24 h",
+          "description": "Kyverno image signature checks by policy and result.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 8,
+            "x": 0,
+            "y": 38
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum by (policy_name, result) (increase(kyverno_image_validating_policy_results_total{cluster=\"unfold\"}[24h])) > 0",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        },
+        {
+          "id": 17,
+          "type": "logs",
+          "title": "Trivy reports",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 9,
+            "w": 16,
+            "x": 8,
+            "y": 38
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "expr": "cluster:=unfold source:=trivy",
+              "queryType": "instant",
+              "direction": "backward",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "prettifyLogMessage": false
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        }
+      ]
+    }
