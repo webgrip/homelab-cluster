@@ -58,7 +58,7 @@ def scoped(group):
 
 
 def count_where(group, extra):
-    return f'[{{ "n": $count($[{in_group(group)} and {extra}]) }}]'
+    return f"$count($[{in_group(group)} and {extra}])"
 
 
 RANK = ('$rank := function($a) { $a.labels.severity = "critical" ? 0 : '
@@ -88,7 +88,7 @@ def am_target(flags, root, columns, ref="A"):
 
 def am_stat(title, flags, root, thresholds, desc):
     return stat(title, None, unit="none", decimals=0, value_size=TILE_SIZE, no_value="0",
-                thresholds=thresholds, targets=[am_target(flags, root, [("n", "n", "number")])], desc=desc)
+                thresholds=thresholds, targets=[am_target(flags, root, [])], desc=desc)
 
 
 def critical(group):
@@ -118,7 +118,7 @@ def silenced(group):
 
 def heartbeat():
     return am_stat(
-        "Alerting pipeline", FIRING, f'[{{ "n": $count($[labels.alertname = "{HEARTBEAT}"]) }}]',
+        "Alerting pipeline", FIRING, f'$count($[labels.alertname = "{HEARTBEAT}"])',
         kiosk_steps((VERMILLION, 0), (NEUTRAL, 1)),
         "The Watchdog heartbeat as Alertmanager receives it: 1 means vmalert evaluates rules and Alertmanager "
         "receives them. Vermillion at 0, because then every other number on this wall is silent for the wrong "
@@ -142,7 +142,8 @@ def firing(group):
             col("alert", width=320, links=[{
                 "title": "Open the runbook for this alert", "url": "${__data.fields.runbook}",
                 "targetBlank": True}]),
-            col("about", width=320),
+            col("about", width=320, no_value="·"),
+            col("summary", no_value="·"),
             col("since", width=160, unit="dateTimeFromNow"),
         ],
         desc="Every alert firing now for this wall, read from Alertmanager's API with silenced and inhibited "

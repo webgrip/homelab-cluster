@@ -190,7 +190,7 @@ them. The pre-commit hook re-runs `--check` when that manifest changes.
 
 | Symptom | Likely cause |
 | --- | --- |
-| Every alert count is 0 but alerts are firing | A JSONata comparison against a missing label is false, not true. Guard absent labels with `$not($exists(...))` |
+| Every alert count is 0 but alerts are firing | A JSONata comparison against a missing label is false, not true. Guard absent labels with `$not($exists(...))`. Also: the Infinity backend parser turns an object built in the root selector (`[{ "n": $count(...) }]`) into null, so the count tiles read 0 until 2026-10-25. Return the bare `$count(...)` with no columns |
 | A KSM-based tile is empty | kube-state-metrics series carry the real namespace in `exported_namespace`, and OpenCost duplicates some of them. Pin `job="kube-state-metrics"` |
 | A node join returns nothing | cAdvisor's `instance` is the node name, node-exporter's is `IP:9100`. Join cAdvisor on `node`, node-exporter through `node_uname_info` |
 | A panel shows "No data" after a Flux reconcile | A single `$` was blanked by envsubst. Regenerate; never hand-edit the YAML |

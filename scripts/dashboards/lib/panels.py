@@ -153,8 +153,10 @@ def table(title, targets, x=0, y=0, w=0, h=0, *, desc="", rename=None, order=Non
 
 
 def col(name, *, unit=None, thresholds=None, bg=False, colour_text=False, gauge=False, mappings=None, width=None,
-        decimals=None, gauge_max=None, hidden=False, links=None):
+        decimals=None, gauge_max=None, hidden=False, links=None, no_value=None):
     props = []
+    if no_value is not None:
+        props.append({"id": "noValue", "value": no_value})
     if unit:
         props.append({"id": "unit", "value": unit})
     if decimals is not None:
