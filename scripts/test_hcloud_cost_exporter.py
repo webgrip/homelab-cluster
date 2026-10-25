@@ -55,13 +55,13 @@ PRICING = {
 def server(server_id, name, server_type, created, labels, backup_window=None):
     return {"id": server_id, "name": name, "created": iso(created), "labels": labels,
             "server_type": server_type, "backup_window": backup_window,
-            "datacenter": {"location": {"name": "fsn1"}}}
+            "location": {"name": "fsn1"}}
 
 
 def primary_ip(ip_id, ip_type, assignee_id, created, labels=None):
     return {"id": ip_id, "name": f"ip-{ip_id}", "ip": f"192.0.2.{ip_id}", "type": ip_type,
             "assignee_id": assignee_id, "created": iso(created), "labels": labels or {},
-            "datacenter": {"location": {"name": "fsn1"}}}
+            "location": {"name": "fsn1"}}
 
 
 SINCE_SEPTEMBER = "2026-09-20T10:00:00"
@@ -91,6 +91,10 @@ def by_name(resources, kind, name):
 
 
 class BillingModelTest(unittest.TestCase):
+    def test_location_reads_the_current_and_the_retired_api_shape(self):
+        self.assertEqual(exporter.location_of({"location": {"name": "nbg1"}}), "nbg1")
+        self.assertEqual(exporter.location_of({"datacenter": {"location": {"name": "hel1"}}}), "hel1")
+
     def test_partial_hours_bill_as_started_hours(self):
         created = at("2026-10-25T12:00:00")
         self.assertEqual(exporter.started_hours(created, created + 1), 1)

@@ -87,6 +87,12 @@ def net(price: dict) -> float:
     return float(price["net"])
 
 
+def location_of(resource: dict) -> str:
+    if "location" in resource:
+        return resource["location"]["name"]
+    return resource["datacenter"]["location"]["name"]
+
+
 def price_for_location(prices: list, location: str) -> dict:
     for entry in prices:
         if entry.get("location") == location:
@@ -106,7 +112,7 @@ def label(labels: dict, key: str, fallback: str = "") -> str:
 def servers_to_resources(servers: list, backup_percentage: float) -> list:
     resources = []
     for server in servers:
-        location = server["datacenter"]["location"]["name"]
+        location = location_of(server)
         server_type = server["server_type"]
         price = price_for_location(server_type["prices"], location)
         common = dict(
@@ -132,7 +138,7 @@ def primary_ips_to_resources(primary_ips: list, servers: list, pricing: dict) ->
     prices_by_type = {entry["type"]: entry["prices"] for entry in pricing.get("primary_ips", [])}
     resources = []
     for primary_ip in primary_ips:
-        location = primary_ip["datacenter"]["location"]["name"]
+        location = location_of(primary_ip)
         type_prices = prices_by_type.get(primary_ip["type"])
         if not type_prices:
             continue
