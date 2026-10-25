@@ -133,6 +133,10 @@ The 0.11 stdio bridges (`@modernrelay/omnigraph-mcp@0.10.0`) were removed on 202
 
 Two keys see both groups: `open-webui` for [Open WebUI](open-webui.md) and `claude-code` for Claude Code on Ryan's workstation (setup in [Open WebUI: Claude Code](open-webui.md#claude-code)).
 
+## Credential scrub of the agent graphs
+
+Credentials, and descriptions of them, never belong in a graph (tier T5 in the [tiers RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md)). Agents write `webgrip-notes`, `webgrip-knowledge` and `memory`, and ploegd's filter on notes has let an observation about a token through, so the CronJob `omnigraph-scrub` ([app](../../../../kubernetes/apps/ai/omnigraph/scrub/app/)) runs at :20 every hour as `act-scrub`. It exports every branch of those graphs, deletes each row whose text matches a pattern in `patterns.json` (GitHub, GitLab, Forgejo, AWS, OpenAI-style, Slack and private-key shapes, and bearer values), and logs `omnigraph scrub removed <type> <key> from <graph>@<branch>: <field> matched <pattern>` without the text. `OmnigraphCredentialTextScrubbed` fires on such a line, `OmnigraphScrubFailing` on a refused call. Older commits keep a removed row until omnigraph-next's nightly cleanup reclaims versions older than 7 days. `brain` is not scrubbed: the importers copy repository documents that name token formats on purpose, and the next import would restore them.
+
 ## Glide agents
 
 Glide runs read and write `memory`, `brain` and `webgrip` through three MCP servers, all running as `act-glide`:

@@ -1,0 +1,65 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: omnigraph-scrub
+  namespace: ai
+  labels:
+    rules: logs
+spec:
+  groups:
+    - name: omnigraph.scrub
+      type: vlogs
+      interval: 5m
+      rules:
+        - alert: OmnigraphCredentialTextScrubbed
+          expr: >-
+            _time:2h namespace:=ai container:=scrub pod:omnigraph-scrub*
+            "omnigraph scrub removed"
+            | stats count() as removed
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "Credential-shaped text was removed from an agent-written Omnigraph graph (ai/omnigraph-scrub)"
+            description: |
+              What's happening:
+              - The hourly scrub found a note or concept in webgrip-notes, webgrip-knowledge or memory whose text matched a credential pattern, and deleted it from that branch.
+
+              Impact/risk:
+              - Credentials or descriptions of them must never live in a graph. Older commits keep the row until the nightly cleanup on omnigraph-next reclaims versions older than 7 days.
+
+              Likely causes:
+              - A Ploeg Run or an agent wrote an observation about a token or key into a note.
+
+              First actions:
+              - kubectl -n ai logs -l app.kubernetes.io/name=omnigraph-scrub --tail=50 | grep "scrub removed"
+              - Check which Run or actor wrote it in the graph's commit history and fix that writer.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#omnigraph-014-omnigraph-next"
+        - alert: OmnigraphScrubFailing
+          expr: >-
+            _time:3h namespace:=ai container:=scrub pod:omnigraph-scrub*
+            "omnigraph scrub:"
+            | stats count() as failures
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "The hourly credential scrub of the agent graphs fails (ai/omnigraph-scrub)"
+            description: |
+              What's happening:
+              - The omnigraph-scrub CronJob stopped with an export, branch listing or delete refused by omnigraph-next.
+
+              Impact/risk:
+              - Credential-shaped text that agents write into webgrip-notes, webgrip-knowledge or memory stays readable.
+
+              Likely causes:
+              - act-scrub is missing from tokens.json or from a graph policy, or omnigraph-next is down.
+
+              First actions:
+              - kubectl -n ai logs -l app.kubernetes.io/name=omnigraph-scrub --tail=50
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#omnigraph-014-omnigraph-next"

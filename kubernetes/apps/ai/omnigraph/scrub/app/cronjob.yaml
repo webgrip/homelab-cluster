@@ -1,0 +1,70 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: omnigraph-scrub
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-scrub
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  schedule: "20 * * * *"
+  timeZone: Europe/Amsterdam
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: omnigraph-scrub
+            app.kubernetes.io/part-of: omnigraph
+        spec:
+          serviceAccountName: omnigraph
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: scrub
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:01ddf82b43479870a7ea87037b7d68472bef12cc244941843c26bb75bf9a9b04
+              imagePullPolicy: IfNotPresent
+              command:
+                - "python3"
+                - "-I"
+                - "/etc/omnigraph-scrub/scrub.py"
+              env:
+                - {name: OMNIGRAPH_URL, value: "http://omnigraph-next.ai.svc.cluster.local:8080"}
+                - {name: OMNIGRAPH_HTTP_API, value: "0.14"}
+                - {name: OMNIGRAPH_TOKEN_FILE, value: /run/secrets/omnigraph/token}
+                - {name: SCRUB_TARGETS_FILE, value: /etc/omnigraph-scrub/targets.json}
+                - {name: SCRUB_PATTERNS_FILE, value: /etc/omnigraph-scrub/patterns.json}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 20m, memory: 96Mi}
+                limits: {memory: 384Mi}
+              volumeMounts:
+                - {name: script, mountPath: /etc/omnigraph-scrub, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+          volumes:
+            - name: script
+              configMap:
+                name: omnigraph-scrub
+            - name: token
+              secret:
+                secretName: omnigraph-scrub-token
+                items:
+                  - {key: token, path: token}
