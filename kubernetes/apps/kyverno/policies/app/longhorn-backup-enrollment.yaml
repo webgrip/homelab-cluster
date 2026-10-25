@@ -58,7 +58,7 @@ metadata:
       an explicit list of PVCs, so off-cluster backup enrolment is declared in git
       rather than applied by hand.
     # Bump to force a re-run without otherwise altering the policy.
-    webgrip.io/enrolment-revision: "6"
+    webgrip.io/enrolment-revision: "7"
 spec:
   # Mutate-only policy: it never rejects anything, so there is no Enforce/Audit
   # distinction to make here.
@@ -112,6 +112,8 @@ spec:
               - ai/omnigraph-brain-eval-store
               - ai/open-webui-data
               - ploeg/unfold-data
+              - forgejo/forgejo-data
+              - observability/vlsingle-victorialogs-audit
       mutate:
         targets:
           - apiVersion: longhorn.io/v1beta2
@@ -124,18 +126,7 @@ spec:
           metadata:
             labels:
               recurring-job-group.longhorn.io/gitops-backup: enabled
-    # ---------------------------------------------------------------------------
-    # Tier 2 — observability history (~78 GiB). Daily, retain 2, NOT 7.
-    #
-    # Separate tier on purpose. These are high-churn time-series volumes: block
-    # compaction rewrites large regions, so each incremental is far bigger than the
-    # data actually added that day. At retain 7 the backup target would grow by a
-    # multiple of the 78 GiB live size, on a 477 GiB off-site box that also has to
-    # hold Immich (70 GB) and the CNPG backups. Two days is enough to survive the
-    # cluster-loss case this protects against, which is the point of backing up
-    # metrics at all.
-    # ---------------------------------------------------------------------------
-    - name: enrol-observability-bulk
+    - name: enrol-recreatable-bulk
       match:
         any:
           - resources:
@@ -146,14 +137,9 @@ spec:
           - key: "{{ request.object.spec.claimRef.namespace || '' }}/{{ request.object.spec.claimRef.name || '' }}"
             operator: AnyIn
             value:
-              # The Prometheus PVC (91 characters, the name that broke the
-              # PVC-triggered version) left this list on 2026-09-30: Prometheus was
-              # replaced by VictoriaMetrics, its volume has been detached since
-              # 08-12, and Longhorn never prunes a detached volume's backups, so it
-              # held 17 GB off-site that nothing would ever use or delete.
-              - observability/vmsingle-vmsingle
-              - observability/vlsingle-victorialogs
-              - observability/vtsingle-victoriatraces
+              - forgejo/gitea-mirror
+              - garage/data-garage-0
+              - garage/meta-garage-0
       mutate:
         targets:
           - apiVersion: longhorn.io/v1beta2
@@ -164,6 +150,90 @@ spec:
           metadata:
             labels:
               recurring-job-group.longhorn.io/gitops-backup-bulk: enabled
+    - name: leave-daily-group-when-bulk
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolume
+      preconditions:
+        any:
+          - key: "{{ request.object.spec.claimRef.namespace || '' }}/{{ request.object.spec.claimRef.name || '' }}"
+            operator: AnyIn
+            value:
+              - forgejo/gitea-mirror
+              - garage/data-garage-0
+              - garage/meta-garage-0
+      mutate:
+        targets:
+          - apiVersion: longhorn.io/v1beta2
+            kind: Volume
+            name: "{{ request.object.metadata.name }}"
+            namespace: longhorn-system
+            preconditions:
+              all:
+                - key: "{{ target.metadata.labels.\"recurring-job-group.longhorn.io/gitops-backup\" || '' }}"
+                  operator: NotEquals
+                  value: ""
+        patchesJson6902: |-
+          - op: remove
+            path: /metadata/labels/recurring-job-group.longhorn.io~1gitops-backup
+    - name: unenrol-accepted-loss-daily
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolume
+      preconditions:
+        any:
+          - key: "{{ request.object.spec.claimRef.namespace || '' }}/{{ request.object.spec.claimRef.name || '' }}"
+            operator: AnyIn
+            value:
+              - observability/vmsingle-vmsingle
+              - observability/vlsingle-victorialogs
+              - observability/vtsingle-victoriatraces
+      mutate:
+        targets:
+          - apiVersion: longhorn.io/v1beta2
+            kind: Volume
+            name: "{{ request.object.metadata.name }}"
+            namespace: longhorn-system
+            preconditions:
+              all:
+                - key: "{{ target.metadata.labels.\"recurring-job-group.longhorn.io/gitops-backup\" || '' }}"
+                  operator: NotEquals
+                  value: ""
+        patchesJson6902: |-
+          - op: remove
+            path: /metadata/labels/recurring-job-group.longhorn.io~1gitops-backup
+    - name: unenrol-accepted-loss-bulk
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolume
+      preconditions:
+        any:
+          - key: "{{ request.object.spec.claimRef.namespace || '' }}/{{ request.object.spec.claimRef.name || '' }}"
+            operator: AnyIn
+            value:
+              - observability/vmsingle-vmsingle
+              - observability/vlsingle-victorialogs
+              - observability/vtsingle-victoriatraces
+      mutate:
+        targets:
+          - apiVersion: longhorn.io/v1beta2
+            kind: Volume
+            name: "{{ request.object.metadata.name }}"
+            namespace: longhorn-system
+            preconditions:
+              all:
+                - key: "{{ target.metadata.labels.\"recurring-job-group.longhorn.io/gitops-backup-bulk\" || '' }}"
+                  operator: NotEquals
+                  value: ""
+        patchesJson6902: |-
+          - op: remove
+            path: /metadata/labels/recurring-job-group.longhorn.io~1gitops-backup-bulk
     - name: enrol-brain-eval-store
       match:
         any:

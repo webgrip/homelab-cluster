@@ -30,12 +30,6 @@ spec:
   retain: 0
   concurrency: 1
 ---
-# Daily off-cluster backup of the gitops-critical app volumes (forgejo-data,
-# gitea-mirror) to the external Garage S3 backup target. These have no other
-# off-cluster backup (forgejo-db uses CNPG barman; openbao uses raft snapshots),
-# so a both-worker outage would otherwise lose them (ADR-0008 DR). A volume opts
-# in by carrying the label `recurring-job-group.longhorn.io/gitops-backup=enabled`
-# on its Volume CR (set once per volume — see the migration-status runbook).
 apiVersion: longhorn.io/v1beta2
 kind: RecurringJob
 metadata:
@@ -48,31 +42,12 @@ spec:
   retain: 7
   concurrency: 1
 ---
-# Second tier for the observability volumes (Prometheus, VictoriaMetrics,
-# VictoriaLogs, VictoriaTraces) — same daily backup, retain 2 instead of 7.
-#
-# These are ~78 GiB of high-churn time-series. Block compaction rewrites large
-# regions, so each incremental is far larger than the data actually added that
-# day; at retain 7 the backup target would grow by a multiple of the live size,
-# on an off-site box that also has to hold Immich and the CNPG backups. Two days
-# covers the cluster-loss case that justifies backing up metrics at all.
-#
-# Runs at 02:30 rather than 02:00 so the small irreplaceable tier finishes first
-# and is never queued behind ~78 GiB of blocks (concurrency is per-job, but both
-# jobs contend for the same volume engines and the same uplink).
-#
-# Membership is stamped onto Volume CRs by the longhorn-backup-enrollment Kyverno
-# policy, not by hand — see that file for why enrolment lives there.
 apiVersion: longhorn.io/v1beta2
 kind: RecurringJob
 metadata:
   name: gitops-backup-bulk
 spec:
-  # Temporarily skips the 1st of the month so the 2026-10-01 02:30 UTC run does
-  # not write ~7-13 GB to garage-fsn1 while its disk is nearly full (LMDB
-  # tombstone backlog after the GUAC purge, VIK-1405). Runs resume on 10-02 by
-  # themselves; restore "30 2 * * *" once garage-fsn1 has headroom again.
-  cron: "30 2 2-31 * *"
+  cron: "30 2 * * *"
   task: backup
   groups:
     - gitops-backup-bulk
