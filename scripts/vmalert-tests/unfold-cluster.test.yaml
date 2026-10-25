@@ -50,3 +50,80 @@ tests:
         groupname: unfold-delivery
         alertname: UnfoldMetricsAbsent
         exp_alerts: []
+
+  - name: Tetragon ready on every node stays quiet
+    interval: 1m
+    input_series:
+      - series: 'kube_daemonset_status_desired_number_scheduled{cluster="unfold", namespace="kube-system", daemonset="tetragon"}'
+        values: "4x60"
+      - series: 'kube_daemonset_status_number_ready{cluster="unfold", namespace="kube-system", daemonset="tetragon"}'
+        values: "4x60"
+    alert_rule_test:
+      - eval_time: 50m
+        groupname: unfold-platform
+        alertname: UnfoldTetragonNotOnEveryNode
+        exp_alerts: []
+      - eval_time: 50m
+        groupname: unfold-platform
+        alertname: UnfoldTetragonGone
+        exp_alerts: []
+
+  - name: Tetragon missing on one node warns after 15 minutes
+    interval: 1m
+    input_series:
+      - series: 'kube_daemonset_status_desired_number_scheduled{cluster="unfold", namespace="kube-system", daemonset="tetragon"}'
+        values: "4x60"
+      - series: 'kube_daemonset_status_number_ready{cluster="unfold", namespace="kube-system", daemonset="tetragon"}'
+        values: "4x10 3x50"
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: unfold-platform
+        alertname: UnfoldTetragonNotOnEveryNode
+        exp_alerts: []
+      - eval_time: 30m
+        groupname: unfold-platform
+        alertname: UnfoldTetragonNotOnEveryNode
+        exp_alerts:
+          - exp_labels:
+              alertname: UnfoldTetragonNotOnEveryNode
+              daemonset: tetragon
+              cluster: unfold
+              severity: warning
+              team: platform
+            exp_annotations:
+              summary: "Tetragon is not ready on 1 Unfold node(s)"
+
+  - name: a cluster that never ran Tetragon does not warn that it is gone
+    interval: 1m
+    input_series:
+      - series: 'up{cluster="unfold", job="kube-state-metrics"}'
+        values: "1x60"
+    alert_rule_test:
+      - eval_time: 50m
+        groupname: unfold-platform
+        alertname: UnfoldTetragonGone
+        exp_alerts: []
+
+  - name: a Tetragon DaemonSet that disappears warns after 15 minutes
+    interval: 1m
+    input_series:
+      - series: 'kube_daemonset_status_number_ready{cluster="unfold", namespace="kube-system", daemonset="tetragon"}'
+        values: "4x20 _x60"
+    alert_rule_test:
+      - eval_time: 25m
+        groupname: unfold-platform
+        alertname: UnfoldTetragonGone
+        exp_alerts: []
+      - eval_time: 40m
+        groupname: unfold-platform
+        alertname: UnfoldTetragonGone
+        exp_alerts:
+          - exp_labels:
+              alertname: UnfoldTetragonGone
+              cluster: unfold
+              daemonset: tetragon
+              namespace: kube-system
+              severity: warning
+              team: platform
+            exp_annotations:
+              summary: "The Tetragon DaemonSet disappeared from Unfold"

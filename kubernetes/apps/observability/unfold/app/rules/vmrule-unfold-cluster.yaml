@@ -183,3 +183,23 @@ spec:
           annotations:
             summary: "The Unfold etcd-backup CronJob has no successful run on record"
             description: "kube-state-metrics sees the CronJob but no last successful time for 7 hours."
+        - alert: UnfoldTetragonNotOnEveryNode
+          expr: max by (daemonset) (kube_daemonset_status_desired_number_scheduled{cluster="unfold",namespace="kube-system",daemonset="tetragon"}) - max by (daemonset) (kube_daemonset_status_number_ready{cluster="unfold",namespace="kube-system",daemonset="tetragon"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "Tetragon is not ready on {{ $value }} Unfold node(s)"
+            description: "The tetragon DaemonSet in kube-system has fewer ready pods than nodes it should run on. Pods on those nodes run without runtime detection. The agent has no PriorityClass and reserves its memory, so a full node keeps it Pending rather than evicting anything. Runbook: unfold-cluster docs/runbooks/runtime-security.md."
+        - alert: UnfoldTetragonGone
+          expr: absent_over_time(kube_daemonset_status_number_ready{cluster="unfold",namespace="kube-system",daemonset="tetragon"}[10m]) and on() count(last_over_time(kube_daemonset_status_number_ready{cluster="unfold",namespace="kube-system",daemonset="tetragon"}[7d])) > 0
+          for: 5m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "The Tetragon DaemonSet disappeared from Unfold"
+            description: "kube-state-metrics reported the tetragon DaemonSet in the last 7 days and has not for 15 minutes. Without it nothing on Unfold records process, file or network events. Runbook: unfold-cluster docs/runbooks/runtime-security.md."
