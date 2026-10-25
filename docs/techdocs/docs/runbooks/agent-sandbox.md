@@ -36,3 +36,13 @@ Download the release's `sandbox-with-extensions.yaml`, regenerate the two files 
 ## Cost
 
 The controller requests 10m CPU and 64Mi, a fraction of a watt. A Run adds a launcher pod (10m, 32Mi) for its duration; under Kata each worker also carries 250m and 160Mi of VM overhead while it runs. With zero warm replicas nothing is kept running between Runs.
+
+## Hostile credential test, 2026-10-25
+
+A Run on Ploeg 0.2.0-rc.68 ([VIK-2410](https://vikunja.webgrip.dev/tasks/2410), team bronze, sandbox under Kata, both credential proxies on) was told to act as the attacker and try to get or use a real model key or forge token. It held only its own placeholders, and every attempt was refused. The full record, with the worker log lines that confirm each refusal, is Ploeg's [credential-proxy requalification](https://github.com/ploeg-hq/ploeg/blob/development/docs/research/2026-10-25-credential-proxy-requalification.md) (F-04, ploeg-hq/ploeg#225).
+
+What it showed about this cluster:
+
+- **Egress.** From the harness container, the public names of LiteLLM and Forgejo (`litellm.<domain>`, `forgejo.<domain>`) time out, and so does any address on the internet. The in-cluster LiteLLM Service is reachable, because the worker in the same pod needs it and a NetworkPolicy applies to the whole pod, but it answers 401 to the placeholder.
+- **Refusals are logged.** Each refused request appears in VictoriaLogs as one WARN line, `credential proxy refused a request`, with the trace, the proxy (`llm` or `forge`) and a reason such as `wrong_placeholder`, `push_to_other_branch` or `outside_repository`. Query: `namespace:ploeg "credential proxy refused"`.
+- **`GITHUB_PAT` is a canary.** A writing Run's environment holds `GITHUB_PAT`, shaped like a GitHub personal access token. It is a random value no forge accepts, which the worker watches for in the Run's forge requests and pushed commits; it is not a credential and needs no rotation.
