@@ -12,13 +12,16 @@ This directory configures Claude Code (claude.ai/code) for the homelab cluster. 
 | `commands/` | Slash commands — one per file in `.claude/commands/`. |
 | `hooks/` | Safety + validation + `session-context` hooks (see below). |
 | `statusline.sh` | Cluster-aware statusline (model / git / kube-context / Flux not-ready / context%). |
-| `settings.json` | Permissions + hook + statusline wiring, and `enabledPlugins` for the org plugin (committed, team-shared). |
+| `settings.json` | Permissions + hook + statusline wiring (committed, team-shared). |
 | `settings.local.json` | Personal/machine overrides (gitignored). Secrets live in `../.mise.local.toml`. |
 | `../.mcp.json` | MCP servers: `grafana`, `kubernetes`, `opencost` (committed; secrets via env). |
 
-## Org plugin
+## Org rules and skills
 
-This repo enables the shared **`webgrip`** plugin from [`webgrip/claude-config`](https://github.com/webgrip/claude-config) via `extraKnownMarketplaces` + `enabledPlugins` in `settings.json`. It contributes org-wide guidelines (injected at session start), a SOPS secret guard, and the `renovate-trigger` agent. Repo-specific skills/agents stay here; org-generic ones live in the plugin.
+The org-wide rules, the secret guard and the `renovate-trigger` agent come from
+[`webgrip/agent-standards`](https://forgejo.webgrip.dev/webgrip/agent-standards) through
+`apm.yml`; APM writes them into `.claude/rules`, `.claude/skills` and `.claude/agents`.
+The former `webgrip/claude-config` plugin is archived.
 
 ## Shared skills (`webgrip/ai-skills`)
 
