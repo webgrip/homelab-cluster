@@ -78,63 +78,39 @@ spec:
                 - {name: NAMESPACE, value: forgejo}
                 - {name: ORG, value: webgrip}
                 - {name: SECRET_NAME, value: unfold-ci-runner}
-                - {name: RUNNER_LABEL, value: unfold-ci}
                 - {name: RUNNER_NAME_PREFIX, value: unfold-ci-}
-                - {name: TOKEN_NAME, value: keda-unfold-ci}
-                - {name: BOT_USERNAME, value: unfold-ci-scaler}
-                - {name: BOT_EMAIL, value: unfold-ci-scaler@webgrip.dev}
+                - {name: RETIRED_USERS, value: unfold-ci-scaler}
                 - name: ADMIN_USERNAME
                   valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
                 - name: ADMIN_PASSWORD
                   valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
-                - name: BOT_PASSWORD
-                  valueFrom: {secretKeyRef: {name: unfold-ci-scaler-password, key: password}}
               command:
                 - /bin/sh
                 - -ceu
                 - |
                   api="${FORGEJO_URL}/api/v1"
                   admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
-                  bot="${BOT_USERNAME}:${BOT_PASSWORD}"
                   curl() { command curl --connect-timeout 10 --max-time "$CURL_TIMEOUT" "$@"; }
                   kubectl() { timeout 30 kubectl "$@"; }
                   stored() { kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
 
-                  code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${BOT_USERNAME}")"
-                  if [ "$code" = "404" ]; then
-                    echo "creating bot user ${BOT_USERNAME}"
-                    curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/admin/users" \
-                      -d "{\"username\":\"${BOT_USERNAME}\",\"email\":\"${BOT_EMAIL}\",\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
-                  elif [ "$code" != "200" ]; then
-                    echo "unexpected status probing bot user: $code" >&2; exit 1
-                  fi
-                  curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/${BOT_USERNAME}" \
-                    -d "{\"login_name\":\"${BOT_USERNAME}\",\"source_id\":0,\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
-
-                  owners="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams?limit=50" | jq -r '.[] | select(.name=="Owners") | .id' | head -1)"
-                  [ -n "$owners" ] || { echo "no Owners team in ${ORG}" >&2; exit 1; }
-                  curl -fsS -o /dev/null -u "$admin" -X PUT "$api/teams/${owners}/members/${BOT_USERNAME}"
-                  curl -fsS -o /dev/null -u "$admin" "$api/teams/${owners}/members/${BOT_USERNAME}"
-
-                  jobs_url="$api/orgs/${ORG}/actions/runners/jobs?labels=${RUNNER_LABEL}"
-                  tok="$(stored scaler-token)"
-                  if [ -n "$tok" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$jobs_url"; then
-                    echo "scaler token still reads the ${ORG} job queue; kept"
-                  else
-                    echo "minting a fresh scaler token"
-                    curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${TOKEN_NAME}" || true
-                    tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
-                      -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":[\"read:organization\"]}" | jq -r '.sha1')"
-                    [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
-                    curl -fsS -o /dev/null -H "Authorization: token $tok" "$jobs_url"
-                  fi
-                  curl -fsS -u "$bot" "$api/users/${BOT_USERNAME}/tokens?limit=50" \
-                    | jq -r --arg keep "$TOKEN_NAME" '.[] | select(.name != $keep) | .name' \
-                    | while read -r stale; do
-                        [ -n "$stale" ] || continue
-                        curl -fsS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/$(printf %s "$stale" | jq -sRr @uri)" \
-                          && echo "revoked token ${stale}"
-                      done
+                  for retired in $RETIRED_USERS; do
+                    code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${retired}")"
+                    case "$code" in
+                      404) continue ;;
+                      200) ;;
+                      *) echo "unexpected status probing retired user ${retired}: $code" >&2; exit 1 ;;
+                    esac
+                    code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" -X DELETE "$api/orgs/${ORG}/members/${retired}")"
+                    case "$code" in
+                      204|404) ;;
+                      *) echo "could not remove retired user ${retired} from ${ORG}: $code" >&2; exit 1 ;;
+                    esac
+                    curl -fsS -o /dev/null -u "$admin" -X DELETE "$api/admin/users/${retired}"
+                    code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${retired}")"
+                    [ "$code" = "404" ] || { echo "retired user ${retired} still exists: $code" >&2; exit 1; }
+                    echo "deleted retired user ${retired}"
+                  done
 
                   registration="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/actions/runners/registration-token" | jq -r '.token // empty')"
                   [ -n "$registration" ] || { echo "no runner registration token for ${ORG}" >&2; exit 1; }
@@ -161,7 +137,6 @@ spec:
 
                   kubectl -n "$NAMESPACE" create secret generic "$SECRET_NAME" \
                     --from-literal="registration-token=$registration" \
-                    --from-literal="scaler-token=$tok" \
                     --from-literal="reaper-watermark=$next_watermark" \
                     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
                   echo "unfold-ci runner provisioner converged (reaper watermark ${next_watermark})"
