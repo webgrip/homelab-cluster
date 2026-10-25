@@ -1,0 +1,179 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: unfold-ci-runner-provisioner
+  namespace: forgejo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: unfold-ci-runner-provisioner
+  namespace: forgejo
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "unfold-ci-runner"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: unfold-ci-runner-provisioner
+  namespace: forgejo
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: unfold-ci-runner-provisioner}
+subjects:
+  - {kind: ServiceAccount, name: unfold-ci-runner-provisioner, namespace: forgejo}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: unfold-ci-runner-provisioner
+  namespace: forgejo
+spec:
+  schedule: "*/30 * * * *"
+  startingDeadlineSeconds: 1800
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: unfold-ci-runner-provisioner
+        spec:
+          serviceAccountName: unfold-ci-runner-provisioner
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: provision
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4
+              imagePullPolicy: IfNotPresent
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: CURL_TIMEOUT, value: "30"}
+                - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+                - {name: NAMESPACE, value: forgejo}
+                - {name: ORG, value: webgrip}
+                - {name: SECRET_NAME, value: unfold-ci-runner}
+                - {name: RUNNER_LABEL, value: unfold-ci}
+                - {name: RUNNER_NAME_PREFIX, value: unfold-ci-}
+                - {name: TOKEN_NAME, value: keda-unfold-ci}
+                - {name: BOT_USERNAME, value: unfold-ci-scaler}
+                - {name: BOT_EMAIL, value: unfold-ci-scaler@webgrip.dev}
+                - name: ADMIN_USERNAME
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+                - name: ADMIN_PASSWORD
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+                - name: BOT_PASSWORD
+                  valueFrom: {secretKeyRef: {name: unfold-ci-scaler-password, key: password}}
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  api="${FORGEJO_URL}/api/v1"
+                  admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+                  bot="${BOT_USERNAME}:${BOT_PASSWORD}"
+                  curl() { command curl --connect-timeout 10 --max-time "$CURL_TIMEOUT" "$@"; }
+                  kubectl() { timeout 30 kubectl "$@"; }
+                  stored() { kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
+
+                  code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/users/${BOT_USERNAME}")"
+                  if [ "$code" = "404" ]; then
+                    echo "creating bot user ${BOT_USERNAME}"
+                    curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/admin/users" \
+                      -d "{\"username\":\"${BOT_USERNAME}\",\"email\":\"${BOT_EMAIL}\",\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+                  elif [ "$code" != "200" ]; then
+                    echo "unexpected status probing bot user: $code" >&2; exit 1
+                  fi
+                  curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/${BOT_USERNAME}" \
+                    -d "{\"login_name\":\"${BOT_USERNAME}\",\"source_id\":0,\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+
+                  owners="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams?limit=50" | jq -r '.[] | select(.name=="Owners") | .id' | head -1)"
+                  [ -n "$owners" ] || { echo "no Owners team in ${ORG}" >&2; exit 1; }
+                  curl -fsS -o /dev/null -u "$admin" -X PUT "$api/teams/${owners}/members/${BOT_USERNAME}"
+                  curl -fsS -o /dev/null -u "$admin" "$api/teams/${owners}/members/${BOT_USERNAME}"
+
+                  jobs_url="$api/orgs/${ORG}/actions/runners/jobs?labels=${RUNNER_LABEL}"
+                  tok="$(stored scaler-token)"
+                  if [ -n "$tok" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$jobs_url"; then
+                    echo "scaler token still reads the ${ORG} job queue; kept"
+                  else
+                    echo "minting a fresh scaler token"
+                    curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${TOKEN_NAME}" || true
+                    tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
+                      -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":[\"read:organization\"]}" | jq -r '.sha1')"
+                    [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
+                    curl -fsS -o /dev/null -H "Authorization: token $tok" "$jobs_url"
+                  fi
+                  curl -fsS -u "$bot" "$api/users/${BOT_USERNAME}/tokens?limit=50" \
+                    | jq -r --arg keep "$TOKEN_NAME" '.[] | select(.name != $keep) | .name' \
+                    | while read -r stale; do
+                        [ -n "$stale" ] || continue
+                        curl -fsS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/$(printf %s "$stale" | jq -sRr @uri)" \
+                          && echo "revoked token ${stale}"
+                      done
+
+                  registration="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/actions/runners/registration-token" | jq -r '.token // empty')"
+                  [ -n "$registration" ] || { echo "no runner registration token for ${ORG}" >&2; exit 1; }
+
+                  runners='[]'
+                  page=1
+                  while :; do
+                    batch="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/actions/runners?limit=50&page=${page}" | jq -c '[(if type == "object" then .runners else . end)[]?]')"
+                    [ "$(printf '%s' "$batch" | jq 'length')" -gt 0 ] || break
+                    runners="$(printf '%s\n%s' "$runners" "$batch" | jq -cs --arg p "$RUNNER_NAME_PREFIX" '.[0] + [.[1][] | select(.name | startswith($p))]')"
+                    page=$((page + 1))
+                    [ "$page" -le 40 ] || break
+                  done
+                  watermark="$(stored reaper-watermark)"
+                  watermark="${watermark:-0}"
+                  printf '%s' "$runners" \
+                    | jq -r --argjson w "$watermark" '.[] | select(.status == "offline" and .ephemeral == true and .id <= $w) | .id' \
+                    | while read -r id; do
+                        [ -n "$id" ] || continue
+                        curl -fsS -o /dev/null -u "$admin" -X DELETE "$api/orgs/${ORG}/actions/runners/${id}" \
+                          && echo "removed stranded ephemeral runner ${id}"
+                      done
+                  next_watermark="$(printf '%s' "$runners" | jq --argjson w "$watermark" '[.[].id, $w] | max')"
+
+                  kubectl -n "$NAMESPACE" create secret generic "$SECRET_NAME" \
+                    --from-literal="registration-token=$registration" \
+                    --from-literal="scaler-token=$tok" \
+                    --from-literal="reaper-watermark=$next_watermark" \
+                    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                  echo "unfold-ci runner provisioner converged (reaper watermark ${next_watermark})"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 64Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}
