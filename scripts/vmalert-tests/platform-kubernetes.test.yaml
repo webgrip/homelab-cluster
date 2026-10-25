@@ -1,0 +1,39 @@
+---
+rule_files:
+  - rules/platform-kubernetes.yaml
+evaluation_interval: 1m
+tests:
+  - name: a running BestEffort pod fires after an hour, a Burstable pod and a completed BestEffort pod do not
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_status_qos_class{job="kube-state-metrics", exported_namespace="kube-system", exported_pod="reloader-1", qos_class="BestEffort"}'
+        values: "1x90"
+      - series: 'kube_pod_status_phase{job="kube-state-metrics", exported_namespace="kube-system", exported_pod="reloader-1", phase="Running"}'
+        values: "1x90"
+      - series: 'kube_pod_status_qos_class{job="kube-state-metrics", exported_namespace="network", exported_pod="k8s-gateway-1", qos_class="Burstable"}'
+        values: "1x90"
+      - series: 'kube_pod_status_phase{job="kube-state-metrics", exported_namespace="network", exported_pod="k8s-gateway-1", phase="Running"}'
+        values: "1x90"
+      - series: 'kube_pod_status_qos_class{job="kube-state-metrics", exported_namespace="ploeg", exported_pod="job-1", qos_class="BestEffort"}'
+        values: "1x90"
+      - series: 'kube_pod_status_phase{job="kube-state-metrics", exported_namespace="ploeg", exported_pod="job-1", phase="Running"}'
+        values: "0x90"
+    alert_rule_test:
+      - eval_time: 30m
+        groupname: platform.kubernetes.rules
+        alertname: PodBestEffort
+        exp_alerts: []
+      - eval_time: 80m
+        groupname: platform.kubernetes.rules
+        alertname: PodBestEffort
+        exp_alerts:
+          - exp_labels:
+              job: kube-state-metrics
+              exported_namespace: kube-system
+              exported_pod: reloader-1
+              qos_class: BestEffort
+              severity: warning
+              owner: platform
+              service: kubernetes
+            exp_annotations:
+              summary: "Pod runs with no resource requests (kube-system/reloader-1)"

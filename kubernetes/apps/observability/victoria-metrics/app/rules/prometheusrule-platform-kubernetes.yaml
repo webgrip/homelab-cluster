@@ -162,3 +162,39 @@ spec:
               - If several components on the SAME node are looping, treat it as node
                 saturation, not N component bugs
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
+
+        - alert: PodBestEffort
+          expr: |
+            kube_pod_status_qos_class{job="kube-state-metrics", qos_class="BestEffort"} == 1
+            and on (exported_namespace, exported_pod)
+            (kube_pod_status_phase{job="kube-state-metrics", phase="Running"} == 1)
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: kubernetes
+          annotations:
+            summary: "Pod runs with no resource requests ({{ $labels.exported_namespace }}/{{ $labels.exported_pod }})"
+            description: |
+              What's happening:
+              - {{ $labels.exported_namespace }}/{{ $labels.exported_pod }} has run for an
+                hour as QoS class BestEffort: no container declares a CPU or memory
+                request.
+
+              Impact/risk:
+              - Talos's userspace OOM controller kills BestEffort cgroups first under
+                memory pressure, and the scheduler places the pod without counting its
+                memory, so it lands on full nodes. On 2026-10-25 this killed the
+                ploeg and vikunja disaster-recovery replicas and reloader 50 times in
+                two and a half hours on fringe-workstation.
+
+              Likely causes:
+              - A chart or CNPG Cluster with no resources block in its values
+              - A new component added without requests
+
+              First actions:
+              - kubectl -n {{ $labels.exported_namespace }} get pod {{ $labels.exported_pod }} -o jsonpath='{.spec.containers[*].resources}'
+              - Add requests sized from its 7-day peak working set
+                (max_over_time(container_memory_working_set_bytes[7d]))
+              - talosctl -n <node-ip> get oomactions shows what the OOM controller killed
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
