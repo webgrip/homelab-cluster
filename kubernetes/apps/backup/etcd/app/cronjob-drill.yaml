@@ -1,0 +1,88 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etcd-restore-drill
+  labels:
+    backup.webgrip.io/drill: "true"
+spec:
+  schedule: "40 7 * * *"
+  timeZone: Etc/UTC
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: etcd-restore-drill
+        spec:
+          serviceAccountName: etcd-restore-drill
+          automountServiceAccountToken: true
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: restore
+              image: harbor.webgrip.dev/webgrip/infra-runner:0.1.0@sha256:d98987878aa40983b26ac4aa23dde1f105edd72dc4721d85fa18436b5db07140
+              command: ["/bin/bash", "/scripts/verify-etcd-snapshot.sh"]
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: S3_BUCKET, value: homelab-etcd}
+                - {name: S3_PREFIX, value: homelab}
+                - {name: OUT, value: /shared}
+                - {name: AGE_IDENTITY_FILE, value: /drill-key/AGE_DRILL_IDENTITY}
+                - {name: S3_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: etcd-restore-drill, key: S3_ACCESS_KEY_ID}}}
+                - {name: S3_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: etcd-restore-drill, key: S3_SECRET_ACCESS_KEY}}}
+                - {name: S3_REGION, valueFrom: {secretKeyRef: {name: etcd-restore-drill, key: S3_REGION}}}
+                - {name: S3_ENDPOINT, valueFrom: {secretKeyRef: {name: etcd-restore-drill, key: S3_ENDPOINT}}}
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {memory: 1Gi}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts}
+                - {name: shared, mountPath: /shared}
+                - {name: tmp, mountPath: /tmp}
+                - {name: drill-key, mountPath: /drill-key, readOnly: true}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+          containers:
+            - name: record
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+              command: ["/bin/sh", "/scripts/record-etcd-drill.sh"]
+              env:
+                - {name: NAMESPACE, valueFrom: {fieldRef: {fieldPath: metadata.namespace}}}
+                - {name: OUT, value: /shared}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts}
+                - {name: shared, mountPath: /shared}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+          volumes:
+            - {name: scripts, configMap: {name: etcd-restore-drill}}
+            - {name: shared, emptyDir: {}}
+            - {name: tmp, emptyDir: {}}
+            - name: drill-key
+              secret:
+                secretName: etcd-restore-drill
+                items:
+                  - {key: AGE_DRILL_IDENTITY, path: AGE_DRILL_IDENTITY}

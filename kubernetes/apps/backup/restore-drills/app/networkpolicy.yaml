@@ -1,0 +1,14 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: longhorn-restore-drill
+  namespace: backup
+spec:
+  description: The Longhorn restore drill only talks to the API server; Longhorn itself fetches the backup.
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: longhorn-restore-drill
+  egress:
+    - toEntities:
+        - kube-apiserver

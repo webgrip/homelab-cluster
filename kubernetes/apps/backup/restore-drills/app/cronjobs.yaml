@@ -1,0 +1,186 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: restore-drill-forgejo-data
+  namespace: backup
+  labels:
+    backup.webgrip.io/drill: "true"
+spec:
+  schedule: "0 10 * * 6"
+  timeZone: Etc/UTC
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 14400
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: longhorn-restore-drill
+        spec:
+          serviceAccountName: longhorn-restore-drill
+          automountServiceAccountToken: true
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: drill
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+              command: ["/bin/sh", "/scripts/longhorn-restore-drill.sh"]
+              env:
+                - {name: NAMESPACE, valueFrom: {fieldRef: {fieldPath: metadata.namespace}}}
+                - {name: SOURCE_NAMESPACE, value: forgejo}
+                - {name: SOURCE_PVC, value: forgejo-data}
+                - {name: VERIFY_UID, value: "1000"}
+                - {name: REQUIRED_PATHS, value: "git/gitea-repositories/webgrip/homelab-cluster.git/HEAD"}
+                - {name: FRESH_PATH, value: "git/gitea-repositories"}
+                - {name: MIN_FILES, value: "100"}
+                - {name: VERIFIER_IMAGE, value: "harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4"}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - {name: scripts, configMap: {name: longhorn-restore-drill}}
+            - {name: tmp, emptyDir: {}}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: restore-drill-vikunja
+  namespace: backup
+  labels:
+    backup.webgrip.io/drill: "true"
+spec:
+  schedule: "0 14 * * 6"
+  timeZone: Etc/UTC
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 14400
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: longhorn-restore-drill
+        spec:
+          serviceAccountName: longhorn-restore-drill
+          automountServiceAccountToken: true
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: drill
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+              command: ["/bin/sh", "/scripts/longhorn-restore-drill.sh"]
+              env:
+                - {name: NAMESPACE, valueFrom: {fieldRef: {fieldPath: metadata.namespace}}}
+                - {name: SOURCE_NAMESPACE, value: vikunja}
+                - {name: SOURCE_PVC, value: vikunja}
+                - {name: VERIFY_UID, value: "1000"}
+                - {name: REQUIRED_PATHS, value: ""}
+                - {name: FRESH_PATH, value: ""}
+                - {name: MIN_FILES, value: "1"}
+                - {name: VERIFIER_IMAGE, value: "harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4"}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - {name: scripts, configMap: {name: longhorn-restore-drill}}
+            - {name: tmp, emptyDir: {}}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: restore-drill-invoiceninja-storage
+  namespace: backup
+  labels:
+    backup.webgrip.io/drill: "true"
+spec:
+  schedule: "0 14 * * 0"
+  timeZone: Etc/UTC
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 14400
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: longhorn-restore-drill
+        spec:
+          serviceAccountName: longhorn-restore-drill
+          automountServiceAccountToken: true
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: drill
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+              command: ["/bin/sh", "/scripts/longhorn-restore-drill.sh"]
+              env:
+                - {name: NAMESPACE, valueFrom: {fieldRef: {fieldPath: metadata.namespace}}}
+                - {name: SOURCE_NAMESPACE, value: invoiceninja}
+                - {name: SOURCE_PVC, value: invoiceninja-storage}
+                - {name: VERIFY_UID, value: "65534"}
+                - {name: REQUIRED_PATHS, value: ""}
+                - {name: FRESH_PATH, value: ""}
+                - {name: MIN_FILES, value: "1"}
+                - {name: VERIFIER_IMAGE, value: "harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4"}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - {name: scripts, configMap: {name: longhorn-restore-drill}}
+            - {name: tmp, emptyDir: {}}

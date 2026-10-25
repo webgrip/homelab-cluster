@@ -1,0 +1,63 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: etcd-backup
+spec:
+  description: The backup job reaches the Talos API on the control planes for a snapshot and the off-site bucket over HTTPS to store it, nothing else.
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: etcd-backup
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: UDP}
+            - {port: "53", protocol: TCP}
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - host
+        - remote-node
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - {port: "50000", protocol: TCP}
+    - toFQDNs:
+        - matchName: s3-offsite.webgrip.dev
+      toPorts:
+        - ports:
+            - {port: "443", protocol: TCP}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: etcd-restore-drill
+spec:
+  description: The restore drill downloads the newest snapshot from the off-site bucket and records its result through the API server.
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: etcd-restore-drill
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: UDP}
+            - {port: "53", protocol: TCP}
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEntities:
+        - kube-apiserver
+    - toFQDNs:
+        - matchName: s3-offsite.webgrip.dev
+      toPorts:
+        - ports:
+            - {port: "443", protocol: TCP}
