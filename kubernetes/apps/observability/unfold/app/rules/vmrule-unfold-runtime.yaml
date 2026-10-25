@@ -1,0 +1,406 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: unfold-runtime
+  labels:
+    rules: unfold-runtime
+spec:
+  groups:
+    - name: unfold-runtime-detection
+      type: vlogs
+      interval: 1m
+      rules:
+        - alert: UnfoldPodExecOutsideInitTree
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} event:=process_exec in_init_tree:=false namespace:* -namespace:="runtime-security-canary" -binary:~"/(runsc|containerd-shim-runsc-v1|containerd-shim-kata-v2|cloud-hypervisor|qemu-system-x86_64|virtiofsd)$" | stats by (namespace, workload, container, binary, parent_binary) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "A process entered a running container on Unfold ({{ $labels.namespace }}/{{ $labels.workload }}, {{ $labels.binary }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} started {{ $value }} times in 5m in container {{ $labels.container }} of {{ $labels.namespace }}/{{ $labels.workload }}, outside the process tree of the container's own entrypoint.
+              - That is what kubectl exec, kubectl debug against a running container, nsenter and runc exec look like; the parent was {{ $labels.parent_binary }}.
+
+              Impact/risk:
+              - Someone or something is acting inside a production container by hand. The Kubernetes audit log shows whether it came through the API (pods/exec).
+
+              Likely causes:
+              - A person debugging with kubectl exec.
+              - An exec liveness or readiness probe added to a workload (add it to the runbook's known list after review).
+              - An attacker with node or API access.
+
+              First actions:
+              - Look up the exec in VictoriaLogs audit: `cluster:=unfold objectRef.subresource:=exec`.
+              - If no person owns it, cordon the node and follow the runbook.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#exec-outside-init-tree"
+        - alert: UnfoldPodRanAttackTool
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} event:=process_exec namespace:* binary:~"/(nc|ncat|netcat|socat|nmap|masscan|zmap|tcpdump|tshark|nsenter|unshare|chroot|insmod|modprobe|rmmod|setcap|capsh|crictl|ctr|runc|docker|kubeadm|etcdctl)$" -namespace:="runtime-security-canary" -(namespace:="kube-system" workload:="cilium") | stats by (namespace, workload, container, binary) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "A pod on Unfold ran a network, container-runtime or kernel tool ({{ $labels.namespace }}/{{ $labels.workload }}, {{ $labels.binary }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} started {{ $value }} times in 5m in {{ $labels.namespace }}/{{ $labels.workload }}.
+
+              Impact/risk:
+              - These tools scan networks, open raw sockets, enter other namespaces or talk to the container runtime; no platform workload on Unfold needs them.
+
+              Likely causes:
+              - A debug image someone ran on purpose.
+              - A compromised workload exploring the node.
+
+              First actions:
+              - Read the exec event's arguments and parent in VictoriaLogs.
+              - Stop the pod if nobody owns it.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#attack-tool"
+        - alert: UnfoldPodWroteHostPath
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} policy:="runtime-sensitive-host-writes" -namespace:="runtime-security-canary" | stats by (namespace, workload, binary, path) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "A pod on Unfold wrote to a node, runtime or account file ({{ $labels.namespace }}/{{ $labels.workload }}, {{ $labels.path }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} in {{ $labels.namespace }}/{{ $labels.workload }} wrote to {{ $labels.path }} ({{ $value }} times in 5m).
+
+              Impact/risk:
+              - Writing below the kubelet, containerd, etcd or Talos directories, /proc/sys or /sys/kernel changes the node itself; writing /etc/passwd, /etc/shadow or ld.so.preload inside a container prepares persistence.
+
+              Likely causes:
+              - A privileged platform DaemonSet doing its job (add it to the policy after review).
+              - A container escape in progress.
+
+              First actions:
+              - Read the full event in VictoriaLogs.
+              - Cordon the node and follow the runbook if the writer is not a known platform component.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#host-path-write"
+        - alert: UnfoldCredentialReadByTool
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} policy:="runtime-kubernetes-credentials" -namespace:="runtime-security-canary" (binary:~"/(sh|bash|ash|dash|zsh|ksh|busybox|cat|head|tail|less|more|base64|xxd|od|strings|grep|cp|tar|dd|curl|wget|nc|ncat|socat|python[0-9.]*|perl|ruby|node|php)$" or path:~"^(/var/lib/kubelet|/etc/kubernetes|/system/secrets)") | stats by (namespace, workload, binary, path) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "A shell or tool on Unfold read a credential file ({{ $labels.namespace }}/{{ $labels.workload }}, {{ $labels.path }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} in {{ $labels.namespace }}/{{ $labels.workload }} opened {{ $labels.path }} ({{ $value }} times in 5m).
+              - Programs reading their own ServiceAccount token are normal and are only recorded; a shell, a file tool or an interpreter reading one, or any pod reading the kubelet's or Talos's credentials, is not.
+
+              Impact/risk:
+              - Whoever holds the file can act as that identity, from anywhere.
+
+              Likely causes:
+              - A person in a kubectl exec session.
+              - A script in an image that cats the token (move it to a client library).
+              - An attacker harvesting credentials.
+
+              First actions:
+              - Read the event's parent process in VictoriaLogs.
+              - Rotate the credential and stop the pod if nobody owns the read.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#credential-read"
+        - alert: UnfoldPrivilegeEscalation
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} (policy:="runtime-privilege-escalation" or (event:=process_exec privileges_changed:*)) -namespace:="runtime-security-canary" -(namespace:="kube-system" workload:="cilium") | stats by (namespace, workload, binary, function, privileges_changed) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "A pod on Unfold raised its privileges ({{ $labels.namespace }}/{{ $labels.workload }}, {{ $labels.binary }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} in {{ $labels.namespace }}/{{ $labels.workload }} called {{ $labels.function }} or ran a setuid or file-capability binary ({{ $labels.privileges_changed }}), {{ $value }} times in 5m.
+
+              Impact/risk:
+              - Setuid to root, new capabilities or an unprivileged user namespace are the usual first step of a container escape. The admission policies forbid privilege escalation, so outside the granted exceptions this should never happen.
+
+              Likely causes:
+              - An image whose entrypoint drops privileges with a setuid helper (gosu, su-exec).
+              - Rootless BuildKit outside gVisor.
+              - An exploit.
+
+              First actions:
+              - Read the event in VictoriaLogs.
+              - Check the pod's securityContext against the admission policy grants.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#privilege-escalation"
+        - alert: UnfoldKernelModuleLoad
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} policy:="runtime-kernel-modules" | stats by (node, namespace, workload, binary, string_args, path) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "A kernel module was loaded on Unfold node {{ $labels.node }} ({{ $labels.string_args }}{{ $labels.path }})"
+            description: |
+              What's happening:
+              - The kernel on {{ $labels.node }} loaded or was asked to load {{ $labels.string_args }}{{ $labels.path }}, triggered by {{ $labels.binary }} in {{ $labels.namespace }}/{{ $labels.workload }} (empty means the host).
+
+              Impact/risk:
+              - Talos loads its modules at boot. A module load later changes the running kernel; a rootkit arrives this way.
+
+              Likely causes:
+              - Cilium or a CSI driver asking for a module the first time a feature is used.
+              - An attacker with node access.
+
+              First actions:
+              - Compare with the node's boot time.
+              - Treat an unknown module from a pod as a node compromise.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#kernel-module"
+        - alert: UnfoldCryptoMinerPattern
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} -namespace:="runtime-security-canary" ((event:=process_exec (binary:~"(?i)/(xmrig|xmr-stak|minerd|cpuminer[^/]*|ccminer|cgminer|bfgminer|ethminer|nbminer|t-rex|lolminer|phoenixminer|teamredminer|gminer|nanominer|srbminer[^/]*)$" or arguments:~"(?i)(stratum[+](tcp|ssl|tls)://|--donate-level|--coin[= ](monero|xmr)|--algo[= ](cryptonight|randomx|rx/0))")) or (policy:="runtime-outbound-connects" dport:in("3333", "4444", "5555", "7777", "14433", "14444", "45560", "45700"))) | stats by (namespace, workload, binary, daddr, dport) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "Crypto-mining activity on Unfold ({{ $labels.namespace }}/{{ $labels.workload }}, {{ $labels.binary }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} in {{ $labels.namespace }}/{{ $labels.workload }} looks like a miner: a known miner binary, stratum arguments, or a connection to {{ $labels.daddr }}:{{ $labels.dport }}, a common mining-pool port ({{ $value }} times in 5m).
+
+              Impact/risk:
+              - Miners burn the CPU the cluster pays for and mean a workload runs code nobody approved.
+
+              Likely causes:
+              - A compromised image or dependency.
+              - An agent Run told to mine.
+
+              First actions:
+              - Stop the workload and keep its image digest as evidence.
+              - Follow the runbook's compromised-workload steps.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#crypto-miner"
+        - alert: UnfoldToolConnectedOutside
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} policy:="runtime-outbound-connects" binary:~"/(sh|bash|ash|dash|zsh|ksh|busybox|cat|head|tail|less|more|base64|xxd|od|strings|grep|cp|tar|dd|curl|wget|nc|ncat|socat|python[0-9.]*|perl|ruby|node|php)$" -namespace:="runtime-security-canary" | stats by (namespace, workload, binary, daddr, dport) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "A shell or tool on Unfold connected outside the cluster ({{ $labels.namespace }}/{{ $labels.workload }} to {{ $labels.daddr }}:{{ $labels.dport }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} in {{ $labels.namespace }}/{{ $labels.workload }} called connect() to {{ $labels.daddr }}:{{ $labels.dport }} ({{ $value }} times in 5m). The kernel saw the attempt; Cilium may still have dropped it (Hubble's egress flow log says).
+
+              Impact/risk:
+              - Platform programs reach their known endpoints and are only recorded. A shell, curl, wget, netcat or an interpreter dialling out is how data leaves and how second stages arrive.
+
+              Likely causes:
+              - An image that downloads at start-up.
+              - A reverse shell or exfiltration.
+
+              First actions:
+              - Check Hubble's verdict for the flow in VictoriaLogs (`source:=hubble-egress`).
+              - Stop the pod if nobody owns it.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#tool-connect"
+        - alert: UnfoldSandboxedPodHostProcess
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} event:=process_exec (namespace:="ci" or isolation_class:in("hardened", "isolated")) -binary:~"/(runsc|containerd-shim-runsc-v1|containerd-shim-kata-v2|cloud-hypervisor|qemu-system-x86_64|virtiofsd)$" | stats by (namespace, workload, binary, parent_binary) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "A host process ran in a sandboxed pod's cgroup on Unfold ({{ $labels.namespace }}/{{ $labels.workload }}, {{ $labels.binary }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} started on the host, attributed to {{ $labels.namespace }}/{{ $labels.workload }}, which runs under gVisor or Kata ({{ $value }} times in 5m).
+              - Inside those sandboxes Tetragon sees nothing; on the host such a pod should only have gVisor's or Kata's own processes.
+
+              Impact/risk:
+              - A process other than the sandbox runtime next to a sandboxed pod is what a sandbox escape looks like from the host.
+
+              Likely causes:
+              - A pod in ci or with an isolation class running without its RuntimeClass (the admission policy should refuse that).
+              - A new runtime helper binary (add it to the rule after review).
+              - A sandbox escape.
+
+              First actions:
+              - Check the pod's runtimeClassName.
+              - Cordon the node and follow the runbook if the pod is sandboxed.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#sandbox-host-process"
+        - alert: UnfoldHostShell
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} event:=process_exec namespace:="" binary:~"/(sh|bash|ash|dash|zsh|ksh|busybox)$" | stats by (node, binary, parent_binary, arguments) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "A shell ran on an Unfold node's host ({{ $labels.node }}, {{ $labels.binary }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} {{ $labels.arguments }} ran on {{ $labels.node }} outside any pod, started by {{ $labels.parent_binary }}.
+
+              Impact/risk:
+              - Talos has no shell. A shell on the host is either a container escape or a node that no longer runs what Talos installed.
+
+              Likely causes:
+              - A container escape.
+              - A Talos extension that shells out (none of today's do).
+
+              First actions:
+              - Cordon and drain the node, keep it for evidence, and follow the runbook.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#host-shell"
+        - alert: UnfoldPodNamespaceEscapeCall
+          expr: >-
+            _time:5m {cluster="unfold", source="tetragon"} policy:="runtime-namespace-escape" -namespace:="runtime-security-canary" -(namespace:="kube-system" workload:in("cilium", "hcloud-csi-node")) | stats by (namespace, workload, binary, function, string_args) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+            detection: high
+          annotations:
+            summary: "A pod on Unfold called ptrace, mount or setns ({{ $labels.namespace }}/{{ $labels.workload }}, {{ $labels.function }})"
+            description: |
+              What's happening:
+              - {{ $labels.binary }} in {{ $labels.namespace }}/{{ $labels.workload }} called {{ $labels.function }} {{ $labels.string_args }} ({{ $value }} times in 5m).
+
+              Impact/risk:
+              - ptrace reads other processes' memory, mount and setns change what a process can see; together they are the moves of a container escape.
+
+              Likely causes:
+              - A debugger or a CSI driver (add it to the exclusion after review).
+              - An escape attempt.
+
+              First actions:
+              - Read the event in VictoriaLogs and check the pod's capabilities.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#namespace-escape"
+        - alert: UnfoldRuntimeDetectionCanarySilent
+          expr: >-
+            _time:7d {cluster="unfold", source="tetragon"} namespace:="runtime-security-canary" | stats by (cluster) count() if (_time:2h policy:="runtime-kubernetes-credentials") as credential_reads, count() if (_time:2h policy:="runtime-outbound-connects" dport:="3333") as connects | filter credential_reads:=0 or connects:=0 | math min(credential_reads, connects) as fresh_canary_events | fields cluster, fresh_canary_events
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+          annotations:
+            summary: "Unfold's runtime detection stopped seeing its canary (Tetragon to VictoriaLogs)"
+            description: |
+              What's happening:
+              - The runtime-security-canary CronJob reads its ServiceAccount token and dials 192.0.2.10:3333 every 30 minutes, and Tetragon recorded at least one of those in the last 7 days, but not both in the last 2 hours.
+
+              Impact/risk:
+              - Every runtime detection on Unfold may be blind: the agent, a policy, the export file, Vector or the gateway is broken.
+
+              Likely causes:
+              - Tetragon not running on the hub node.
+              - A TracingPolicy that failed to load.
+              - Vector not shipping, or the homelab gateway down (UnfoldMetricsAbsent fires too).
+              - The CronJob failing or not scheduled.
+
+              First actions:
+              - Check the canary Job's log and `kubectl -n kube-system get ds tetragon` on Unfold.
+              - Follow the runbook's no-events section.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#canary-silent"
+        - alert: UnfoldRuntimeDetectionCanaryOverreach
+          expr: >-
+            _time:2h {cluster="unfold", source="tetragon"} namespace:="runtime-security-canary" (path:="/etc/hostname" or daddr:="10.66.0.10" or (event:=process_kprobe policy:="")) | stats by (cluster, policy, path, daddr) count() as hits
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+          annotations:
+            summary: "Unfold's runtime detection recorded an action it must ignore ({{ $labels.policy }}, {{ $labels.path }}{{ $labels.daddr }})"
+            description: |
+              What's happening:
+              - The canary also reads /etc/hostname and dials the cluster DNS Service, and those must never produce a policy event. One did.
+
+              Impact/risk:
+              - A policy's in-kernel filter has widened, so the event volume grows and real detections drown.
+
+              Likely causes:
+              - A TracingPolicy edited so its prefix or address filter matches too much.
+
+              First actions:
+              - Diff the TracingPolicies in kubernetes/platform/runtime-security/policies against the last good commit.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#canary-overreach"
+        - alert: UnfoldTetragonEventsDropped
+          expr: >-
+            _time:15m {cluster="unfold", source="tetragon"} event:=rate_limit_info | stats by (node) count() as notices
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+            service: runtime-security
+            stage: observe
+          annotations:
+            summary: "Tetragon on Unfold node {{ $labels.node }} is dropping events at its export rate limit"
+            description: |
+              What's happening:
+              - Tetragon on {{ $labels.node }} exported more than 3000 events in a minute and dropped the rest ({{ $value }} notices in 15m).
+
+              Impact/risk:
+              - Detections in the dropped window are lost. An attacker can flood the export to hide an action.
+
+              Likely causes:
+              - A workload that execs a process in a tight loop.
+              - A policy that matches far more than it should.
+
+              First actions:
+              - Find the noisiest binary: `{cluster="unfold", source="tetragon", node="<node>"} | stats by (binary) count()`.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/runtime-security.md#events-dropped"

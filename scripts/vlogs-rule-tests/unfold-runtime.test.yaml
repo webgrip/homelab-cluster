@@ -1,0 +1,646 @@
+---
+stream_fields: cluster,source,node,namespace,pod,container,talos_service
+extra_fields: cluster=unfold
+tests:
+  - name: kubectl exec into a running container fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /bin/sh
+        in_init_tree: 'false'
+        parent_binary: /usr/bin/runc
+        message: process_exec zot /bin/sh
+    firing:
+      - UnfoldPodExecOutsideInitTree
+  - name: a container's own entrypoint and children stay quiet
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /bin/sh
+        in_init_tree: 'true'
+        parent_binary: /usr/bin/containerd-shim-runc-v2
+        message: process_exec zot /bin/sh
+    firing: []
+    mutations:
+      - alert: UnfoldPodExecOutsideInitTree
+        replace: in_init_tree:=false
+        with: in_init_tree:*
+  - name: gVisor's own runsc processes next to a CI pod stay quiet
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: ci
+        pod: forgejo-runner-0
+        container: forgejo-runner
+        workload: forgejo-runner
+        binary: /usr/local/bin/runsc
+        in_init_tree: 'false'
+        parent_binary: /usr/local/bin/containerd-shim-runsc-v1
+        message: process_exec ci /usr/local/bin/runsc
+    firing: []
+    mutations:
+      - alert: UnfoldPodExecOutsideInitTree
+        replace: ' -binary:~"/(runsc'
+        with: ' binary:~"/(runsc'
+  - name: nmap in an application pod fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /usr/bin/nmap
+        in_init_tree: 'true'
+        message: process_exec zot /usr/bin/nmap
+    firing:
+      - UnfoldPodRanAttackTool
+  - name: Cilium's own nsenter init stays quiet
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: kube-system
+        pod: cilium-0
+        container: apply-sysctl-overwrites
+        workload: cilium
+        binary: /usr/bin/nsenter
+        in_init_tree: 'true'
+        message: process_exec kube-system /usr/bin/nsenter
+    firing: []
+    mutations:
+      - alert: UnfoldPodRanAttackTool
+        replace: -(namespace:="kube-system" workload:="cilium")
+        with: ''
+  - name: a pod writing below /var/lib/kubelet fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /bin/sh
+        policy: runtime-sensitive-host-writes
+        function: security_file_permission
+        path: /var/lib/kubelet/pods/x/volumes/token
+        message: process_kprobe zot /bin/sh
+    firing:
+      - UnfoldPodWroteHostPath
+  - name: cat reading a ServiceAccount token fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /bin/cat
+        policy: runtime-kubernetes-credentials
+        function: security_file_open
+        path: /var/run/secrets/kubernetes.io/serviceaccount/..2026/token
+        message: process_kprobe zot /bin/cat
+    firing:
+      - UnfoldCredentialReadByTool
+  - name: a program reading its own ServiceAccount token stays quiet
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: external-secrets
+        pod: external-secrets-0
+        container: external-secrets
+        workload: external-secrets
+        binary: /bin/external-secrets
+        policy: runtime-kubernetes-credentials
+        function: security_file_open
+        path: /var/run/secrets/kubernetes.io/serviceaccount/..2026/token
+        message: process_kprobe external-secrets /bin/external-secrets
+    firing: []
+    mutations:
+      - alert: UnfoldCredentialReadByTool
+        replace: (binary:~"
+        with: (-binary:~"
+  - name: any pod reading the kubelet's client certificate fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /zot
+        policy: runtime-kubernetes-credentials
+        function: security_file_open
+        path: /var/lib/kubelet/pki/kubelet-client-current.pem
+        message: process_kprobe zot /zot
+    firing:
+      - UnfoldCredentialReadByTool
+  - name: a healthy canary pages nobody
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /bin/cat
+        policy: runtime-kubernetes-credentials
+        function: security_file_open
+        path: /var/run/secrets/kubernetes.io/serviceaccount/..2026/token
+        age: 150
+        message: process_kprobe runtime-security-canary /bin/cat
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /usr/bin/nc
+        policy: runtime-outbound-connects
+        function: tcp_connect
+        daddr: 192.0.2.10
+        dport: '3333'
+        age: 155
+        message: process_kprobe runtime-security-canary /usr/bin/nc
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /bin/cat
+        policy: runtime-kubernetes-credentials
+        function: security_file_open
+        path: /var/run/secrets/kubernetes.io/serviceaccount/..2026/token
+        age: 4000
+        message: process_kprobe runtime-security-canary /bin/cat
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /usr/bin/nc
+        policy: runtime-outbound-connects
+        function: tcp_connect
+        daddr: 192.0.2.10
+        dport: '3333'
+        age: 4005
+        message: process_kprobe runtime-security-canary /usr/bin/nc
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /bin/cat
+        in_init_tree: 'true'
+        age: 150
+        message: process_exec runtime-security-canary /bin/cat
+    firing: []
+    mutations:
+      - alert: UnfoldCredentialReadByTool
+        replace: -namespace:="runtime-security-canary"
+        with: ''
+      - alert: UnfoldCryptoMinerPattern
+        replace: -namespace:="runtime-security-canary"
+        with: ''
+      - alert: UnfoldToolConnectedOutside
+        replace: -namespace:="runtime-security-canary"
+        with: ''
+  - name: a canary last seen three hours ago fires the silence alert
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /bin/cat
+        policy: runtime-kubernetes-credentials
+        function: security_file_open
+        path: /var/run/secrets/kubernetes.io/serviceaccount/..2026/token
+        age: 10800
+        message: process_kprobe runtime-security-canary /bin/cat
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /usr/bin/nc
+        policy: runtime-outbound-connects
+        function: tcp_connect
+        daddr: 192.0.2.10
+        dport: '3333'
+        age: 10805
+        message: process_kprobe runtime-security-canary /usr/bin/nc
+    firing:
+      - UnfoldRuntimeDetectionCanarySilent
+  - name: a canary whose connect stopped arriving fires the silence alert
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /bin/cat
+        policy: runtime-kubernetes-credentials
+        function: security_file_open
+        path: /var/run/secrets/kubernetes.io/serviceaccount/..2026/token
+        age: 600
+        message: process_kprobe runtime-security-canary /bin/cat
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /bin/cat
+        policy: runtime-kubernetes-credentials
+        function: security_file_open
+        path: /var/run/secrets/kubernetes.io/serviceaccount/..2026/token
+        age: 10800
+        message: process_kprobe runtime-security-canary /bin/cat
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /usr/bin/nc
+        policy: runtime-outbound-connects
+        function: tcp_connect
+        daddr: 192.0.2.10
+        dport: '3333'
+        age: 10805
+        message: process_kprobe runtime-security-canary /usr/bin/nc
+    firing:
+      - UnfoldRuntimeDetectionCanarySilent
+  - name: a cluster that never ran the canary stays quiet
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /zot
+        in_init_tree: 'true'
+        message: process_exec zot /zot
+    firing: []
+    mutations:
+      - alert: UnfoldRuntimeDetectionCanarySilent
+        replace: namespace:="runtime-security-canary"
+        with: namespace:*
+  - name: a canary benign action that produces a policy event fires the overreach alert
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /bin/cat
+        policy: runtime-kubernetes-credentials
+        function: security_file_open
+        path: /var/run/secrets/kubernetes.io/serviceaccount/..2026/token
+        age: 600
+        message: process_kprobe runtime-security-canary /bin/cat
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /usr/bin/nc
+        policy: runtime-outbound-connects
+        function: tcp_connect
+        daddr: 192.0.2.10
+        dport: '3333'
+        age: 605
+        message: process_kprobe runtime-security-canary /usr/bin/nc
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: runtime-security-canary
+        pod: runtime-security-canary-0
+        container: runtime-security-canary
+        workload: runtime-security-canary
+        binary: /bin/cat
+        policy: runtime-kubernetes-credentials
+        function: security_file_open
+        path: /etc/hostname
+        age: 600
+        message: process_kprobe runtime-security-canary /bin/cat
+    firing:
+      - UnfoldRuntimeDetectionCanaryOverreach
+  - name: a setuid binary in a pod fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /usr/bin/sudo
+        in_init_tree: 'true'
+        privileges_changed: PRIVILEGES_RAISED_EXEC_FILE_SETUID
+        message: process_exec zot /usr/bin/sudo
+    firing:
+      - UnfoldPrivilegeEscalation
+  - name: setuid(0) from a pod fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /app
+        policy: runtime-privilege-escalation
+        function: __sys_setuid
+        message: process_kprobe zot /app
+    firing:
+      - UnfoldPrivilegeEscalation
+  - name: an ordinary exec has no privilege change and stays quiet
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /zot
+        in_init_tree: 'true'
+        message: process_exec zot /zot
+    firing: []
+    mutations:
+      - alert: UnfoldPrivilegeEscalation
+        replace: privileges_changed:*
+        with: binary:*
+  - name: a kernel module load fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        binary: /usr/sbin/modprobe
+        policy: runtime-kernel-modules
+        function: security_kernel_module_request
+        string_args: net-pf-38
+        message: process_kprobe host /usr/sbin/modprobe
+    firing:
+      - UnfoldKernelModuleLoad
+  - name: xmrig starting fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /tmp/xmrig
+        in_init_tree: 'true'
+        arguments: -o pool.example:3333
+        message: process_exec zot /tmp/xmrig
+    firing:
+      - UnfoldCryptoMinerPattern
+  - name: stratum arguments on a renamed miner fire
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /usr/local/bin/kworker
+        in_init_tree: 'true'
+        arguments: -o stratum+tcp://pool.example:443 --donate-level 1
+        message: process_exec zot /usr/local/bin/kworker
+    firing:
+      - UnfoldCryptoMinerPattern
+  - name: a program connecting to a mining-pool port fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /zot
+        policy: runtime-outbound-connects
+        function: tcp_connect
+        daddr: 203.0.113.7
+        dport: '3333'
+        message: process_kprobe zot /zot
+    firing:
+      - UnfoldCryptoMinerPattern
+  - name: curl dialling out fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /usr/bin/curl
+        policy: runtime-outbound-connects
+        function: tcp_connect
+        daddr: 203.0.113.7
+        dport: '443'
+        message: process_kprobe zot /usr/bin/curl
+    firing:
+      - UnfoldToolConnectedOutside
+  - name: a platform program reaching its registry stays quiet
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: flux-system
+        pod: source-controller-0
+        container: source-controller
+        workload: source-controller
+        binary: /usr/local/bin/source-controller
+        policy: runtime-outbound-connects
+        function: tcp_connect
+        daddr: 140.82.121.4
+        dport: '443'
+        message: process_kprobe flux-system /usr/local/bin/source-controller
+    firing: []
+    mutations:
+      - alert: UnfoldToolConnectedOutside
+        replace: binary:~"/(sh|
+        with: binary:~".*|/(sh|
+  - name: a host process in a CI pod's cgroup fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: ci
+        pod: forgejo-runner-0
+        container: forgejo-runner
+        workload: forgejo-runner
+        binary: /usr/bin/python3
+        in_init_tree: 'true'
+        message: process_exec ci /usr/bin/python3
+    firing:
+      - UnfoldSandboxedPodHostProcess
+  - name: a host process in a hardened-class pod fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: ploeg
+        pod: run-42-0
+        container: run-42
+        workload: run-42
+        isolation_class: hardened
+        binary: /bin/bash
+        in_init_tree: 'true'
+        message: process_exec ploeg /bin/bash
+    firing:
+      - UnfoldSandboxedPodHostProcess
+  - name: Kata's VMM next to an isolated pod stays quiet
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        namespace: ploeg
+        pod: run-43-0
+        container: run-43
+        workload: run-43
+        isolation_class: isolated
+        binary: /opt/kata/bin/cloud-hypervisor
+        in_init_tree: 'true'
+        message: process_exec ploeg /opt/kata/bin/cloud-hypervisor
+    firing: []
+    mutations:
+      - alert: UnfoldSandboxedPodHostProcess
+        replace: -binary:~"
+        with: binary:~"
+  - name: a shell on the Talos host fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        binary: /bin/sh
+        parent_binary: /usr/bin/containerd-shim-runc-v2
+        arguments: -c id
+        message: process_exec host /bin/sh
+    firing:
+      - UnfoldHostShell
+  - name: a container runtime process on the host stays quiet
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_exec
+        binary: /usr/bin/containerd-shim-runc-v2
+        parent_binary: /usr/bin/containerd
+        message: process_exec host /usr/bin/containerd-shim-runc-v2
+    firing: []
+    mutations:
+      - alert: UnfoldHostShell
+        replace: binary:~"/(sh|bash|ash|dash|zsh|ksh|busybox)$"
+        with: binary:~".*"
+  - name: setns from an application pod fires
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: zot
+        pod: zot-0
+        container: zot
+        workload: zot
+        binary: /zot
+        policy: runtime-namespace-escape
+        function: __x64_sys_setns
+        message: process_kprobe zot /zot
+    firing:
+      - UnfoldPodNamespaceEscapeCall
+  - name: the CSI node plugin mounting volumes stays quiet
+    logs:
+      - source: tetragon
+        node: unfold-app-1
+        event: process_kprobe
+        action: KPROBE_ACTION_POST
+        namespace: kube-system
+        pod: hcloud-csi-node-0
+        container: hcloud-csi-node
+        workload: hcloud-csi-node
+        binary: /bin/hcloud-csi-driver-node
+        policy: runtime-namespace-escape
+        function: __x64_sys_mount
+        string_args: /dev/sdb /var/lib/kubelet/pods ext4
+        message: process_kprobe kube-system /bin/hcloud-csi-driver-node
+    firing: []
+    mutations:
+      - alert: UnfoldPodNamespaceEscapeCall
+        replace: ' -(namespace:="kube-system" workload:in("cilium", "hcloud-csi-node"))'
+        with: ''
+  - name: an export rate-limit notice fires
+    logs:
+      - source: tetragon
+        node: unfold-cp-1
+        event: rate_limit_info
+        message: 'rate_limit_info host '
+    firing:
+      - UnfoldTetragonEventsDropped
