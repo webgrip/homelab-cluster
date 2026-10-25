@@ -3,7 +3,7 @@ rule_files:
   - rules/finops.yaml
 evaluation_interval: 1m
 tests:
-  - name: measured lines add up, a line without its input stays out, and the missing count says so
+  - name: measured and fixed lines add up, and the missing count names what has no number
     interval: 1m
     input_series:
       - series: 'kepler_node_cpu_watts{zone="package", node_name="worker-1"}'
@@ -14,38 +14,63 @@ tests:
         values: "999x40"
       - series: 'hcloud:projected_month_eur:sum{project="unfold"}'
         values: "10x40"
-      - series: 'litellm_spend_metric_total{model="m"}'
-        values: "0+1x40"
+      - series: 'ecb_reference_rate{currency="USD"}'
+        values: "1.25x40"
     metricsql_expr_test:
-      - expr: finops:monthly_cost_eur
+      - expr: finops:monthly_cost_eur{line=~"electricity|hetzner-cloud|offsite-garage|subscriptions"}
         eval_time: 30m
         exp_samples:
           - labels: 'finops:monthly_cost_eur{line="electricity", source="kepler-cpu-dram-floor"}'
             value: 32.85
           - labels: 'finops:monthly_cost_eur{line="hetzner-cloud", source="hcloud-cost-exporter"}'
             value: 10
-      - expr: finops:monthly_total_eur
+          - labels: 'finops:monthly_cost_eur{line="offsite-garage", source="hetzner-online-invoice-080001293212-2026-10-net"}'
+            value: 59.7
+          - labels: 'finops:monthly_cost_eur{line="subscriptions", source="anthropic-max-20x-receipt-2164-3196-7452-2026-10-net"}'
+            value: 180
+      - expr: round(finops:monthly_cost_eur{line="domains"}, 0.0001)
+        eval_time: 30m
+        exp_samples:
+          - labels: 'finops:monthly_cost_eur{line="domains", source="namecheap-webgrip-dev-order-185680953-2025-11"}'
+            value: 0.4787
+      - expr: round(finops:monthly_total_eur, 0.01)
         eval_time: 30m
         exp_samples:
           - labels: 'finops:monthly_total_eur'
-            value: 42.85
+            value: 283.03
       - expr: finops:monthly_cost_lines_missing
         eval_time: 30m
         exp_samples:
           - labels: 'finops:monthly_cost_lines_missing'
-            value: 5
+            value: 2
 
-  - name: a stopped exporter drops its line instead of reading zero
+  - name: without the ECB rate, the lines priced in USD drop out instead of reading zero
     interval: 1m
     input_series:
       - series: 'kepler_node_cpu_watts{zone="package", node_name="worker-1"}'
         values: "100x40"
+      - series: 'litellm_spend_metric_total{model="m"}'
+        values: "0+1x40"
     metricsql_expr_test:
-      - expr: finops:monthly_cost_eur{line="hetzner-cloud"}
+      - expr: finops:monthly_cost_eur{line=~"hetzner-cloud|model-spend|domains"}
         eval_time: 30m
         exp_samples: []
       - expr: finops:monthly_cost_lines_missing
         eval_time: 30m
         exp_samples:
           - labels: 'finops:monthly_cost_lines_missing'
-            value: 6
+            value: 4
+
+  - name: model spend is the LiteLLM 7-day run-rate converted at the ECB rate
+    interval: 1m
+    input_series:
+      - series: 'litellm_spend_metric_total{model="m"}'
+        values: "0+0.06x40"
+      - series: 'ecb_reference_rate{currency="USD"}'
+        values: "1.25x40"
+    metricsql_expr_test:
+      - expr: round(finops:monthly_cost_eur{line="model-spend"}, 0.01)
+        eval_time: 30m
+        exp_samples:
+          - labels: 'finops:monthly_cost_eur{line="model-spend", source="litellm-7d-run-rate"}'
+            value: 2104.01

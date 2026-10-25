@@ -1,0 +1,18 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: observability
+resources:
+  - ./serviceaccount.yaml
+  - ./networkpolicy.yaml
+  - ./deployment.yaml
+  - ./service.yaml
+  - ./vmservicescrape.yaml
+configMapGenerator:
+  - name: ecb-rates-exporter-script
+    files:
+      - exporter.py=./ecb_rates_exporter.py
+    options:
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled

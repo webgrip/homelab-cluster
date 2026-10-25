@@ -21,6 +21,11 @@ spec:
         - record: finops:monthly_cost_lines_expected
           expr: vector(7)
 
+        - record: finops:eur_per_usd
+          expr: 1 / max(ecb_reference_rate{currency="USD"})
+          labels:
+            source: ecb-euro-reference-rate
+
     - name: finops.monthly
       interval: 1m
       rules:
@@ -45,6 +50,26 @@ spec:
           labels:
             line: model-spend
             source: litellm-7d-run-rate
+
+        - record: finops:monthly_cost_eur
+          expr: vector(59.70)
+          labels:
+            line: offsite-garage
+            source: hetzner-online-invoice-080001293212-2026-10-net
+
+        - record: finops:monthly_cost_eur
+          expr: vector(180.00)
+          labels:
+            line: subscriptions
+            source: anthropic-max-20x-receipt-2164-3196-7452-2026-10-net
+
+        - record: finops:monthly_cost_eur
+          expr: |
+            vector(7.18 / 12)
+            * on () group_left () last_over_time(finops:eur_per_usd[10m])
+          labels:
+            line: domains
+            source: namecheap-webgrip-dev-order-185680953-2025-11
 
     - name: finops.totals
       interval: 1m

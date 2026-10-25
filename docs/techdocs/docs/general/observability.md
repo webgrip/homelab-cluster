@@ -108,15 +108,23 @@ Overview shows the total; FinOps & Cost lists the lines. `finops:monthly_cost_li
 the expected lines (`finops:monthly_cost_lines_expected`, 7) that have no number yet, so a total
 that is too low says so.
 
+All amounts are net (excluding VAT): webgrip is VAT-registered, so VAT is reclaimed or reverse
+charged.
+
 | Line | Source | State on 2026-10-25 |
 | --- | --- | --- |
 | `electricity` | Kepler CPU+DRAM watts × 730 h × `finops:eur_per_kwh` (EUR 0.30) | measured floor; wall power is higher |
 | `hetzner-cloud` | `hcloud:projected_month_eur:sum` | measured |
-| `model-spend` | LiteLLM `litellm_spend_metric_total`, 7-day run-rate × `finops:eur_per_usd` | waits for `finops:eur_per_usd` |
-| `offsite-garage` | the Hetzner dedicated server's monthly price | missing |
-| `subscriptions` | Claude and other flat-fee subscriptions | missing |
-| `domains` | domain registrations, per month | missing |
-| `hardware` | purchase price ÷ expected lifetime in months, all nodes | missing |
+| `model-spend` | LiteLLM `litellm_spend_metric_total`, 7-day run-rate × `finops:eur_per_usd` | measured |
+| `offsite-garage` | Hetzner Online invoice 080001293212 (dedicated server in FSN1, billed monthly in arrears) | EUR 59.70 |
+| `subscriptions` | Anthropic receipt 2164-3196-7452, Claude Max 20x | EUR 180.00 |
+| `domains` | Namecheap order 185680953, `webgrip.dev` USD 7.18 a year (first-year price; renews 2026-11-02) | ~EUR 0.53 |
+| `hardware` | purchase price ÷ expected lifetime in months, all nodes | missing: no purchase records found |
+
+`finops:eur_per_usd` is `1 / ecb_reference_rate{currency="USD"}`: the ECB euro foreign exchange
+reference rate, fetched hourly by `ecb-rates-exporter` (`kubernetes/apps/observability/ecb-rates-exporter/`,
+tests with mutations in `scripts/test-ecb-rates-exporter.sh`). The ECB publishes one rate per
+working day around 16:00 CET; without it, the lines priced in USD drop out of the total.
 
 A fixed line is one recording rule in the `finops.monthly` group, with its source and the date
 it was checked:
@@ -129,9 +137,8 @@ it was checked:
     source: hetzner-robot-invoice-2026-10
 ```
 
-`finops:eur_per_usd` is the same shape in the `finops.inputs` group (no `line` label). A line
-whose source stops reporting drops out of the sum instead of reading 0, and the missing count
-rises.
+A line whose source stops reporting drops out of the sum instead of reading 0, and the missing
+count rises.
 
 **Home Assistant.** VMAgent scrapes Home Assistant's Prometheus endpoint
 (`victoria-metrics/app/scrapes/vmstaticscrape-home-assistant.yaml`, job `home-assistant`) once
