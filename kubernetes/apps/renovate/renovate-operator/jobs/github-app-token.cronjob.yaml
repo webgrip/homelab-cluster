@@ -53,6 +53,20 @@ spec:
                       name: renovate-harbor-robot
                       key: HARBOR_ROBOT_TOKEN
                       optional: true
+                - name: WEBGRIP_TALOS_REGISTRY
+                  value: forgejo.${SECRET_DOMAIN}
+                - name: WEBGRIP_TALOS_PULL_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: renovate-webgrip-talos-pull
+                      key: username
+                      optional: true
+                - name: WEBGRIP_TALOS_PULL_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: renovate-webgrip-talos-pull
+                      key: token
+                      optional: true
               command:
                 - /bin/sh
                 - -ceu
@@ -179,6 +193,18 @@ spec:
                       hostType: 'docker',
                       username: harborUser,
                       password: harborToken,
+                    });
+                  }
+
+                  const talosRegistry = process.env.WEBGRIP_TALOS_REGISTRY;
+                  const talosPullUser = process.env.WEBGRIP_TALOS_PULL_USER;
+                  const talosPullToken = process.env.WEBGRIP_TALOS_PULL_TOKEN;
+                  if (talosRegistry && talosPullUser && talosPullToken) {
+                    hostRules.push({
+                      matchHost: talosRegistry,
+                      hostType: 'docker',
+                      username: talosPullUser,
+                      password: talosPullToken,
                     });
                   }
 

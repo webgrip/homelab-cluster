@@ -41,3 +41,7 @@ path "secret/data/hetzner/unfold-robot" {
 path "secret/data/unfold-cluster/metal/*" {
   capabilities = ["create", "read", "update"]
 }
+
+path "secret/data/unfold-cluster/metal-image-pull" {
+  capabilities = ["read"]
+}

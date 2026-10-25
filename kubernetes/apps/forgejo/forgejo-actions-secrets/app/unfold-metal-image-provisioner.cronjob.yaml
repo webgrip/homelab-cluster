@@ -1,0 +1,163 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: unfold-metal-image-provisioner
+  namespace: forgejo
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: unfold-metal-image-provisioner
+  namespace: forgejo
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    resourceNames:
+      - "unfold-metal-image-pull"
+    verbs:
+      - "get"
+      - "update"
+      - "patch"
+  - apiGroups:
+      - ""
+    resources:
+      - "secrets"
+    verbs:
+      - "create"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: unfold-metal-image-provisioner
+  namespace: forgejo
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: unfold-metal-image-provisioner}
+subjects:
+  - {kind: ServiceAccount, name: unfold-metal-image-provisioner, namespace: forgejo}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: unfold-metal-image-provisioner
+  namespace: forgejo
+spec:
+  schedule: "*/30 * * * *"
+  startingDeadlineSeconds: 1800
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: unfold-metal-image-provisioner
+        spec:
+          serviceAccountName: unfold-metal-image-provisioner
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: provision
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4
+              imagePullPolicy: IfNotPresent
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: CURL_TIMEOUT, value: "30"}
+                - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+                - {name: NAMESPACE, value: forgejo}
+                - {name: IMAGE_ORG, value: webgrip-talos}
+                - {name: TOKEN_SECRET, value: unfold-metal-image-pull}
+                - {name: TOKEN_NAME, value: unfold-metal-image-pull}
+                - {name: BOT_USERNAME, value: webgrip-ci}
+                - name: ADMIN_USERNAME
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+                - name: ADMIN_PASSWORD
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+                - name: BOT_PASSWORD
+                  valueFrom: {secretKeyRef: {name: forgejo-ci-bot-password, key: password}}
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  api="${FORGEJO_URL}/api/v1"
+                  admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
+                  bot="${BOT_USERNAME}:${BOT_PASSWORD}"
+                  curl() { command curl --connect-timeout 10 --max-time "$CURL_TIMEOUT" "$@"; }
+                  kubectl() { timeout 30 kubectl "$@"; }
+
+                  code="$(curl -sS -o /dev/null -w '%{http_code}' -u "$admin" "$api/orgs/${IMAGE_ORG}")"
+                  case "$code" in
+                    200) ;;
+                    404)
+                      curl -fsS -o /dev/null -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs" \
+                        -d "{\"username\":\"${IMAGE_ORG}\",\"full_name\":\"webgrip Talos images\",\"visibility\":\"private\",\"repo_admin_change_team_access\":false}"
+                      echo "created private org ${IMAGE_ORG}"
+                      ;;
+                    *) echo "unexpected status probing org ${IMAGE_ORG}: $code" >&2; exit 1 ;;
+                  esac
+                  curl -fsS -o /dev/null -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/orgs/${IMAGE_ORG}" \
+                    -d '{"visibility":"private"}'
+                  visibility="$(curl -fsS -u "$admin" "$api/orgs/${IMAGE_ORG}" | jq -r '.visibility')"
+                  [ "$visibility" = "private" ] || { echo "${IMAGE_ORG} is ${visibility}, not private" >&2; exit 1; }
+                  anonymous="$(curl -sS -o /dev/null -w '%{http_code}' "$api/packages/${IMAGE_ORG}?limit=1")"
+                  case "$anonymous" in
+                    401|403|404) echo "anonymous package listing of ${IMAGE_ORG}: HTTP ${anonymous}" ;;
+                    *) echo "anonymous package listing of ${IMAGE_ORG} answered HTTP ${anonymous}; refusing to continue" >&2; exit 1 ;;
+                  esac
+
+                  units='["repo.packages"]'
+                  tid="$(curl -fsS -u "$admin" "$api/orgs/${IMAGE_ORG}/teams" | jq -r '.[] | select(.name=="ci") | .id' | head -1)"
+                  if [ -z "$tid" ]; then
+                    tid="$(curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST "$api/orgs/${IMAGE_ORG}/teams" \
+                      -d "{\"name\":\"ci\",\"description\":\"publishes the Talos images\",\"permission\":\"write\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":${units}}" | jq -r '.id // empty')"
+                  else
+                    curl -fsS -o /dev/null -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/teams/$tid" \
+                      -d "{\"name\":\"ci\",\"permission\":\"write\",\"includes_all_repositories\":true,\"can_create_org_repo\":false,\"units\":${units}}"
+                  fi
+                  [ -n "$tid" ] || { echo "could not ensure ${IMAGE_ORG}/ci" >&2; exit 1; }
+                  curl -fsS -o /dev/null -u "$admin" -X PUT "$api/teams/$tid/members/${BOT_USERNAME}"
+                  curl -fsS -o /dev/null -u "$admin" "$api/teams/$tid/members/${BOT_USERNAME}"
+
+                  tok="$(kubectl -n "$NAMESPACE" get secret "$TOKEN_SECRET" -o jsonpath='{.data.token}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+                  reads_packages() { curl -fsS -o /dev/null -H "Authorization: token $1" "$api/packages/${IMAGE_ORG}?limit=1"; }
+                  reads_user() { curl -fsS -o /dev/null -H "Authorization: token $1" "$api/user"; }
+                  if [ -n "$tok" ] && reads_packages "$tok" && ! reads_user "$tok"; then
+                    echo "the stored pull token reads ${IMAGE_ORG}'s packages and nothing else it was probed for; no change"
+                  else
+                    echo "minting a read:package token for ${BOT_USERNAME}"
+                    curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${TOKEN_NAME}" || true
+                    tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
+                      -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":[\"read:package\"]}" | jq -r '.sha1')"
+                    [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
+                    reads_packages "$tok" || { echo "the new token cannot read ${IMAGE_ORG}'s packages" >&2; exit 1; }
+                    ! reads_user "$tok" || { echo "the new token reads more than packages" >&2; exit 1; }
+                    kubectl -n "$NAMESPACE" create secret generic "$TOKEN_SECRET" \
+                      --from-literal="username=${BOT_USERNAME}" \
+                      --from-literal="token=$tok" \
+                      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                    echo "wrote Secret $TOKEN_SECRET"
+                  fi
+                  echo "unfold-metal-image provisioner converged"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 64Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}
