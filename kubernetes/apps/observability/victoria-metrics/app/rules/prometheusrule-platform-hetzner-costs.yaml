@@ -71,6 +71,34 @@ spec:
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/hetzner-cloud-costs/"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/unfold-cloud-costs"
 
+        - alert: HetznerAutoscaledServerRunningLong
+          expr: (time() - max by (project, id, name, type, location) (hcloud_cost_resource_created_timestamp_seconds{kind="server", role="autoscaled-worker"})) > 4 * 3600
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: hetzner-costs
+          annotations:
+            summary: "Autoscaled Hetzner server {{ $labels.name }} has run for more than four hours (hetzner/{{ $labels.project }})"
+            description: |
+              What's happening:
+              - Server {{ $labels.name }} ({{ $labels.type }}, id {{ $labels.id }}) was created by Unfold's cluster-autoscaler for CI overflow more than four hours ago and still exists.
+
+              Impact/risk:
+              - It bills every hour (a CPX42 is about EUR 0.11 an hour, EUR 2.69 a day). A CI job lasts at most 90 minutes and an idle overflow node is removed after about 10, so four hours means a queue that never drains or a node the autoscaler lost track of.
+
+              Likely causes:
+              - A long CI queue keeps the node busy (check the Unfold CI runners: kubectl -n ci get jobs)
+              - The server never joined the cluster and the autoscaler is not running to delete it
+              - The autoscaler cannot reach api.hetzner.cloud or its token was revoked
+
+              First actions:
+              - kubectl -n cluster-autoscaler logs deploy/cluster-autoscaler-hetzner-cluster-autoscaler on Unfold
+              - kubectl get nodes -l node.webgrip.io/pool=ci on Unfold; a server with no node is an orphan
+              - Runbook: unfold-cluster docs/runbooks/ci-autoscaler.md, section "A CI node that will not go away"
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/ci-autoscaler.md"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/unfold-cloud-costs"
+
         - alert: HetznerCostExporterDown
           expr: absent(up{job="hcloud-cost-exporter"} == 1)
           for: 15m

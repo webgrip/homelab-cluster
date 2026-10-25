@@ -186,3 +186,35 @@ tests:
               service: hetzner-costs
             exp_annotations:
               summary: "Hetzner cost data is stale (hetzner/unfold)"
+
+  - name: an autoscaled CI server alive for four hours fires, a younger one and static servers do not
+    interval: 1m
+    input_series:
+      - series: 'hcloud_cost_resource_created_timestamp_seconds{project="unfold", kind="server", id="41", name="ci-1f2e3d", type="cpx42", location="nbg1", role="autoscaled-worker", hcloud_cluster="unfold-main", instance="a"}'
+        values: "0x300"
+      - series: 'hcloud_cost_resource_created_timestamp_seconds{project="unfold", kind="server", id="41", name="ci-1f2e3d", type="cpx42", location="nbg1", role="autoscaled-worker", hcloud_cluster="unfold-main", instance="b"}'
+        values: "0x300"
+      - series: 'hcloud_cost_resource_created_timestamp_seconds{project="unfold", kind="server", id="42", name="ci-4c5b6a", type="cpx42", location="nbg1", role="autoscaled-worker", hcloud_cluster="unfold-main", instance="a"}'
+        values: "10800x300"
+      - series: 'hcloud_cost_resource_created_timestamp_seconds{project="unfold", kind="server", id="1", name="unfold-app-1", type="cx33", location="fsn1", role="worker", hcloud_cluster="unfold-main", instance="a"}'
+        values: "0x300"
+    alert_rule_test:
+      - eval_time: 230m
+        groupname: platform.hetzner-costs
+        alertname: HetznerAutoscaledServerRunningLong
+        exp_alerts: []
+      - eval_time: 260m
+        groupname: platform.hetzner-costs
+        alertname: HetznerAutoscaledServerRunningLong
+        exp_alerts:
+          - exp_labels:
+              project: unfold
+              id: "41"
+              name: ci-1f2e3d
+              type: cpx42
+              location: nbg1
+              severity: warning
+              owner: platform
+              service: hetzner-costs
+            exp_annotations:
+              summary: "Autoscaled Hetzner server ci-1f2e3d has run for more than four hours (hetzner/unfold)"
