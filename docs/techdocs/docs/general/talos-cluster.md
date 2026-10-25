@@ -139,7 +139,7 @@ Specs below were captured live on **2026-06-19** with `talosctl get` (see [Re-ca
 | soyo-2 | 10.0.0.21 | SOYO N150 mini-PC (M4) | Intel N150 (Twin Lake) | 4C / 4T | 12 GiB | 512 GB SATA SSD (WUXIN G15) | — |
 | soyo-3 | 10.0.0.22 | SOYO N150 mini-PC (M4) | Intel N150 (Twin Lake) | 4C / 4T | 12 GiB | 512 GB SATA SSD (WUXIN G15) | — |
 | fringe-workstation | 10.0.0.23 | HP Z230 Tower Workstation (SKU `WM572ET#ABB`) | Intel Core i7-4770 @ 3.40 GHz (Haswell) | 4C / 8T | 16 GiB | 256 GB SATA SSD (Micron `MTFDDAK256MAM-1K`) | 1 TB SATA HDD (Seagate `ST1000DM003`, 7200 rpm) + DVD-RAM (`sr0`) |
-| worker-1 | 10.0.0.24 | Gigabyte Z87X-D3H (Haswell ATX) | Intel Core i5-4670K @ 3.40 GHz (Haswell, unlocked) | 4C / 4T | **24 GiB** | 960 GB SATA SSD (Netac) | — (USB installer stick still attached, removable) |
+| worker-1 | 10.0.0.24 | Gigabyte Z87X-D3H (Haswell ATX) | Intel Core i5-4670K @ 3.40 GHz (Haswell, unlocked) | 4C / 4T | **24 GiB** | 1 TB SATA SSD (Samsung `870 EVO 1TB`; replaced the failed Netac 960 GB in 2026-07) | — (USB installer stick still attached, removable) |
 
 The SOYO boards report no SMBIOS vendor/product strings (`Default string`); the `M4` model name comes from the purchase, not firmware, and their Wi-Fi/Bluetooth radios stay disabled in firmware. `fringe-workstation` (HP Z230) and `worker-1` (Gigabyte Z87X-D3H) are repurposed Haswell desktops that report full SMBIOS strings. Kubernetes-reported _allocatable_ memory is slightly below physical (firmware/kernel reserve): soyo ≈ 11.4 GiB of 12 GiB, fringe ≈ 15.3 GiB of 16 GiB, worker-1 ≈ 23.3 GiB of 24 GiB.
 
@@ -159,7 +159,7 @@ The SOYO boards report no SMBIOS vendor/product strings (`Default string`); the 
 
 - **soyo-1/2/3** — a single 512 GB SATA SSD each. etcd, the OS, _and_ every Longhorn replica share this one disk, which is the cluster's primary I/O bottleneck and the reason write-heavy workloads are pinned off the control plane (see below). At capture soyo-2 had ~17 and soyo-3 ~20 iSCSI virtual disks attached.
 - **fringe-workstation** — a 256 GB Micron SSD (OS / install disk) plus a **dedicated 1 TB Seagate HDD** (rotational) and a DVD-RAM drive. That separate spindle is why this node absorbs bulk/write-heavy storage.
-- **worker-1** — a single **960 GB SATA SSD** (Netac), its OS + data disk (`installDisk: /dev/sda`). A 7.7 GB USB stick (`sdb`, the Talos installer) is still attached and can be pulled. Freshly joined, so no Longhorn replicas yet — but as a second independent worker it is the natural home for a second Longhorn replica, so data stops piling onto one node.
+- **worker-1** — a single **1 TB SATA SSD** (Samsung 870 EVO, confirmed from the kernel log on 2026-10-25; the original Netac 960 GB failed with EIO in 2026-07 and was replaced), its OS + data disk (`installDisk: /dev/sda`). A 7.7 GB USB stick (`sdb`, the Talos installer) is still attached and can be pulled. Freshly joined, so no Longhorn replicas yet — but as a second independent worker it is the natural home for a second Longhorn replica, so data stops piling onto one node.
 
 Install disks are pinned in `talos/nodes.yaml` (`installDisk:` — `/dev/sdb` on soyo, `/dev/sda` on fringe and worker-1). Because runtime letters are unstable, treat `installDisk` as an install-time selector only, not a way to identify a disk on a running node.
 
