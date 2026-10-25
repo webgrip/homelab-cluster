@@ -1,0 +1,89 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: homelab-etcd-lifecycle
+spec:
+  schedule: "5 8 * * *"
+  timeZone: Etc/UTC
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 600
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: homelab-etcd-lifecycle
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: lifecycle
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+              command:
+                - "/bin/sh"
+                - "/scripts/apply-lifecycle.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: BUCKET, value: homelab-etcd}
+                - {name: LIFECYCLE_FILE, value: /scripts/homelab-etcd-lifecycle.json}
+                - {name: AWS_DEFAULT_REGION, valueFrom: {secretKeyRef: {name: etcd-backup-writer, key: AWS_REGION}}}
+                - {name: WRITER_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: etcd-backup-writer, key: AWS_ACCESS_KEY_ID}}}
+                - {name: WRITER_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: etcd-backup-writer, key: AWS_SECRET_ACCESS_KEY}}}
+                - {name: WRITER_ENDPOINT, valueFrom: {secretKeyRef: {name: etcd-backup-writer, key: CUSTOM_S3_ENDPOINT}}}
+                - {name: READER_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: etcd-restore-drill, key: S3_ACCESS_KEY_ID}}}
+                - {name: READER_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: etcd-restore-drill, key: S3_SECRET_ACCESS_KEY}}}
+                - {name: READER_ENDPOINT, valueFrom: {secretKeyRef: {name: etcd-restore-drill, key: S3_ENDPOINT}}}
+              resources:
+                requests: {cpu: 10m, memory: 64Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+          volumes:
+            - {name: scripts, configMap: {name: homelab-etcd-lifecycle}}
+            - {name: tmp, emptyDir: {}}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: homelab-etcd-lifecycle
+spec:
+  description: The lifecycle job sets and reads back the expiry rule of the off-site homelab-etcd bucket over HTTPS, nothing else.
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-etcd-lifecycle
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: UDP}
+            - {port: "53", protocol: TCP}
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchName: s3-offsite.webgrip.dev
+      toPorts:
+        - ports:
+            - {port: "443", protocol: TCP}

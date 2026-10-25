@@ -310,6 +310,26 @@ bootstrap-apps:
     @just _file {{ root }}/.sops.yaml {{ root }}/scripts/bootstrap-apps.sh "${KUBECONFIG}" "${SOPS_AGE_KEY_FILE}"
     bash {{ root }}/scripts/bootstrap-apps.sh
 
+[doc('Show how garage-fsn1 differs from garage-fsn1/state.yaml; exit 2 when changes are pending')]
+[group('backup')]
+garage-offsite-plan:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need bao jq yq curl ssh
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc >/dev/null
+    bash {{ root }}/scripts/garage-offsite-reconcile.sh plan {{ root }}/garage-fsn1/state.yaml
+
+[doc('Make garage-fsn1 match garage-fsn1/state.yaml: buckets, keys into OpenBao, grants, quotas; never deletes')]
+[group('backup')]
+garage-offsite-apply:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need bao jq yq curl ssh
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc >/dev/null
+    bash {{ root }}/scripts/garage-offsite-reconcile.sh apply {{ root }}/garage-fsn1/state.yaml
+
 # --- omnigraph --------------------------------------------------------------
 
 [doc('Cache your Omnigraph token from secret/omnigraph/<actor> into ~/.omnigraph/credentials (0600) and write the homelab server entry if missing; the token is never printed')]

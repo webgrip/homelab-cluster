@@ -1,0 +1,90 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homelab-etcd-age-keygen
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: homelab-etcd-age-keygen
+  labels:
+    cleanup.webgrip.io/retry-failed: "true"
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: enabled
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-etcd-age-keygen
+    spec:
+      serviceAccountName: homelab-etcd-age-keygen
+      automountServiceAccountToken: true
+      restartPolicy: Never
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: keygen
+          image: harbor.webgrip.dev/webgrip/infra-runner:0.1.0@sha256:d98987878aa40983b26ac4aa23dde1f105edd72dc4721d85fa18436b5db07140
+          command:
+            - "/bin/bash"
+            - "/scripts/homelab-etcd-age-keygen.sh"
+          env:
+            - {name: HOME, value: /tmp}
+            - {name: BAO_ADDR, value: "http://openbao.security.svc.cluster.local:8200"}
+            - {name: BAO_ROLE, value: homelab-etcd-age-keygen}
+            - {name: SECRET_PATH, value: backup/homelab-etcd}
+            - {name: WORK, value: /keys}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts}
+            - {name: keys, mountPath: /keys}
+            - {name: tmp, mountPath: /tmp}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+      volumes:
+        - {name: scripts, configMap: {name: homelab-etcd-age-keygen}}
+        - {name: keys, emptyDir: {medium: Memory, sizeLimit: 1Mi}}
+        - {name: tmp, emptyDir: {}}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: homelab-etcd-age-keygen
+spec:
+  description: The keygen job logs in to OpenBao and writes the etcd age identities once, nothing else.
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-etcd-age-keygen
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: UDP}
+            - {port: "53", protocol: TCP}
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: security
+            app.kubernetes.io/name: openbao
+      toPorts:
+        - ports:
+            - {port: "8200", protocol: TCP}

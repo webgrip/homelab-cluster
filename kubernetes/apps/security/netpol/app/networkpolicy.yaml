@@ -253,3 +253,25 @@ spec:
       ports:
         - protocol: TCP
           port: 8200
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: security-allow-backup-age-keygen-openbao
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: openbao
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: backup
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: homelab-etcd-age-keygen
+      ports:
+        - protocol: TCP
+          port: 8200

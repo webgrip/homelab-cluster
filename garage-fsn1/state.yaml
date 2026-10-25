@@ -1,0 +1,38 @@
+---
+host: root@116.202.53.185
+endpoint: https://s3-offsite.webgrip.dev
+region: garage
+quotaHeadroom: 20GiB
+buckets:
+  - name: cnpg-backups-bucket
+    maxSize: 242GiB
+  - name: homelab-etcd
+    maxSize: 5GiB
+  - name: unfold-cluster-etcd
+    maxSize: 5GiB
+  - name: unfold-cluster-tfstate
+    maxSize: 1GiB
+keys:
+  - name: cnpg-backup
+    grants:
+      cnpg-backups-bucket:
+        - read
+        - write
+  - name: homelab-etcd-writer
+    vault:
+      path: s3/homelab-etcd-writer
+      bucket: homelab-etcd
+    grants:
+      homelab-etcd:
+        - write
+  - name: backup-verify
+    vault:
+      path: s3/backup-verify-offsite
+      bucket: cnpg-backups-bucket
+    grants:
+      cnpg-backups-bucket:
+        - read
+      homelab-etcd:
+        - read
+      unfold-cluster-etcd:
+        - read
