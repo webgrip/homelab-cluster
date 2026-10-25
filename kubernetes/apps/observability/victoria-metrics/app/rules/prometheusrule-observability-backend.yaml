@@ -1,0 +1,100 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: observability-backend
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: observability
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: observability.backend
+      rules:
+        - alert: VictoriaMetricsQueryTimeouts
+          expr: |
+            sum by (job) (increase(vm_concurrent_select_limit_timeout_total{job="vmsingle-vmsingle"}[10m])) > 0
+          labels:
+            severity: warning
+            owner: platform
+            service: observability
+          annotations:
+            summary: "VictoriaMetrics rejected queries that waited too long for a slot ({{ $labels.job }})"
+            description: |
+              What's happening:
+              - VMSingle gave up on queries that waited longer than -search.maxQueueDuration for a free query slot in the last 10 minutes.
+
+              Impact/risk:
+              - Dashboard panels show No data and Grafana or vmalert rules fail to evaluate, so alerts can stay silent.
+
+              Likely causes:
+              - A heavy query or dashboard holding every slot (long ranges, per-container joins)
+              - VMSingle scheduled on a node under IO or memory pressure
+              - A burst of rule groups evaluating at the same moment
+
+              First actions:
+              - Read /api/v1/status/top_queries on vmsingle-vmsingle for the slowest queries
+              - Check which node VMSingle runs on and that node's IO and memory pressure
+              - Move the heavy query to a recording rule before raising -search.maxConcurrentRequests
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/observability/#cost-model-opencost-and-the-executive-dashboards"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/vm-backend-health"
+
+        - alert: VictoriaMetricsQuerySlotsFull
+          expr: |
+            min_over_time(vm_concurrent_select_current{job="vmsingle-vmsingle"}[10m])
+            >= on (job, instance)
+            vm_concurrent_select_capacity{job="vmsingle-vmsingle"}
+          labels:
+            severity: warning
+            owner: platform
+            service: observability
+          annotations:
+            summary: "Every VictoriaMetrics query slot stayed busy for 10 minutes ({{ $labels.instance }})"
+            description: |
+              What's happening:
+              - All concurrent-select slots on VMSingle were in use for 10 minutes without a break.
+
+              Impact/risk:
+              - New queries queue; once they wait past the queue limit they fail, and dashboards and alert rules go blind.
+
+              Likely causes:
+              - A dashboard with expensive queries left open on a short refresh
+              - A slow storage volume making every query hold its slot longer
+              - Rule groups whose queries grew with series count
+
+              First actions:
+              - Read /api/v1/status/top_queries on vmsingle-vmsingle (topBySumDuration)
+              - Check the VMSingle node's IO pressure and the Longhorn volume latency
+              - Turn the expensive expression into a recording rule
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/observability/#cost-model-opencost-and-the-executive-dashboards"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/vm-backend-health"
+
+        - alert: GrafanaOperatorSyncFailing
+          expr: |
+            sum by (controller) (increase(controller_runtime_reconcile_errors_total{job="grafana-operator-metrics-service"}[30m])) > 0
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: observability
+          annotations:
+            summary: "grafana-operator keeps failing to sync {{ $labels.controller }} resources ({{ $labels.controller }})"
+            description: |
+              What's happening:
+              - The grafana-operator {{ $labels.controller }} controller has logged reconcile errors for over an hour.
+
+              Impact/risk:
+              - Changes to dashboards, datasources, folders or playlists merged in git do not reach Grafana; Grafana keeps the last version it accepted.
+
+              Likely causes:
+              - Grafana's API rejecting the object (validation, version conflict)
+              - An operator bug for that resource kind, fixed in a newer operator release
+              - A referenced folder, datasource or secret that does not exist
+
+              First actions:
+              - kubectl -n observability logs deploy/grafana-operator | grep -i error
+              - Compare the failing object's status with what Grafana shows
+              - Check the operator release notes for a fix before working around it
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/information-radiators/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health"

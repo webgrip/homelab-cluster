@@ -90,8 +90,14 @@ wiring/troubleshooting → `authentik-oidc` skill + [Authentik OIDC login runboo
 - **VMSingle query concurrency.** VictoriaMetrics derives `-search.maxConcurrentRequests` from its
   CPU limit (2 cores → 4 slots). With vmalert, Grafana alerting and dashboards sharing those slots,
   queries queued for 10 s and failed with 429, so panels showed "No data" and Grafana alert rules
-  failed to evaluate (9,735 limit hits and 294 timeouts in the 24 h before 2026-10-25). The VMSingle
-  CR sets 8 slots and a 30 s queue; watch `vm_concurrent_select_limit_timeout_total`.
+  failed to evaluate (9,735 limit hits and 294 timeouts in the 24 h before 2026-10-25). Query
+  execution itself was never the slow part: a traced `min(vm_free_disk_space_bytes)` runs in under
+  a millisecond, and the second it showed in `top_queries` was time spent waiting for a slot while
+  VMSingle sat on `fringe-workstation` under IO pressure. With 8 slots, a 30 s queue and VMSingle on
+  `worker-1`, the median instant query takes about 2 ms. The VMSingle CR now prefers any node but
+  `fringe-workstation`, and `VictoriaMetricsQueryTimeouts` and `VictoriaMetricsQuerySlotsFull`
+  (`victoria-metrics/app/rules/prometheusrule-observability-backend.yaml`) page before dashboards
+  go blank again.
 
 ## VictoriaLogs
 

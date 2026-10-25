@@ -1,0 +1,87 @@
+---
+rule_files:
+  - rules/observability-backend.yaml
+evaluation_interval: 1m
+tests:
+  - name: a query timeout fires, a quiet counter does not
+    interval: 1m
+    input_series:
+      - series: 'vm_concurrent_select_limit_timeout_total{job="vmsingle-vmsingle", instance="a"}'
+        values: "0x30 1x30"
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: observability.backend
+        alertname: VictoriaMetricsQueryTimeouts
+        exp_alerts: []
+      - eval_time: 35m
+        groupname: observability.backend
+        alertname: VictoriaMetricsQueryTimeouts
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              owner: platform
+              service: observability
+              job: vmsingle-vmsingle
+            exp_annotations:
+              summary: "VictoriaMetrics rejected queries that waited too long for a slot (vmsingle-vmsingle)"
+
+  - name: slots full for ten minutes fires, one free slot in between does not
+    interval: 1m
+    input_series:
+      - series: 'vm_concurrent_select_capacity{job="vmsingle-vmsingle", instance="a"}'
+        values: "8x60"
+      - series: 'vm_concurrent_select_current{job="vmsingle-vmsingle", instance="a"}'
+        values: "8x15 7 8x44"
+    alert_rule_test:
+      - eval_time: 14m
+        groupname: observability.backend
+        alertname: VictoriaMetricsQuerySlotsFull
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              owner: platform
+              service: observability
+              job: vmsingle-vmsingle
+              instance: a
+            exp_annotations:
+              summary: "Every VictoriaMetrics query slot stayed busy for 10 minutes (a)"
+      - eval_time: 20m
+        groupname: observability.backend
+        alertname: VictoriaMetricsQuerySlotsFull
+        exp_alerts: []
+      - eval_time: 40m
+        groupname: observability.backend
+        alertname: VictoriaMetricsQuerySlotsFull
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              owner: platform
+              service: observability
+              job: vmsingle-vmsingle
+              instance: a
+            exp_annotations:
+              summary: "Every VictoriaMetrics query slot stayed busy for 10 minutes (a)"
+
+  - name: grafana-operator errors for over an hour fire, a single blip does not
+    interval: 1m
+    input_series:
+      - series: 'controller_runtime_reconcile_errors_total{job="grafana-operator-metrics-service", controller="grafanamanifest"}'
+        values: "0+1x120"
+      - series: 'controller_runtime_reconcile_errors_total{job="grafana-operator-metrics-service", controller="grafanadashboard"}'
+        values: "0x10 1x110"
+    alert_rule_test:
+      - eval_time: 50m
+        groupname: observability.backend
+        alertname: GrafanaOperatorSyncFailing
+        exp_alerts: []
+      - eval_time: 100m
+        groupname: observability.backend
+        alertname: GrafanaOperatorSyncFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              owner: platform
+              service: observability
+              controller: grafanamanifest
+            exp_annotations:
+              summary: "grafana-operator keeps failing to sync grafanamanifest resources (grafanamanifest)"
