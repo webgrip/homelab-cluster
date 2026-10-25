@@ -22,10 +22,11 @@ data:
   # "is already pinned to a protected semver release tag". Unpinned, a repo never sees the
   # preset on its dashboard and takes preset changes unreviewed while every other repo
   # reviews them. Bumping this pin is itself a Renovate PR against this file.
-  # The last two allowedCommands are the post-upgrade task of the apm preset in renovate-config:
+  # The uv and agentstd allowedCommands are the post-upgrade task of the apm preset in renovate-config:
   # after a bump of webgrip/agent-standards it installs uv and runs agentstd install from the new
   # tag, so apm.lock.yaml and the generated agent files come with the bump. The tag is pinned by
-  # the regex; nothing else from that repository runs.
+  # the regex; nothing else from that repository runs. The uvx form stays until every repository
+  # pins an apm preset that uses uv tool run (install-tool uv ships no uvx).
   # allowedUnsafeExecutions lets the mise manager run `mise lock`. Without it a repo that sets
   # lockfile = true gets its mise.toml rewritten by a uv/just/node bump while mise.lock stays put —
   # a lockfile that silently disagrees with its manifest. Self-hosted-only; ignored in repo config.
@@ -57,6 +58,7 @@ data:
         "^./scripts/renovate-ploeg-docs\\.sh$",
         "^install-tool uv$",
         "^uvx --from git\\+https://forgejo\\.webgrip\\.dev/webgrip/agent-standards\\.git@v[0-9]+\\.[0-9]+\\.[0-9]+#subdirectory=cli agentstd install$",
+        "^uv tool run --from git\\+https://forgejo\\.webgrip\\.dev/webgrip/agent-standards\\.git@v[0-9]+\\.[0-9]+\\.[0-9]+#subdirectory=cli agentstd install$",
         "^corepack pnpm install --lockfile-only --ignore-scripts --ignore-pnpmfile$"
       ],
       "allowedUnsafeExecutions": ["mise"],
