@@ -36,7 +36,7 @@ stage_fixed = true
 [pre-commit.commands.format-yaml]
 run = "mise exec -- yamlfmt {staged_files}"
 glob = ["*.yml", "*.yaml"]
-exclude = [".agents/skills/**", ".claude/skills/**", "apm.lock.yaml"]
+exclude = [".agents/skills/**", ".claude/skills/**", "apm.lock.yaml", "kubernetes/apps/security/external-secrets/tenants/stores.generated.yaml"]
 stage_fixed = true
 
 [pre-commit.commands.validate-access-model]
@@ -94,6 +94,14 @@ run = "bash scripts/test-forgejo-sync-skips-private.sh >/dev/null"
 [pre-commit.commands.validate-synthetic-coverage]
 glob = ["kubernetes/apps/**/*.yaml", "scripts/validate_synthetic_coverage.py", "scripts/test-validate-synthetic-coverage.sh"]
 run = "mise exec -- bash -c 'python3 scripts/validate_synthetic_coverage.py . && bash scripts/test-validate-synthetic-coverage.sh >/dev/null'"
+
+[pre-commit.commands.validate-eso-grants]
+glob = ["kubernetes/**/*.yaml", "kubernetes/apps/security/openbao/bootstrap/eso-grants.txt", "scripts/eso_grants.py"]
+run = "mise exec -- python3 scripts/eso_grants.py ."
+
+[pre-commit.commands.test-eso-grants]
+glob = ["scripts/eso_grants.py", "scripts/test-eso-grants.sh"]
+run = "mise exec -- bash scripts/test-eso-grants.sh >/dev/null"
 
 [pre-commit.commands.validate-alert-annotations]
 glob = ["kubernetes/apps/**/*.yaml", "kubernetes/components/**/*.yaml", "scripts/validate_alert_annotations.py", "scripts/test-validate-alert-dashboard-links.sh"]

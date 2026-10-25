@@ -8,6 +8,7 @@ resources:
   - config-cronjob.yaml
   - snapshot-cronjob.yaml
   - restore-drill-cronjob.yaml
+  - eso-grants-job.yaml
   # Dynamic Postgres credentials (ADR-0016): generate the freshrss-db vault_admin password
   # once, seed it into OpenBao KV, and mount it into the config job (see config-cronjob.yaml).
   - freshrss-vault-admin.externalsecret.yaml
@@ -16,10 +17,13 @@ resources:
   - unfold-hcloud-luks.pushsecret.yaml
 configMapGenerator:
   - name: openbao-bootstrap
+    options:
+      disableNameSuffixHash: true
     files:
       - init.sh
       - store.sh
       - config.sh
+      - eso-grants.sh
       - snapshot.sh
       - upload.sh
       - restore-drill-fetch.sh
@@ -48,5 +52,6 @@ configMapGenerator:
       - renovate-github-app-token-ploeg-hq.hcl
       - renovate-github-app-token-wellhead-dev.hcl
       - homelab-etcd-age-keygen.hcl
-generatorOptions:
-  disableNameSuffixHash: true
+  - name: openbao-eso-grants
+    files:
+      - eso-grants.txt

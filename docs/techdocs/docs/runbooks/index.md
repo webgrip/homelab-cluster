@@ -23,6 +23,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 ## Secrets
 
 - [External Secrets (ESO + OpenBao) — triage, DR, gotchas](external-secrets.md)
+- [External Secrets per namespace — grants, moving a namespace, store not ready](external-secrets-per-namespace.md)
 - [Rotate a secret in OpenBao (and how it reaches pods)](secret-rotation.md)
 - [OpenBao restore (unseal / raft snapshot)](openbao-restore.md)
 - [cosign Transit key rotation](cosign-transit-key-rotation.md)

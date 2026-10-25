@@ -16,6 +16,13 @@ migration is complete except `zomboid` (+ the SOPS floor). Background + ops/DR:
   `password-generator-16` / `password-generator-32` for secrets that demand a precise length
   (e.g. Harbor `secretKey`=16, `CSRF_KEY`=32). All in `…/external-secrets/stores/clustergenerator.yaml`.
 - KV path convention `secret/<app>/<purpose>`; `remoteRef.key` omits the mount → `<app>/<purpose>`.
+- **Per-namespace stores (ADR-0087, rollout in progress):** every namespace with secrets has its own
+  `SecretStore/openbao` (+ `openbao-db`, `openbao-push`) logging in as role `eso-read-<ns>` /
+  `eso-push-<ns>`, whose policy lists only the paths in `kubernetes/apps/security/openbao/bootstrap/eso-grants.txt`.
+  New ExternalSecrets use `{kind: SecretStore, name: openbao}`. After adding or changing any
+  ExternalSecret/PushSecret path run `mise exec -- python3 scripts/eso_grants.py --write` and commit
+  `eso-grants.txt` + `stores.generated.yaml` with it; the lefthook/e2e gate fails otherwise. Moving a
+  namespace off the ClusterSecretStores: `--move <ns>`. Runbook: `docs/techdocs/docs/runbooks/external-secrets-per-namespace.md`.
 
 ## Add a NEW secret
 
