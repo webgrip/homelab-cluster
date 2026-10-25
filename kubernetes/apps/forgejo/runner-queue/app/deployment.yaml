@@ -1,0 +1,96 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forgejo-runner-queue
+  labels:
+    app.kubernetes.io/name: forgejo-runner-queue
+    app.kubernetes.io/part-of: forgejo
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo-runner-queue
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: forgejo-runner-queue
+        app.kubernetes.io/part-of: forgejo
+    spec:
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: queue
+          image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:601e99e090cb08c2784a42395487709500bc39930307fe72f3f11a8f3c430762
+          command:
+            - "python3"
+            - "-I"
+            - "-u"
+            - "/opt/runner-queue/runner_queue.py"
+          env:
+            - name: FORGEJO_URL
+              value: http://forgejo-http.forgejo.svc.cluster.local:3000
+            - name: FORGEJO_OWNER
+              value: webgrip
+            - name: RUNNER_LABELS
+              value: unfold-ci
+            - name: TOKEN_FILE
+              value: /run/forgejo-runner-scaler/token
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: script
+              mountPath: /opt/runner-queue
+              readOnly: true
+            - name: scaler-token
+              mountPath: /run/forgejo-runner-scaler
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+      volumes:
+        - name: script
+          configMap:
+            name: forgejo-runner-queue
+        - name: scaler-token
+          secret:
+            secretName: forgejo-runner-scaler-token
+            defaultMode: 0440
+            items:
+              - key: token
+                path: token
