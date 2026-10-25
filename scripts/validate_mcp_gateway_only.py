@@ -94,7 +94,28 @@ def pod_labels_behind(service, namespace, documents):
     ]
 
 
-def route_findings(services, documents):
+MCP_PATH = "/mcp"
+
+
+def path_reaches_mcp(path):
+    kind = path.get("type", "PathPrefix")
+    value = path.get("value", "/")
+    if kind == "Exact":
+        return value == MCP_PATH
+    if kind == "PathPrefix":
+        prefix = value.rstrip("/")
+        return prefix == "" or MCP_PATH == prefix or MCP_PATH.startswith(prefix + "/")
+    return True
+
+
+def rule_reaches_mcp(document, rule):
+    if document["kind"] != "HTTPRoute":
+        return True
+    matches = rule.get("matches") or [{}]
+    return any(path_reaches_mcp(match.get("path") or {}) for match in matches)
+
+
+def route_findings(gateway_only, credential_gated, documents):
     findings = []
     for relative, namespace, document in documents:
         if document["kind"] not in ROUTE_KINDS:
@@ -102,8 +123,8 @@ def route_findings(services, documents):
         for rule in document.get("spec", {}).get("rules") or []:
             for backend in rule.get("backendRefs") or []:
                 key = (backend.get("namespace") or namespace, backend.get("name"))
-                if key in services:
-                    findings.append(f"{relative}: {document['kind']} {document['metadata']['name']} routes outside traffic to in-cluster-only MCP service {key[1]}.{key[0]}")
+                if key in gateway_only or (key in credential_gated and rule_reaches_mcp(document, rule)):
+                    findings.append(f"{relative}: {document['kind']} {document['metadata']['name']} routes outside traffic to the MCP endpoint of in-cluster-only service {key[1]}.{key[0]}")
     return findings
 
 
@@ -226,14 +247,14 @@ def main(argv):
     services = gateway_only_services(documents)
     gated = credential_gated_services(args.root, documents)
     findings = litellm_findings(args.root, services)
-    findings += route_findings({**services, **gated}, documents)
+    findings += route_findings(services, gated, documents)
     findings += exposure_findings({**services, **gated})
     findings += policy_findings(services, documents)
     for finding in findings:
         print(f"FAIL {finding}")
     if findings:
         return 1
-    print(f"OK: {len(services)} gateway-only MCP services are reachable only through LiteLLM; {len(gated)} write-capable MCP services demand LiteLLM's credential and stay inside the cluster")
+    print(f"OK: {len(services)} gateway-only MCP services are reachable only through LiteLLM; {len(gated)} write-capable MCP services demand LiteLLM's credential and keep /mcp inside the cluster")
     return 0
 
 

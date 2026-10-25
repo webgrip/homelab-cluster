@@ -82,7 +82,7 @@ does not need to be: `/mcp` refuses a call without a bearer token, and a token h
 `/mcp` exactly what its policy allows over the HTTP API it can already reach. The tokens these
 entries use are held by LiteLLM alone. `scripts/validate_mcp_gateway_only.py` accepts a server
 served to a write-capable group when LiteLLM sends it a credential from its environment, and
-still fails the build when that service gets a route or a non-ClusterIP type, when the credential
+still fails the build when a route can reach that service's `/mcp` (the `omnigraph.<domain>` route serves only `/graphs`, `/healthz` and `/readyz` for the laptop CLI) or the service gets a non-ClusterIP type, when the credential
 is written into the config, or when the credential is dropped
 ([test](../../../../scripts/test-validate-mcp-gateway-only.sh)). `omnigraph_brain_eval` keeps
 `disallowed_tools` so the write tools do not show; the policy refuses them anyway.

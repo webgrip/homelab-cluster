@@ -144,6 +144,24 @@ open(path, "w").write(text.replace('access_groups: ["brain"]', 'access_groups: [
 EOF2
 expect pass "a native entry without a credential served only to a read-only group" "$d"
 
+d=$(fresh omnigraph-route-opens-mcp)
+python3 - "$d/kubernetes/apps/ai/omnigraph/app/httproute.yaml" <<'EOF2'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+open(path, "w").write(text.replace("            value: /graphs\n", "            value: /graphs\n        - path:\n            type: PathPrefix\n            value: /mcp\n", 1))
+EOF2
+expect fail "the omnigraph.<domain> route also matches /mcp" "$d"
+
+d=$(fresh omnigraph-route-matches-everything)
+python3 - "$d/kubernetes/apps/ai/omnigraph/app/httproute.yaml" <<'EOF2'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+open(path, "w").write(text.replace("            value: /graphs\n", "            value: /\n", 1))
+EOF2
+expect fail "the omnigraph.<domain> route matches every path again" "$d"
+
 d=$(fresh broken-config)
 printf 'data: [\n' > "$d/$litellm"
 expect error "unparseable LiteLLM config" "$d"
