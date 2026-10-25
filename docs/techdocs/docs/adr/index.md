@@ -101,6 +101,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0009](adr-0009-longhorn-hot-cold-tiers.md) | Longhorn hot/cold storage tiers from node annotations | proposed | 2026-07-01 |
 | [0010](adr-0010-storageclass-consolidation.md) | Consolidate Longhorn StorageClasses | proposed | 2026-07-02 |
 | [0065](adr-0065-forgejo-objects-on-its-own-volume.md) | Forgejo keeps its objects on its own volume; the off-site Garage holds only backups | accepted | 2026-10-04 |
+| [0081](adr-0081-backups-land-on-a-capped-garage-are-proven-by-canary-drills-and-lock-elsewhere.md) | Backups land on a capped Garage, are proven by canary drills, and lock elsewhere | accepted | 2026-10-25 |
 
 ### 4. GitOps source & delivery
 

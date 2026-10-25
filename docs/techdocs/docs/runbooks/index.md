@@ -46,6 +46,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 ## Databases (CNPG)
 
 - [CloudNativePG & backups (ObjectStore, force-prune WAL, restore/DR drill)](cnpg-backups.md)
+- [Backup restore drills (CNPG, Longhorn, OpenBao, etcd, escrow): results, on-demand runs, mutation tests](backup-restore-drills.md)
 - [Dynamic Postgres credentials (OpenBao database engine)](dynamic-db-credentials.md)
 
 ## Observability

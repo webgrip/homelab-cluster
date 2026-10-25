@@ -87,8 +87,8 @@ that had no decision record. All **Proposed**. Roughly by stakes:
 
 - [Alert delivery](rfc-alert-delivery.md) — **delivery is solved** (ntfy receivers wired and
   working). Reframed 2026-08-05: the open problem is alert *saturation*, not delivery.
-- [Backup & DR program](rfc-backup-dr.md) — tier map, the OpenBao unseal-key escrow hole, second
-  backup leg, drill cadence.
+- [Backup & DR program](rfc-backup-dr.md) — accepted 2026-10-25 for Phase 1 (ADR-0081): tiers T0–T3,
+  canary restore drills with metrics, capped garage-fsn1; Phase 2 (Storage Box + OVH lock) proposed.
 - [Object storage — Garage](rfc-object-storage-garage.md) — the unrecorded S3 backbone everything
   depends on.
 - [Runtime detection & response](rfc-runtime-detection-response.md) — Falco *and* Tetragon

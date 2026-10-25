@@ -99,6 +99,7 @@ Alerts (`victoria-metrics/app/rules/prometheusrule-platform-garage-offsite.yaml`
 | `GarageOffsiteDiskLow` | the tightest Garage volume has less than 15% free for 30m |
 | `GarageOffsiteDiskCritical` | less than 5% free for 10m |
 | `GarageOffsiteDiskFillingUp` | the last 2 days' trend reaches zero within 4 days |
+| `GarageOffsiteDiskFullIn14Days` | the last 7 days' trend reaches zero within 14 days |
 | `GarageOffsiteQueueBacklog` | a table insert queue or the resync queue holds more than 100k entries |
 | `GarageOffsiteBlocksUnreadable` | any block keeps failing resync |
 | `GarageOffsiteUnhealthy` | `cluster_healthy` is 0 |
@@ -111,6 +112,38 @@ Find the grower: compare `garage bucket info <bucket>` object counts and sizes o
 smaller than 3 KB are stored inline in the LMDB metadata, so millions of tiny objects grow
 `data.mdb`, not `/var/lib/garage/data`. That was the 2026-09-28 failure: 36.8 million GUAC
 documents averaging 2.4 KB made `data.mdb` 115 GB.
+
+## Permission model
+
+Each Garage key holds `read`, `write` and/or `owner` per bucket, nothing finer. `write` includes
+DeleteObject and PutBucketLifecycleConfiguration, keys cannot be limited to a prefix, and Garage
+v2 has no versioning or object lock. A "write-only" key here is a key without `read`: it cannot
+list or download, but it can still delete. Only the admin token changes quotas. The full table,
+which key holds what, and why the immutable copy lives at another provider are in the
+[backup RFC](../rfc/rfc-backup-dr.md#what-garage-can-and-cannot-enforce).
+
+| Key | Bucket and permission | Used by |
+| --- | --- | --- |
+| `cnpg-backup` | `cnpg-backups-bucket`: read, write (no owner) | CNPG, Longhorn, OpenBao uploader, InvoiceNinja dump |
+| `homelab-etcd-writer` | `homelab-etcd`: write | `backup/etcd-backup` |
+| `backup-verify` | `cnpg-backups-bucket`, `homelab-etcd`, `unfold-cluster-etcd`: read | restore drills |
+
+Check a key with `garage key info <key>`; the creation commands are in the RFC's Phase 1
+hand-over.
+
+## Quotas
+
+Every bucket carries a quota so one runaway writer cannot fill the disk for all of them. The
+proposed sizes, the order of steps (measure first, never cap below the current size) and the
+commands are in the [backup RFC](../rfc/rfc-backup-dr.md#quotas-proposed). Read the current state:
+
+```sh
+for b in $(garage bucket list | awk 'NR>1 {print $NF}'); do echo "== $b"; garage bucket info "$b" | grep -E 'Size|Objects|quota'; done
+```
+
+`GarageOffsiteDiskFullIn14Days` warns when the 7-day trend fills the disk within 14 days. Immich
+and uptime-kuma run in fixed-size ext4 images mounted at their data directories once the RFC's
+step 6 has run, so they cannot eat the backups' space either.
 
 ## Emergency relief
 
