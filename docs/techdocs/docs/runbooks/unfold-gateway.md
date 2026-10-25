@@ -1,0 +1,25 @@
+# Unfold gateway
+
+The homelab stores and alerts on the Unfold cluster's metrics and logs. Unfold's vmagent and Vector send them over Unfold's Headscale tailnet to the `unfold-gateway` pod in `observability`, and Unfold's External Secrets reads the homelab OpenBao through the same pod. The full path, how the policy and the key are delivered by the Unfold `infra` apply, and the queries that prove it works are in unfold-cluster [`docs/observability.md`](https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/observability.md).
+
+## Pieces in this repository
+
+| Object | Path | Role |
+| --- | --- | --- |
+| `unfold-gateway` Deployment | `kubernetes/apps/observability/unfold/app/gateway/` | Tailscale (userspace, `tag:homelab-gateway`) forwards tailnet port 8427 to vmauth in the same pod and port 8200 to `openbao.security`. vmauth accepts `/api/v1/write`, `/insert/jsonline` and `/audit/insert/jsonline` only, and stamps `cluster=unfold` on every log line. |
+| `unfold-gateway-tailnet-key` ExternalSecret | same | The single-use Headscale pre-auth key that the Unfold `infra` apply mints and writes to OpenBao `secret/unfold/tailnet-homelab-gateway`, key `authkey`. Needed for the first login only; the node identity lives in the `unfold-gateway-tailscale-state` Secret afterwards. |
+| `unfold-gateway-address` CronJob | `kubernetes/apps/observability/unfold/app/address/` | Publishes the gateway's tailnet IPv4 address as `unfold-gateway.<domain>` through a DNSEndpoint, every 5 minutes. |
+| `vmsingle-unfold`, `vmalert-unfold`, VMRule `unfold-cluster` | `kubernetes/apps/observability/unfold/app/` | Unfold's metrics, kept apart from the homelab's, and the alerts on them. The main vmalert skips rules with a `rules` label. `scripts/vmalert-tests/unfold-cluster.test.yaml` tests the no-data alert. |
+| Grafana | `grafana/app/dashboards/unfold-cluster.yaml`, `datasources/unfold-prometheus.yaml`, `folders/unfold.yaml` | The **Unfold cluster** folder and dashboard, datasource uid `unfold-prometheus`. |
+
+Logs go to the existing `vlsingle-victorialogs` (field `cluster=unfold`) and audit events to `vlsingle-victorialogs-audit`.
+
+## When `UnfoldMetricsAbsent` fires
+
+It fires only after Unfold has sent data in the last 7 days, so a gateway that never came up stays quiet; check the pod then too.
+
+1. `kubectl -n observability get pods -l app.kubernetes.io/name=unfold-gateway`. A `CreateContainerConfigError` means the key Secret is missing: OpenBao has no `unfold/tailnet-homelab-gateway` yet, so the Unfold `infra` apply has not run since the gateway was added.
+2. `kubectl -n observability logs deploy/unfold-gateway -c tailscale --tail=50`: a login loop means the key expired unused or Headscale was rebuilt. Raise `homelab_gateway_key_generation` in unfold-cluster and apply; after a Headscale rebuild also delete the `unfold-gateway-tailscale-state` Secret once.
+3. `kubectl -n observability get dnsendpoint unfold-gateway -o yaml` must hold a `100.64.0.0/10` address, and the CronJob's last Job must have succeeded.
+4. `kubectl -n observability logs deploy/unfold-gateway -c vmauth` shows refused paths and backend errors.
+5. Nothing wrong here: look at Unfold. `vmagent_remotewrite_pending_data_bytes` grows there while the path is broken, and the data arrives once it is fixed.

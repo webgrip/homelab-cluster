@@ -2,7 +2,7 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: unfold-ingest-address
+  name: unfold-gateway-address
 spec:
   schedule: "*/5 * * * *"
   startingDeadlineSeconds: 240
@@ -17,9 +17,9 @@ spec:
       template:
         metadata:
           labels:
-            app.kubernetes.io/name: unfold-ingest-address
+            app.kubernetes.io/name: unfold-gateway-address
         spec:
-          serviceAccountName: unfold-ingest-address
+          serviceAccountName: unfold-gateway-address
           restartPolicy: Never
           nodeSelector:
             node.webgrip.io/pool: worker
@@ -37,10 +37,10 @@ spec:
                 - "/scripts/publish.sh"
               env:
                 - {name: HOME, value: /tmp}
-                - {name: INGEST_HOSTNAME, value: "unfold-ingest.${SECRET_DOMAIN}"}
+                - {name: GATEWAY_HOSTNAME, value: "unfold-gateway.${SECRET_DOMAIN}"}
                 - {name: RECORD_TTL, value: "300"}
-                - {name: ENDPOINT_NAME, value: unfold-ingest}
-                - {name: STATE_SECRET, value: unfold-ingest-tailscale-state}
+                - {name: ENDPOINT_NAME, value: unfold-gateway}
+                - {name: STATE_SECRET, value: unfold-gateway-tailscale-state}
                 - name: NAMESPACE
                   valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
               securityContext:
@@ -57,4 +57,4 @@ spec:
             - name: tmp
               emptyDir: {}
             - name: scripts
-              configMap: {name: unfold-ingest-address}
+              configMap: {name: unfold-gateway-address}

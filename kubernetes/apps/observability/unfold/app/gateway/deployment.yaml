@@ -2,24 +2,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: unfold-ingest
+  name: unfold-gateway
   labels:
-    app.kubernetes.io/name: unfold-ingest
+    app.kubernetes.io/name: unfold-gateway
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app.kubernetes.io/name: unfold-ingest
+      app.kubernetes.io/name: unfold-gateway
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: unfold-ingest
+        app.kubernetes.io/name: unfold-gateway
       annotations:
         reloader.stakater.com/auto: "true"
     spec:
-      serviceAccountName: unfold-ingest
+      serviceAccountName: unfold-gateway
       nodeSelector:
         node.webgrip.io/pool: worker
       securityContext:
@@ -72,11 +72,11 @@ spec:
             - name: TS_USERSPACE
               value: "true"
             - name: TS_KUBE_SECRET
-              value: unfold-ingest-tailscale-state
+              value: unfold-gateway-tailscale-state
             - name: TS_AUTH_ONCE
               value: "true"
             - name: TS_HOSTNAME
-              value: homelab-ingest
+              value: homelab-gateway
             - name: TS_EXTRA_ARGS
               value: --login-server=https://headscale.${SECRET_DOMAIN} --accept-dns=false
             - name: TS_SERVE_CONFIG
@@ -88,7 +88,7 @@ spec:
             - name: TS_AUTHKEY
               valueFrom:
                 secretKeyRef:
-                  name: unfold-ingest-tailnet-key
+                  name: unfold-gateway-tailnet-key
                   key: authkey
             - name: POD_NAME
               valueFrom:
@@ -122,6 +122,6 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: unfold-ingest
+            name: unfold-gateway
         - name: tmp
           emptyDir: {}

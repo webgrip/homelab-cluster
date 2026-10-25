@@ -17,3 +17,7 @@ path "secret/data/unfold-cluster/tofu-state" {
 path "secret/data/unfold-cluster/etcd-backup" {
   capabilities = ["read"]
 }
+
+path "secret/data/unfold/tailnet-homelab-gateway" {
+  capabilities = ["create", "read", "update"]
+}

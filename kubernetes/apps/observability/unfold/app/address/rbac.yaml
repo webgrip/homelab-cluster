@@ -2,19 +2,19 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: unfold-ingest-address
+  name: unfold-gateway-address
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: unfold-ingest-address
+  name: unfold-gateway-address
 rules:
   - apiGroups:
       - ""
     resources:
       - "secrets"
     resourceNames:
-      - "unfold-ingest-tailscale-state"
+      - "unfold-gateway-tailscale-state"
     verbs:
       - "get"
   - apiGroups:
@@ -22,7 +22,7 @@ rules:
     resources:
       - "dnsendpoints"
     resourceNames:
-      - "unfold-ingest"
+      - "unfold-gateway"
     verbs:
       - "get"
       - "patch"
@@ -36,12 +36,12 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: unfold-ingest-address
+  name: unfold-gateway-address
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: unfold-ingest-address
+  name: unfold-gateway-address
 subjects:
   - kind: ServiceAccount
-    name: unfold-ingest-address
+    name: unfold-gateway-address
     namespace: observability
