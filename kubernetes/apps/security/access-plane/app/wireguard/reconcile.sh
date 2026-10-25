@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+: "${WG_ENDPOINT:?WG_ENDPOINT must name the host:port devices connect to}"
+: "${WG_PEER_DNS:?WG_PEER_DNS must name the resolver devices use}"
+: "${WG_ALLOWED_IPS:?WG_ALLOWED_IPS must name the networks routed through the tunnel}"
+
 api="${OPNSENSE_URL}/api/wireguard"
 peer_prefix="ap-"
 
@@ -86,18 +90,19 @@ fi
 info="$(opnsense GET "client/getServerInfo/${server_uuid}")"
 peers="$(opnsense POST client/searchClient '{"current":1,"rowCount":-1}' \
   | jq --arg p "$peer_prefix" '[.rows[] | select(.name | startswith($p))]')"
-configs="$(jq -n --argjson peers "$peers" --argjson info "$info" '
+configs="$(jq -n --argjson peers "$peers" --argjson info "$info" \
+  --arg endpoint "$WG_ENDPOINT" --arg dns "$WG_PEER_DNS" --arg allowed "$WG_ALLOWED_IPS" '
   [$peers[] | {key: .name, value: ([
     "[Interface]",
     "PrivateKey = <the private key that stays on this device>",
     "Address = \(.tunneladdress)",
-    (if ($info.peer_dns // "") != "" then "DNS = \($info.peer_dns)" else empty end),
+    "DNS = \($dns)",
     (if ($info.mtu // "") != "" then "MTU = \($info.mtu)" else empty end),
     "",
     "[Peer]",
     "PublicKey = \($info.pubkey)",
-    "Endpoint = \($info.endpoint // "")",
-    "AllowedIPs = \(if ($info.allowed_ips // "") != "" then $info.allowed_ips else "10.0.0.0/24" end)",
+    "Endpoint = \($endpoint)",
+    "AllowedIPs = \($allowed)",
     "PersistentKeepalive = 25",
     ""] | join("\n"))}] | from_entries')"
 

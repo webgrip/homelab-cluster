@@ -73,7 +73,14 @@ Seed the values into OpenBao KV (`secret/zomboid`) and add an `ExternalSecret` t
 Public DNS is configured as:
 
 - `zomboid.yonnurs.stream` → CNAME → `zomboid.webgrip.stream`
-- `zomboid.webgrip.stream` → A → `143.179.177.49`
+- `zomboid.webgrip.stream` → A → the home WAN address, which the ISP changes
+
+Before re-enabling, let the `wan-address` CronJob publish this record instead of a hand-made one
+([access-model runbook](../runbooks/access-model.md#one-time-setup-of-the-vpn-server)): add
+`webgrip.stream` to external-dns `domainFilters`, give its Cloudflare token DNS edit on that zone,
+and append `zomboid.webgrip.stream` to `WAN_HOSTNAMES`. `server_browser_announced_ip` in
+`zomboid-yonnurs.ini` holds an earlier WAN address (`143.179.177.49`, not the router's on 2026-10-25); check it against
+**Interfaces → Overview** on the router.
 
 Important: ensure these records are **DNS only** (not proxied) in Cloudflare. Zomboid uses UDP and will not work through the normal Cloudflare HTTP proxy.
 

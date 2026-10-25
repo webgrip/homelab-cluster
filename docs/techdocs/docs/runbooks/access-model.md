@@ -119,12 +119,16 @@ The router holds the one WireGuard instance the reconciler adds peers to. It was
 | --- | --- |
 | **VPN → WireGuard → Settings** | **Enable WireGuard** |
 | **VPN → WireGuard → Instances** | Name `access-plane`, generated key pair, listen port `51820`, tunnel address `10.10.10.1/24`, no peers, routes enabled |
-| **VPN → WireGuard → Peer generator** | Instance `access-plane`, endpoint `vpn.webgrip.dev:51820`, DNS `10.0.0.1` |
 | **Firewall → Rules → WAN** | Pass, IPv4 UDP, source any, destination *WAN address*, port `51820`, `WireGuard access-plane` |
 | **Firewall → Rules → WireGuard (Group)** | Pass, IPv4 any, source `10.10.10.0/24`, destination *LAN net*, `VPN devices to LAN` |
 
 `10.10.10.0/24` is unused elsewhere: the LAN is `10.0.0.0/24`, pods `10.42.0.0/16`, services
-`10.43.0.0/16`. Devices route only the LAN through the tunnel (`AllowedIPs = 10.0.0.0/24`).
+`10.43.0.0/16`.
+
+What a device is told lives in Git, not on the router: `WG_ENDPOINT` (`vpn.webgrip.dev:51820`),
+`WG_PEER_DNS` (`10.0.0.1`) and `WG_ALLOWED_IPS` (`10.0.0.0/24`, only the LAN goes through the
+tunnel) on the `wireguard-peers` CronJob. The router supplies only its public key and each device's
+tunnel address. OPNsense's Peer generator page is not used.
 
 The WAN address is assigned by the ISP and changes. `vpn.webgrip.dev` follows it through the
 `wan-address` CronJob in `network`, which reads the address Cloudflare sees every five minutes and
