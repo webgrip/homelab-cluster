@@ -28,10 +28,13 @@ class FakeForgejo(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlsplit(self.path)
         FakeForgejo.calls.append((url.path, parse_qs(url.query), self.headers.get("Authorization")))
-        if self.headers.get("Authorization") != f"token {SCALER_TOKEN}":
+        if url.path == "/api/v1/orgs/webgrip":
+            if self.headers.get("Authorization"):
+                self.reply(403, {"message": "token does not have at least one of required scope(s): [read:organization]"})
+            else:
+                self.reply(200, {"id": WEBGRIP_ID, "username": "webgrip", "visibility": "public"})
+        elif self.headers.get("Authorization") != f"token {SCALER_TOKEN}":
             self.reply(401, {"message": "token is required"})
-        elif url.path == "/api/v1/orgs/webgrip":
-            self.reply(200, {"id": WEBGRIP_ID, "username": "webgrip"})
         elif url.path == "/api/v1/admin/actions/runners/jobs":
             self.reply(FakeForgejo.status, FakeForgejo.jobs)
         else:
@@ -114,6 +117,12 @@ class RunnerQueueTest(unittest.TestCase):
         queue_calls = [call for call in FakeForgejo.calls if call[0] == "/api/v1/admin/actions/runners/jobs"]
         self.assertEqual(queue_calls, [("/api/v1/admin/actions/runners/jobs", {"labels": ["unfold-ci"]},
                                         f"token {SCALER_TOKEN}")])
+
+    def test_the_owner_is_looked_up_without_the_admin_token(self):
+        self.exporter._owner_ids.clear()
+        FakeForgejo.jobs = [job("waiting")]
+        self.assertEqual(self.get("/waiting-jobs/unfold-ci"), (200, {"label": "unfold-ci", "waiting": 1}))
+        self.assertIn(("/api/v1/orgs/webgrip", {}, None), FakeForgejo.calls)
 
     def test_an_empty_queue_is_zero(self):
         FakeForgejo.jobs = None

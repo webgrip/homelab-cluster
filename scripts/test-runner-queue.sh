@@ -62,4 +62,9 @@ mutate label-not-forwarded \
   '{"labels": ""}' \
   RunnerQueueTest.test_asks_forgejo_for_the_label_with_the_scaler_token
 
+mutate owner-lookup-with-admin-token \
+  ', authenticated=False)["id"]' \
+  ')["id"]' \
+  RunnerQueueTest.test_the_owner_is_looked_up_without_the_admin_token
+
 echo "all mutations killed"

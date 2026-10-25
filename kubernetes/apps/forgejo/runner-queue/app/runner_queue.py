@@ -24,21 +24,21 @@ def read_token():
         return handle.read().strip()
 
 
-def forgejo_get(path, query=None):
+def forgejo_get(path, query=None, authenticated=True):
     url = f"{FORGEJO_URL}{path}"
     if query:
         url = f"{url}?{urllib.parse.urlencode(query)}"
-    request = urllib.request.Request(url, headers={
-        "Authorization": f"token {read_token()}",
-        "Accept": "application/json",
-    })
+    headers = {"Accept": "application/json"}
+    if authenticated:
+        headers["Authorization"] = f"token {read_token()}"
+    request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
         return json.loads(response.read() or b"null")
 
 
 def owner_id():
     if OWNER not in _owner_ids:
-        _owner_ids[OWNER] = int(forgejo_get(f"/api/v1/orgs/{urllib.parse.quote(OWNER)}")["id"])
+        _owner_ids[OWNER] = int(forgejo_get(f"/api/v1/orgs/{urllib.parse.quote(OWNER)}", authenticated=False)["id"])
     return _owner_ids[OWNER]
 
 
