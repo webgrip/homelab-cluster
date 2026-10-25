@@ -1,0 +1,158 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openbao-restore-drill
+  namespace: security
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openbao-restore-drill
+  namespace: security
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["restore-verified-openbao-openbao-raft", "restore-verified-escrow-openbao-unseal-key"]
+    verbs: ["get", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openbao-restore-drill
+  namespace: security
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openbao-restore-drill
+subjects:
+  - kind: ServiceAccount
+    name: openbao-restore-drill
+    namespace: security
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: backup-verify-s3-offsite
+  namespace: security
+spec:
+  refreshInterval: 15m
+  secretStoreRef: {kind: ClusterSecretStore, name: openbao}
+  target: {name: backup-verify-s3-offsite, creationPolicy: Owner}
+  data:
+    - {secretKey: S3_ACCESS_KEY_ID, remoteRef: {key: s3/backup-verify-offsite, property: S3_ACCESS_KEY_ID}}
+    - {secretKey: S3_SECRET_ACCESS_KEY, remoteRef: {key: s3/backup-verify-offsite, property: S3_SECRET_ACCESS_KEY}}
+    - {secretKey: S3_REGION, remoteRef: {key: s3/backup-verify-offsite, property: S3_REGION}}
+    - {secretKey: S3_ENDPOINT, remoteRef: {key: s3/backup-verify-offsite, property: S3_ENDPOINT}}
+    - {secretKey: S3_BUCKET, remoteRef: {key: s3/backup-verify-offsite, property: S3_BUCKET}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openbao-unseal-key-escrow
+  namespace: security
+data:
+  sha256: ""
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: openbao-restore-drill
+  namespace: security
+  labels:
+    backup.webgrip.io/drill: "true"
+spec:
+  schedule: "0 11 * * 0"
+  timeZone: Etc/UTC
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      ttlSecondsAfterFinished: 604800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: openbao-restore-drill
+        spec:
+          serviceAccountName: openbao-restore-drill
+          automountServiceAccountToken: true
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: fetch
+              image: docker.io/amazon/aws-cli:2.36.50@sha256:c240dd63cdbab17197486d55460675ef2b94c9cc372dedae34dee53ccd30657c
+              command: ["/bin/sh", "/scripts/restore-drill-fetch.sh"]
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: AWS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: backup-verify-s3-offsite, key: S3_ACCESS_KEY_ID}}}
+                - {name: AWS_SECRET_ACCESS_KEY, valueFrom: {secretKeyRef: {name: backup-verify-s3-offsite, key: S3_SECRET_ACCESS_KEY}}}
+                - {name: AWS_DEFAULT_REGION, valueFrom: {secretKeyRef: {name: backup-verify-s3-offsite, key: S3_REGION}}}
+                - {name: S3_ENDPOINT, valueFrom: {secretKeyRef: {name: backup-verify-s3-offsite, key: S3_ENDPOINT}}}
+                - {name: S3_BUCKET, valueFrom: {secretKeyRef: {name: backup-verify-s3-offsite, key: S3_BUCKET}}}
+              resources:
+                requests: {cpu: 25m, memory: 128Mi}
+                limits: {memory: 512Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts}
+                - {name: shared, mountPath: /shared}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+            - name: restore
+              image: docker.io/openbao/openbao:2.7.0@sha256:71156a1c6623a5fa3f5e61b0c6a8ead0faf0df29a778339188443551995d1315
+              command: ["/bin/sh", "/scripts/restore-drill.sh"]
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: WORK, value: /shared/work}
+                - {name: OPENBAO_UNSEAL_KEY, valueFrom: {secretKeyRef: {name: openbao-keys, key: unseal-key}}}
+                - {name: ESCROW_FINGERPRINT, valueFrom: {configMapKeyRef: {name: openbao-unseal-key-escrow, key: sha256}}}
+              resources:
+                requests: {cpu: 50m, memory: 256Mi}
+                limits: {memory: 1Gi}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts}
+                - {name: shared, mountPath: /shared}
+                - {name: tmp, mountPath: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+          containers:
+            - name: record
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
+              command: ["/bin/sh", "/scripts/restore-drill-record.sh"]
+              env:
+                - {name: NAMESPACE, valueFrom: {fieldRef: {fieldPath: metadata.namespace}}}
+                - {name: WORK, value: /shared/work}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts}
+                - {name: shared, mountPath: /shared}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+          volumes:
+            - {name: scripts, configMap: {name: openbao-bootstrap}}
+            - {name: shared, emptyDir: {}}
+            - {name: tmp, emptyDir: {}}
