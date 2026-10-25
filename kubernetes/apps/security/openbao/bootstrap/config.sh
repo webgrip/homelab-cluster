@@ -136,7 +136,7 @@ JSON
   "user_claim": "sub",
   "bound_audiences": ["openbao-ci"],
   "bound_claims_type": "string",
-  "bound_claims": {"repository": ["webgrip/unfold-cluster"], "ref": ["refs/heads/main"], "event_name": ["push", "schedule", "workflow_dispatch"]},
+  "bound_claims": {"repository": ["webgrip/unfold-cluster"], "ref": ["refs/heads/main", "main"], "event_name": ["push", "schedule", "workflow_dispatch"]},
   "token_policies": ["ci-unfold-cluster"],
   "token_ttl": "10m",
   "token_max_ttl": "10m"

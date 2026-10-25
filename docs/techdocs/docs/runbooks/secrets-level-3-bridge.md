@@ -101,6 +101,27 @@ Harbor's token service answers `200` for any credential, a wrong one included, a
 anonymous token. The block therefore decodes the issued token and checks its `access` claim for
 `push` rather than trusting the status code.
 
+## Production cluster (`webgrip/unfold-cluster`)
+
+`webgrip/unfold-cluster` builds and runs the production Talos cluster on Hetzner, so its
+credentials reach production: the Hetzner API tokens, the OpenTofu state passphrase and bucket
+keys, and the etcd backup keys and age identity. Forgejo hands
+repository secrets to `pull_request` runs from same-repository branches, so any branch could add
+a workflow and read them. They therefore move off this bridge to per-run OIDC reads through the
+`ci-unfold-cluster` role ([level 4](secrets-level-4-short-lived.md#roles)), bound to `main` and
+refusing pull requests.
+
+| Vault path | Was published as | Now |
+| --- | --- | --- |
+| `secret/hetzner/unfold-tofu`, `unfold-cluster`, `unfold-vip` | `HCLOUD_TOKEN`, `HCLOUD_TOKEN_CLUSTER`, `HCLOUD_TOKEN_VIP` | OIDC read, `ci-unfold-cluster` |
+| `secret/unfold-cluster/tofu-state` | `STATE_S3_ACCESS_KEY`, `STATE_S3_SECRET_KEY`, `STATE_PASSPHRASE` | OIDC read |
+| `secret/unfold-cluster/etcd-backup` | `ETCD_BACKUP_*`, `ETCD_BACKUP_AGE_IDENTITY` | OIDC read |
+| `secret/unfold-cluster/vars` | repository variables | stays on this bridge |
+
+The bridge keeps publishing the secrets until `webgrip/unfold-cluster`'s workflows read from
+OpenBao; the change after that stops it and adds the names to `RETIRED_REPO_SECRETS`, which
+deletes them from the repository on the next tick.
+
 ## Naming
 
 - Forgejo rejects the reserved prefixes `FORGEJO_`, `GITHUB_`, `GITEA_`; the bot token is

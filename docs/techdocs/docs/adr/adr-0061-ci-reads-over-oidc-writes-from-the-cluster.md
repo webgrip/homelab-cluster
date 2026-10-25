@@ -215,3 +215,11 @@ picks up the rest.
   repository secret from `twente.dev` and `unfold`, and `forgejo-cloudflare-dns` and the
   `cloudflare-dnscontrol-cred` recipe are gone. Left: deleting the hand-made Cloudflare token
   `dns-rw-twente-dev` and OpenBao `secret/cloudflare/dnscontrol`.
+* 2026-10-24 — the pattern extends past DNS. `webgrip/unfold-cluster`, which builds the
+  production cluster, read its Hetzner tokens, OpenTofu state keys and etcd backup keys as
+  bridged repository secrets, which any same-repository branch could
+  read from a `pull_request` workflow. They move to the OpenBao role `ci-unfold-cluster`, which,
+  unlike the DNS roles, also binds `ref` to `main` and admits only `push`, `schedule` and
+  `workflow_dispatch`; see the [L4 roles](../runbooks/secrets-level-4-short-lived.md#roles).
+  The bridge stops publishing those secrets and deletes them once the repository's workflows
+  read over OIDC; its non-secret `vars` stay bridged as Forgejo variables.
