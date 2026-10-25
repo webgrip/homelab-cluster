@@ -20,7 +20,11 @@ Logs go to the existing `vlsingle-victorialogs` (field `cluster=unfold`) and aud
 It fires only after Unfold has sent data in the last 7 days, so a gateway that never came up stays quiet; check the pod then too.
 
 1. `kubectl -n observability get pods -l app.kubernetes.io/name=unfold-gateway`. A `CreateContainerConfigError` means the key Secret is missing: OpenBao has no `unfold/tailnet-homelab-gateway` yet, so the Unfold `infra` apply has not run since the gateway was added.
-2. `kubectl -n observability logs deploy/unfold-gateway -c tailscale --tail=50`: a login loop means the key expired unused or Headscale was rebuilt. Raise `homelab_gateway_key_generation` in unfold-cluster and apply; after a Headscale rebuild also delete the `unfold-gateway-tailscale-state` Secret once.
+2. `kubectl -n observability logs deploy/unfold-gateway -c tailscale --tail=50`: a login loop means the key expired unused or Headscale was rebuilt. Raise `homelab_gateway_key_generation` in unfold-cluster and apply. After a Headscale rebuild nothing is needed: the apply that made the new server wrote a new key, the ExternalSecret picks it up within 5 minutes, Reloader restarts the pod, and the old identity being refused makes the container log in with the new key (`TS_AUTH_ONCE`).
 3. `kubectl -n observability get dnsendpoint unfold-gateway -o yaml` must hold a `100.64.0.0/10` address, and the CronJob's last Job must have succeeded.
 4. `kubectl -n observability logs deploy/unfold-gateway -c vmauth` shows refused paths and backend errors.
 5. Nothing wrong here: look at Unfold. `vmagent_remotewrite_pending_data_bytes` grows there while the path is broken, and the data arrives once it is fixed.
+
+## The Headscale name
+
+`headscale.${SECRET_DOMAIN}`, the Unfold tailnet's coordination server, is published by the CronJob `network/unfold-headscale-address` (every 2 minutes) from OpenBao `secret/unfold/headscale-address`, which the Unfold `infra` apply writes (`ipv4`). A rebuild into a new Hetzner project, whose primary IP differs, therefore needs no commit here. The same secret's `drill_ipv4` publishes `headscale-drill.${SECRET_DOMAIN}` while the Unfold rebuild drill runs and is cleared by its teardown. A missing or invalid `ipv4` keeps the published record; the job never removes the production name. Check: `kubectl -n network logs job/<newest unfold-headscale-address job>` says `unchanged` or `published`, and `kubectl -n network get dnsendpoint unfold-headscale -o yaml` lists the address.
