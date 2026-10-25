@@ -176,18 +176,19 @@ locals {
       extra_scopes  = []
     }
     unfold = {
-      provider_name = "unfold-oidc"
-      app_name      = "Unfold"
-      description   = "Human workbench for Ploeg and remote agent workspaces."
-      launch_url    = "https://unfold.${var.SECRET_DOMAIN}"
-      client_id     = "unfold"
-      client_secret = null
-      client_type   = "public"
-      signing_key   = true
-      grant_types   = ["authorization_code"]
-      redirects     = [{ matching_mode = "strict", url = "https://unfold.${var.SECRET_DOMAIN}/api/auth/oidc/callback" }]
-      extra_scopes  = ["groups"]
-      adopt         = false
+      provider_name          = "unfold-oidc"
+      app_name               = "Unfold"
+      description            = "Human workbench for Ploeg and remote agent workspaces."
+      launch_url             = "https://unfold.${var.SECRET_DOMAIN}"
+      client_id              = "unfold"
+      client_secret          = null
+      client_type            = "public"
+      signing_key            = true
+      grant_types            = ["authorization_code", "refresh_token"]
+      refresh_token_validity = "hours=12"
+      redirects              = [{ matching_mode = "strict", url = "https://unfold.${var.SECRET_DOMAIN}/api/auth/oidc/callback" }]
+      extra_scopes           = ["groups"]
+      adopt                  = false
     }
     ploeg-mcp = {
       provider_name         = "ploeg-mcp-oauth"

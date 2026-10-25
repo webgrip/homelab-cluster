@@ -64,6 +64,8 @@ spec:
               - pewter
             execute: true
             maxBudgetUsd: 1.00
+            audiences:
+              - ploeg-for-unfold
             tokenSecret:
               name: unfold-operator
               key: PLOEG_OPERATOR_UNFOLD_TOKEN
@@ -81,6 +83,8 @@ spec:
               - pewter
             execute: true
             maxBudgetUsd: 1.00
+            audiences:
+              - ploeg-for-ploeg-mcp
             tokenSecret:
               name: ploeg-mcp-operator
               key: token
@@ -92,6 +96,11 @@ spec:
             tokenSecret:
               name: unfold-verifier
               key: token
+        personTokens:
+          issuer: https://authentik.${SECRET_DOMAIN}/
+          jwksUrl: https://authentik.${SECRET_DOMAIN}/application/o/ploeg-for-unfold/jwks/
+          maxLifetime: 5m
+          subjectNamespace: https://authentik.${SECRET_DOMAIN}/application/o/vloer/
         deliveryPolicies:
           - repositoryId: twente-dev
             policySha256: 879fc94d7927c4917f94740afc9ba8f3d60211ab04ff8df4a74f088dd86611e4
@@ -412,6 +421,9 @@ spec:
           PLOEG_MCP_CONFIRMATION_MODE: login
           PLOEG_MCP_CONFIRMATION_ISSUER: https://authentik.${SECRET_DOMAIN}/application/o/ploeg-mcp-confirm/
           PLOEG_MCP_CONFIRMATION_CLIENT_ID: ploeg-mcp-confirm
+          PLOEG_MCP_EXCHANGE_TOKEN_URL: https://authentik.${SECRET_DOMAIN}/application/o/token/
+          PLOEG_MCP_EXCHANGE_CLIENT_ID: ploeg-mcp-exchange
+          PLOEG_MCP_EXCHANGE_AUDIENCE: ploeg-for-ploeg-mcp
         confirmationClientSecret:
           name: ploeg-mcp-confirmation-client
         extraEnv:
@@ -425,6 +437,11 @@ spec:
               secretKeyRef:
                 name: ploeg-mcp-confirmation-key
                 key: key
+          - name: PLOEG_MCP_EXCHANGE_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: ploeg-mcp-exchange-client
+                key: client-secret
         envFrom:
           - secretRef:
               name: ploeg-mcp-consumers
@@ -501,6 +518,11 @@ spec:
           secretKeyRef:
             name: unfold-verifier
             key: token
+      - name: UNFOLD_EXCHANGE_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: unfold-exchange-client
+            key: client-secret
     # Governed delivery (ADR 0019/0040): a completed twente.dev session is
     # canonicalized against the approved base, its checks run in kata pods in
     # unfold-verifier, and Ploeg records the receipt under the policy whose
@@ -664,6 +686,7 @@ spec:
             - email
             - profile
             - groups
+            - offline_access
           groupsClaim: groups
           roles:
             admin:
@@ -673,6 +696,11 @@ spec:
       ploeg:
         url: http://ploeg.ploeg.svc.cluster.local:8080
         tokenEnv: PLOEG_OPERATOR_UNFOLD_TOKEN
+        personTokens:
+          tokenUrl: https://authentik.${SECRET_DOMAIN}/application/o/token/
+          clientId: unfold-exchange
+          clientSecretEnv: UNFOLD_EXCHANGE_CLIENT_SECRET
+          audience: ploeg-for-unfold
         teams:
           - unfold
           - bronze
