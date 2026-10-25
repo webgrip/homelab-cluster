@@ -40,7 +40,7 @@ spec:
               - Check pods for CrashLoopBackOff/ImagePullBackOff/NotReady
               - Verify cluster capacity (CPU/memory) and node readiness
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview"
 
         - alert: AppDeploymentDown
           expr: |
@@ -71,7 +71,7 @@ spec:
               - Inspect pods for failure reasons and read recent logs
               - Roll back the last change if a recent deploy caused the outage
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview"
 
         - alert: AppStatefulSetReplicasMismatch
           expr: |
@@ -102,7 +102,7 @@ spec:
               - Verify PVCs are Bound and volumes are healthy
               - Inspect failing pod logs and readiness probes
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview"
 
         - alert: AppCrashLoopBackOff
           expr: |
@@ -133,7 +133,7 @@ spec:
               - Review previous container logs for {{$labels.exported_container}}
               - Verify recent deploy/config changes and dependent services
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-cluster-health/kubernetes-cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview"
 
         # Counter-based companion to AppCrashLoopBackOff above. That rule keys on
         # kube_pod_container_status_waiting_reason, which only samples INSTANTANEOUS
@@ -190,7 +190,7 @@ spec:
               - kubectl -n {{ $labels.exported_namespace }} logs {{ $labels.exported_pod }} --previous
               - Correlate restart times with client/request activity before assuming resources
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-cluster-health/kubernetes-cluster-health"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview"
 
         - alert: AppContainerMemoryNearLimit
           expr: |
@@ -231,7 +231,7 @@ spec:
                 that plateau between bursts are a leak, spikes that fall back are load
               - Find the owning app's runbook before raising the limit
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#apps-baseline"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview"
 
         - alert: AppPersistentVolumeLowFree
           expr: |

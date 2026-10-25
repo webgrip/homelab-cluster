@@ -114,7 +114,7 @@ def overview():
         tags=["wall", "executive"], kiosk=True, refresh="1m", time_from="now-24h",
         description="Everything that matters on one screen: is anything broken now, what it costs, how much risk "
                     "and room is left, and what needs a person. Click a tile for its dashboard.",
-        links=[link("Scorecard", "/d/exec-kpi-scorecard"), link("FinOps", "/d/exec-finops"),
+        links=[link("FinOps", "/d/exec-finops"),
                link("Unfold cloud costs", "/d/unfold-cloud-costs"), link("Reliability", "/d/exec-reliability-sre"),
                link("Security", "/d/exec-security-supply-chain"), link("Platform", "/d/exec-platform-efficiency"),
                link("Delivery", "/d/exec-value-flow-delivery"), link("Homelab now", "/d/wall-now"),

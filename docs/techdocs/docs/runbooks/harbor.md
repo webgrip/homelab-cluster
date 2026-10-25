@@ -47,7 +47,7 @@ kubectl -n harbor get secret harbor-admin -o jsonpath='{.data.HARBOR_ADMIN_PASSW
   `helm registry login` + `helm push` an OCI chart. Confirm objects land: `garage bucket info harbor`.
 - **Trivy**: scan a pushed image (UI → project → artifact → Scan), expect a CVE report.
 - **Metrics**: `harbor_core_http_request_total` in VictoriaMetrics; the **Harbor** Grafana dashboard
-  (`/d/harbor/harbor`, folder *Apps*) populates. The `prometheusrule` wires only
+  (`/d/infra-harbor`, folder *Infrastructure*) populates. The `prometheusrule` wires only
   `harbor_core_http_request_total` / `up{}`. Storage panels should use the canonical Harbor exporter
   metrics **`harbor_quotas_size_bytes`** (label `type` = `hard`/`used`) and `harbor_system_volumes_bytes` —
   verify/adjust after the first scrape (treat as unverified until then). Do **not** use

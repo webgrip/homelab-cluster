@@ -50,6 +50,39 @@ actually runs: Forgejo CI, Glide, Flux, Talos, Longhorn, CloudNativePG and the V
 The Forgejo CI and Glide walls are the **first screens** of the desk boards `forgejo-ci` and
 `glide-plant`, built from the same panel functions, so a wall and its board can never disagree.
 
+## Which overview boards stay (VIK-2422, 2026-10-25)
+
+`exec-overview` is Grafana's home page and the only top-level overview. Below it, one board per
+question; a board that repeats another's tiles comes off.
+
+| Question | Board | Replaced |
+| --- | --- | --- |
+| Is anything broken, what does it cost, what needs a person | `exec-overview` | `exec-kpi-scorecard` (a second hub over the same five `exec-*` boards) |
+| Where in the cluster, by namespace and pod | `obs-stack-overview` | `k8s-cluster-health`, `k8s-workloads-capacity` (subsets) |
+| Security posture | `exec-security-supply-chain`, tool boards in **Security** | `security-overview` (posture duplicated; Falco panels read a source that is gone) |
+| Claude Code | `claude-code-command-center` | `claude-code-exec-summary` (same tiles) |
+| Unfold | `glide-loop` (KPIs), `glide-plant`, `glide-runs`, **Unfold · Run explorer** (one Run) | five `dark-factory-*` boards, named for the old program |
+| Model gateway | `litellm-reliability`, `litellm-spend` | `dark-factory-llm-traffic` |
+| Forgejo CI | `forgejo-ci` (generated), `infra-forgejo-ci-runners` | `infra-forgejo-ci` |
+
+The Run explorer kept its uid `dark-factory-run-explorer` so bookmarks and data links keep
+working; only its title changed.
+
+How it was decided: Grafana OSS does not record views, so usage came from failed-query referers
+in VictoriaLogs over 30 days, together with which question each board answers that no other does,
+whether its queries still return data, and whether it is generated or hand-written JSON.
+
+Trade-off: the retired boards held a few panels found nowhere else: the per-Run key mint/revoke
+balance (`dark-factory-dispatch-plane`), agent cold-start lag (`dark-factory-runner-fleet`),
+LiteLLM span forensics (`dark-factory-llm-traffic`) and the security tool-health row
+(`security-overview`). This change did not port them; they are listed here for a follow-up that
+moves each to the board that replaced it, or drops it as a tile nobody acts on (rule 4). Old
+bookmarks and chat links to a retired uid now 404. Alert `dashboard_url`s and in-repo links were
+re-pointed in the same change, and `scripts/validate_alert_annotations.py` now fails when a
+`dashboard_url` names a uid no `GrafanaDashboard` defines (mutation test:
+`scripts/test-validate-alert-dashboard-links.sh`). Usage evidence is weak: a board that never
+fails a query leaves no trace, so "no signal" was decided on duplication, not on views.
+
 ## The Today wall
 
 `/d/today` is one Business Text panel across all 24 rows, ported from code14's Team C wall: the

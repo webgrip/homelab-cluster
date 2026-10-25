@@ -11,7 +11,7 @@ metadata:
 spec:
   groups:
     - name: platform.forgejo-ci
-      # CI-health alerting for the Forgejo Actions runner fleet. The infra-forgejo-ci Grafana
+      # CI-health alerting for the Forgejo Actions runner fleet. The forgejo-ci Grafana
       # dashboard already visualises these series; nothing paged on them until now. Selectors mirror
       # that dashboard: keda_scaler_*{scaledObject="forgejo-runner"} and the KSM pod-phase series
       # keyed by `exported_namespace` AND `exported_pod` — EVERY KSM identity label is
@@ -49,7 +49,7 @@ spec:
               - Confirm the Forgejo server is up; see the erfbeeld CI operations runbook
                 (blocked-5-vs-waiting) and the homelab forgejo-runner runbook
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo-ci/forgejo-ci"
 
         - alert: ForgejoCIQueueBacklog
           expr: max(keda_scaler_metrics_value{scaledObject="forgejo-runner"}) > 8
@@ -72,11 +72,11 @@ spec:
               - Node saturation capping effective concurrency below the queue depth
 
               First actions:
-              - `bin/ci runs` (fleet queued count) and the infra-forgejo-ci dashboard
+              - `bin/ci runs` (fleet queued count) and the forgejo-ci dashboard
               - Consider trimming per-push CI work; do NOT just raise maxReplicaCount (manufactures
                 Pending pods — see the forgejo-runner ScaledJob comment)
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo-ci/forgejo-ci"
 
         - alert: ForgejoCIRunnerPodsPending
           expr: sum(kube_pod_status_phase{exported_namespace="forgejo", exported_pod=~"forgejo-runner-.*", phase="Pending"}) > 0
@@ -102,7 +102,7 @@ spec:
               - kubectl -n forgejo describe the Pending pod (Events)
               - Check worker-pool node pressure (platform-nodes alerts)
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo-ci/forgejo-ci"
 
         - alert: ForgejoCIWarmPoolStarved
           # Optional / lower-priority: the warm floor (minReplicaCount 4) is not being met while
@@ -130,9 +130,9 @@ spec:
 
               First actions:
               - Correlate with the Pending and scaler-error alerts above
-              - infra-forgejo-ci dashboard (warm-idle / running panels)
+              - forgejo-ci dashboard (warm-idle / running panels)
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo-ci/forgejo-ci"
 
         - alert: ForgejoCINodeDiskStalled
           expr: |
@@ -164,4 +164,4 @@ spec:
               - kubectl -n forgejo logs the node's forgejo-dind pod, container dind, for the "CI disk IO" line
               - Per-pod container_fs_reads_bytes_total / container_fs_writes_bytes_total on the node
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/forgejo-runner/"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo-ci"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo-ci/forgejo-ci"

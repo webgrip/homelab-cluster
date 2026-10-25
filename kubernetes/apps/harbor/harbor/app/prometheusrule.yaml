@@ -38,7 +38,7 @@ spec:
               - kubectl -n harbor get externalsecret; verify harbor-db is Ready
               - See the Harbor runbook.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-harbor"
 
         - alert: HarborComponentDown
           expr: up{namespace="harbor", job=~"harbor-(registry|jobservice|trivy|exporter)"} == 0
@@ -64,7 +64,7 @@ spec:
               - kubectl -n harbor get pods -l 'app=harbor'
               - kubectl -n harbor logs deploy/{{ $$labels.job }} --tail=200
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-harbor"
 
         - alert: HarborHighHTTP5xxRate
           expr: |
@@ -91,7 +91,7 @@ spec:
               - Check harbor-db health and Garage (10.0.0.110:3900) reachability.
               - kubectl -n harbor logs deploy/harbor-core --tail=200 | grep -iE 'error|s3|panic'
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-harbor"
 
         - alert: HarborExternalSecretNotSynced
           expr: |
@@ -117,7 +117,7 @@ spec:
               - kubectl -n harbor get externalsecret {{ $$labels.name }} -o yaml | yq '.status'
               - Populate the value: `just harbor-s3-cred` (S3); see the Harbor runbook.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-harbor"
 
         - alert: HarborProxyReconcileStale
           # The reconcile CronJob exits non-zero (ADR-0046) when a credentialed upstream
@@ -159,4 +159,4 @@ spec:
                 kubectl -n harbor create job --from=cronjob/harbor-proxy-config harbor-proxy-config-manual
               - See the Harbor runbook (proxy-cache credential rotation).
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/harbor"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/harbor/harbor"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-harbor"

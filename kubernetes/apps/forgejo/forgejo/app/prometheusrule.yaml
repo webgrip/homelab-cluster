@@ -38,7 +38,7 @@ spec:
               - Review pod logs for DB or config errors
               - Verify forgejo-db is Ready
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo"
 
         - alert: ForgejoDeploymentUnavailable
           expr: kube_deployment_status_replicas_available{exported_namespace="forgejo", deployment="forgejo"} < 1
@@ -66,7 +66,7 @@ spec:
               - Check the forgejo-data PVC is Bound and mounted
               - Review pod logs
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo"
 
         - alert: ForgejoPodRestarting
           expr: increase(kube_pod_container_status_restarts_total{exported_namespace="forgejo", exported_container="forgejo"}[1h]) > 3
@@ -93,7 +93,7 @@ spec:
               - kubectl -n forgejo logs deploy/forgejo --previous
               - Check container restart reason (OOMKilled?) and resource limits
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/forgejo"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/forgejo/forgejo"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/infra-forgejo"
 
         - alert: ForgejoServerOOMKilled
           # A server restart mid-run is invisible to the CI tooling except as the "every step

@@ -333,7 +333,7 @@ def edge_security_wall():
                                                      ("5xx", VERMILLION)]),
             desc="HTTPS requests per second through Envoy Gateway by response class."), 6, 14, 18, 10),
     ], description="Can people reach the services, is TLS current, are secrets syncing, is anything leaking.",
-        links=[link("Envoy Gateway", "/d/envoy-gateway-traffic"), link("Security", "/d/security-overview")])
+        links=[link("Envoy Gateway", "/d/envoy-gateway-traffic"), link("Security", "/d/exec-security-supply-chain")])
 
 
 def roadmap_sql(where):

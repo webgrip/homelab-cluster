@@ -31,7 +31,6 @@ n8n (survey + ETL)                         devex-db (CNPG, observability)
                                                      ▼
                           Grafana  →  "Engineering Experience" folder
                                        devex-scorecard · devex-dimensions · devex-telemetry-correlation
-                                       └─▶ feeds the exec-kpi-scorecard "developer experience" tile
 ```
 
 - **Warehouse:** `kubernetes/apps/observability/devex/` — CNPG `devex-db`, schema ConfigMap +
@@ -177,5 +176,4 @@ gets explicit capacity each month.
 - n8n build guide: `kubernetes/apps/observability/devex/n8n-workflows/README.md`
 - Warehouse schema: `kubernetes/apps/observability/devex/app/schema.configmap.yaml`
 - Dashboards: Grafana → **Engineering Experience** folder (`devex-scorecard` and links)
-- Executive integration: the `exec-kpi-scorecard` "developer experience" tile now reads the real
-  DevEx index. See [Observability](observability.md) and [Alerting principles](alerting-principles.md).
+- See [Observability](observability.md) and [Alerting principles](alerting-principles.md).

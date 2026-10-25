@@ -38,7 +38,7 @@ spec:
               - Find the heaviest pods: `kubectl top pod -A --sort-by=memory | head`.
               - Right-size limits or reschedule; confirm headroom returns.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-node-health"
 
         - alert: NodeMemoryCritical
           expr: |
@@ -66,7 +66,7 @@ spec:
               - Evict or reschedule the heaviest non-critical pod; right-size limits.
               - If a control plane, prioritise — etcd fsync degrades under memory pressure.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-node-health"
 
         # The signal that was missing on 2026-07-29: fringe-workstation spent 11-50%
         # of total CPU in iowait for hours while every memory/readiness rule stayed
@@ -118,7 +118,7 @@ spec:
               - Check whether this node is BOTH a CI target and a storage node; if
                 so that co-location is the standing cause, not this incident
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-node-health"
 
         # The attribution signal that was missing on 2026-08-04 AND 2026-08-11: memory
         # held by cgroups OUTSIDE /kubepods (dind-spawned CI containers escaped to the
@@ -176,7 +176,7 @@ spec:
                 (`talosctl -n <node-ip> reboot`) — pod restarts do NOT free host-root
                 cgroups.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-node-health"
 
     - name: platform.scheduling
       rules:
@@ -240,7 +240,7 @@ spec:
                 moving pods. In-place pod resize is GA on this cluster (k8s 1.35+), so
                 a correction needs no restart.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-node-health"
 
         # Two instances of one CNPG cluster on one node is HA in name only — what
         # ploeg-db and vikunja-db were doing until 2026-08-02, both replicas on
@@ -281,7 +281,7 @@ spec:
               - Then `kubectl cnpg promote <cluster> <instance>` onto another node and
                 delete the co-located pod so it reschedules.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-node-health"
 
         # The cilium agent on fringe restarted 805 times in 39 days before anyone
         # noticed, and every death re-armed node.cilium.io/agent-not-ready:NoSchedule
@@ -326,4 +326,4 @@ spec:
               - `kubectl get node <node> -o jsonpath={.spec.taints}` to confirm the
                 agent-not-ready taint has cleared.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#cluster-health"
-            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-nodes/talos-nodes"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/talos-node-health"

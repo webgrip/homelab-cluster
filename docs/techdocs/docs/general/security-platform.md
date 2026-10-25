@@ -133,7 +133,6 @@ Dashboards now live in the folders of the specific tools instead of being dumped
 
 Current tool-specific coverage includes:
 
-- **Security / SOC Command Center** (cross-concern overview)
 - **Security / Supply Chain (Dependency-Track)** — portfolio CVEs, policy violations, risk score trends
 - **Kyverno / 10 Policy Insights**
 - **Kyverno / 20 Policy Violations**

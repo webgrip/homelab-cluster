@@ -5,8 +5,8 @@ which are modelled, and the three Forgejo API fields that do not mean what their
 suggest.
 
 The board built on this is **Forgejo CI — Runners deep dive**
-(`infra-forgejo-ci-runners`, Infrastructure folder). Its shallower sibling, **Forgejo CI —
-Command Center** (`infra-forgejo-ci`), watches runner supply only.
+(`infra-forgejo-ci-runners`, Infrastructure folder). Its shallower sibling, the generated
+**Forgejo CI** board (`forgejo-ci`), covers queue, capacity, runners, KEDA, OOM and dind.
 
 ## Glossary
 

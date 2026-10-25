@@ -74,8 +74,6 @@ Avoid “random dashboard links”. Prefer a small, curated set of dashboards th
 
 - Platform / cluster operations overview: `https://grafana.${SECRET_DOMAIN}/d/obs-stack-overview/cluster-ops-overview`
 - Observability LGTM health (`observability-lgtm-health`, VictoriaMetrics/Loki/Grafana): `https://grafana.${SECRET_DOMAIN}/d/obs-lgtmp-health/observability-lgtm-health`
-- Kubernetes cluster health: `https://grafana.${SECRET_DOMAIN}/d/k8s-cluster-health/kubernetes-cluster-health`
-- Kubernetes workloads & capacity: `https://grafana.${SECRET_DOMAIN}/d/k8s-workloads-capacity/kubernetes-workloads-capacity`
 - PVC usage (Longhorn): `https://grafana.${SECRET_DOMAIN}/d/storage-pvc-usage/storage-pvc-longhorn`
 - Longhorn health: `https://grafana.${SECRET_DOMAIN}/d/storage-longhorn-health/longhorn-storage-health`
 - Flux health: `https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health`

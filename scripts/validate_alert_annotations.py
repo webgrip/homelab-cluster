@@ -8,6 +8,7 @@ can run anywhere.
 Rules enforced (from docs/techdocs/docs/alerting-principles.md):
 - annotations.summary is present and includes a scope in parentheses.
 - annotations.description uses a block scalar and includes the standard sections.
+- annotations.dashboard_url that opens /d/<uid> names a uid some GrafanaDashboard in kubernetes/ defines.
 
 Applies to:
 - PrometheusRule alert rules (monitoring.coreos.com/v1)
@@ -17,6 +18,7 @@ Applies to:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -40,6 +42,13 @@ RE_SLOTH_ALERTING = re.compile(r"^(?P<indent>\s*)alerting:\s*$")
 RE_YAML_FILE = re.compile(r".*\.ya?ml$")
 
 RE_SCOPE_PARENS = re.compile(r"\(.*\)")
+
+RE_DOCUMENT_SEPARATOR = re.compile(r"^---\s*$")
+RE_KIND_GRAFANADASHBOARD = re.compile(r"^kind:\s*GrafanaDashboard\s*$")
+RE_DASHBOARD_JSON_BLOCK = re.compile(r"^(?P<indent>\s*)json:\s*\|[-+]?\s*$")
+RE_DASHBOARD_SPEC_UID = re.compile(r"^  uid:\s*[\"']?(?P<uid>[^\"'\s]+)[\"']?\s*$")
+RE_DASHBOARD_URL = re.compile(r"^\s*dashboard_url:\s*[\"']?(?P<url>[^\"'\s]+)")
+RE_DASHBOARD_PATH_UID = re.compile(r"/d/(?P<uid>[^/?#\s]+)")
 
 REQUIRED_SECTIONS = (
     "What's happening:",
@@ -234,6 +243,73 @@ def validate_file(path: Path) -> list[Failure]:
     return failures
 
 
+def _documents(lines: list[str]) -> list[list[str]]:
+    documents: list[list[str]] = [[]]
+    for line in lines:
+        if RE_DOCUMENT_SEPARATOR.match(line):
+            documents.append([])
+        else:
+            documents[-1].append(line)
+    return documents
+
+
+def _json_block(document: list[str]) -> str | None:
+    for start, line in enumerate(document):
+        match = RE_DASHBOARD_JSON_BLOCK.match(line)
+        if not match:
+            continue
+        key_indent = len(match.group("indent"))
+        body: list[str] = []
+        for following in document[start + 1:]:
+            if following.strip() and len(following) - len(following.lstrip()) <= key_indent:
+                break
+            body.append(following)
+        return "".join(body)
+    return None
+
+
+def dashboard_uids_in(path: Path) -> tuple[set[str], list[Failure]]:
+    uids: set[str] = set()
+    failures: list[Failure] = []
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    for document in _documents(lines):
+        if not any(RE_KIND_GRAFANADASHBOARD.match(line) for line in document):
+            continue
+        uids.update(m.group("uid") for m in map(RE_DASHBOARD_SPEC_UID.match, document) if m)
+        body = _json_block(document)
+        if body is None:
+            continue
+        try:
+            dashboard = json.loads(body)
+        except json.JSONDecodeError as exc:
+            failures.append(Failure(path, "GrafanaDashboard", f"spec.json does not parse: {exc}"))
+            continue
+        uid = dashboard.get("uid") if isinstance(dashboard, dict) else None
+        if uid:
+            uids.add(uid)
+    return uids, failures
+
+
+def dashboard_url_failures(path: Path, known_uids: set[str]) -> list[Failure]:
+    failures: list[Failure] = []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for number, line in enumerate(lines, start=1):
+        url_match = RE_DASHBOARD_URL.match(line)
+        if not url_match:
+            continue
+        uid_match = RE_DASHBOARD_PATH_UID.search(url_match.group("url"))
+        if not uid_match:
+            continue
+        uid = uid_match.group("uid")
+        if "{" in uid or "$" in uid:
+            continue
+        if uid not in known_uids:
+            failures.append(
+                Failure(path, f"line {number}", f"dashboard_url names Grafana uid {uid!r}, which no GrafanaDashboard defines")
+            )
+    return failures
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -257,8 +333,15 @@ def main(argv: list[str]) -> int:
                 yaml_paths.append(path)
 
     all_failures: list[Failure] = []
+    known_uids: set[str] = set()
+    for path in sorted(yaml_paths):
+        uids, parse_failures = dashboard_uids_in(path)
+        known_uids |= uids
+        all_failures.extend(parse_failures)
+
     for path in sorted(yaml_paths):
         all_failures.extend(validate_file(path))
+        all_failures.extend(dashboard_url_failures(path, known_uids))
 
     if all_failures:
         for f in all_failures:

@@ -140,7 +140,8 @@ HTTP.
   (`up{job="forgejo-http"}`). The DB is scraped by the shared CNPG PodMonitor; the
   `forgejo-db` Cluster carries `monitoring.webgrip.io/enabled: "true"`.
 - **Dashboards:** `Forgejo / Runtime Health`
-  (`observability/grafana/app/dashboards/infra-forgejo.yaml`) + `infra-forgejo-ci.yaml`.
+  (`observability/grafana/app/dashboards/infra-forgejo.yaml`) + the generated `forgejo-ci`
+  board (`scripts/dashboards/forgejo_ci.py`) + `infra-forgejo-ci-runners.yaml`.
 - **Alerts:** `app/prometheusrule.yaml` (`ForgejoDown`, `ForgejoDeploymentUnavailable`,
   `ForgejoPodRestarting`).
 
