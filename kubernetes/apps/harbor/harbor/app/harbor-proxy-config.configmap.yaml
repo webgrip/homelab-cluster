@@ -149,7 +149,8 @@ data:
       fi
       if hc GET "/projects/$$_pid/immutabletagrules" 2>/dev/null \
            | jq -e '.[]? | select(.tag_selectors[]?.pattern == "**.**.**")' >/dev/null 2>&1; then
-        log "immutable semver rule already present on '$$_name'"; return 0
+        set_immutable_rules_disabled "$$_pid" false
+        log "immutable semver rule present and enabled on '$$_name'"; return 0
       fi
       _body='{"disabled":false,"scope_selectors":{"repository":[{"kind":"doublestar","decoration":"repoMatches","pattern":"**"}]},"tag_selectors":[{"kind":"doublestar","decoration":"matches","pattern":"**.**.**"}]}'
       if hc POST "/projects/$$_pid/immutabletagrules" "$$_body" >/dev/null 2>&1; then
@@ -157,6 +158,34 @@ data:
       else
         log "WARN: failed to create immutable tag rule on '$$_name'"
       fi
+    }
+
+    set_immutable_rules_disabled() {
+      _pid="$$1"; _disabled="$$2"
+      hc GET "/projects/$$_pid/immutabletagrules" 2>/dev/null | jq -c ".[]? | select(.disabled != $$_disabled)" 2>/dev/null \
+        | while read -r _rule; do
+            _id="$$(echo "$$_rule" | jq -r '.id')"
+            hc PUT "/projects/$$_pid/immutabletagrules/$$_id" "$$(echo "$$_rule" | jq -c ".disabled = $$_disabled")" >/dev/null 2>&1 \
+              || log "WARN: could not set disabled=$$_disabled on immutable rule $$_id"
+          done
+    }
+
+    retire_repository() {
+      _project="$$1"; _repo="$$2"
+      if ! hc GET "/projects/$$_project/repositories/$$_repo" >/dev/null 2>&1; then
+        log "retired repository $$_project/$$_repo is absent"; return 0
+      fi
+      _pid="$$(hc GET "/projects/$$_project" 2>/dev/null | jq -r '.project_id' 2>/dev/null)"
+      if [ -z "$$_pid" ] || [ "$$_pid" = "null" ]; then
+        log "WARN: cannot resolve project '$$_project' to retire $$_repo"; HEALTH_FAILED=1; return 0
+      fi
+      set_immutable_rules_disabled "$$_pid" true
+      if hc DELETE "/projects/$$_project/repositories/$$_repo" >/dev/null 2>&1; then
+        log "deleted retired repository $$_project/$$_repo"
+      else
+        log "WARN: failed to delete retired repository $$_project/$$_repo"; HEALTH_FAILED=1
+      fi
+      set_immutable_rules_disabled "$$_pid" false
     }
 
     # ensure_private_project NAME (private project for our own images)
@@ -429,6 +458,9 @@ data:
     ensure_gc_schedule
     ensure_retention webgrip
     ensure_project_scanning webgrip
+    while read -r _project _repo || [ -n "$${_project:-}" ]; do
+      [ -n "$$_project" ] && retire_repository "$$_project" "$$_repo"
+    done < /scripts/retired-repositories
     ensure_immutable_semver webgrip
 
     ensure_public_project talos
@@ -443,3 +475,5 @@ data:
       exit 1
     fi
     log "reconcile complete"
+  retired-repositories: |-
+    webgrip semantic-release-rust
