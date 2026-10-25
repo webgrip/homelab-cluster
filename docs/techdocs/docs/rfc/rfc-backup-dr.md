@@ -200,7 +200,7 @@ with snapshots that only another account's API can delete. That is Phase 2.
 
 | Key | Unlocks | Copy 1 | Copy 2 | Check |
 | --- | --- | --- | --- | --- |
-| OpenBao unseal key | every OpenBao snapshot and volume backup | password manager | sealed paper in a different building | the OpenBao drill compares the live key's sha256 with the fingerprint in git every week; quarterly the owner unseals a restored snapshot with the escrowed copy |
+| OpenBao unseal key | every OpenBao snapshot and volume backup | password manager | sealed paper in a different building | the OpenBao drill compares the live key's sha256 with the fingerprint it recorded on first use, every week; quarterly the owner unseals a restored snapshot with the escrowed copy |
 | SOPS age key | `talsecret`, `cluster-secrets`, the in-cluster age Secret | password manager | sealed paper | quarterly: `sops -d talos/talsecret.sops.yaml >/dev/null` with the escrowed key on a clean shell |
 | homelab etcd age identity | homelab etcd snapshots | password manager | sealed paper | quarterly: decrypt and `etcdutl snapshot status` the newest snapshot |
 | Unfold state passphrase, Unfold etcd identity | Unfold state and etcd | password manager | sealed paper (+ homelab OpenBao) | Unfold's daily check uses the OpenBao copy; quarterly by hand with the escrowed copy |
@@ -211,10 +211,11 @@ Rules:
 
 - A T0 key never exists only inside a system it unlocks. The OpenBao unseal key in OpenBao, the
   age key only in the cluster, or the vault passwords only in OpenBao would each be a loop.
-- The fingerprint is `sha256` of the key bytes, computed by the owner from the escrowed copy
-  (`printf '%s' "$KEY" | sha256sum`) and committed to git. A hash of a 256-bit random key reveals
-  nothing useful. The drill alerts if the live key stops matching it, which is the signal that a
-  re-key happened without a new escrow.
+- The fingerprint is `sha256` of the key bytes, recorded by the OpenBao drill from the live key on
+  its first run into the immutable ConfigMap `security/openbao-unseal-key-fingerprint`. A hash of a
+  256-bit random key reveals nothing useful. The drill fails if the live key stops matching it,
+  which is the signal that a re-key happened without a new escrow. After a deliberate re-key and
+  a new escrow, the owner deletes that ConfigMap and the next drill records the new key.
 - The quarterly escrow drill is the only proof that the escrowed copy works. The
   [restore drills runbook](../runbooks/backup-restore-drills.md#quarterly-escrow-drill) has the
   commands. It runs on the workstation, with the escrowed copy, never with the in-cluster one.
@@ -282,16 +283,40 @@ corruption.
 
 ### Making quotas declarative
 
-Today buckets, keys, quotas, lifecycle rules and Caddy on garage-fsn1 are hand state. Options:
+Buckets, keys, grants and quotas on garage-fsn1 are declared in `garage-fsn1/state.yaml` and
+reconciled by `scripts/garage-offsite-reconcile.sh` (option A below, built 2026-10-25):
+
+```sh
+mise exec -- just garage-offsite-plan     # read-only diff, exit 2 when something is pending
+mise exec -- just garage-offsite-apply    # converge, then re-plan to prove it
+```
+
+The script talks to Garage's admin API v2 on the host's loopback (`127.0.0.1:3903`) over SSH,
+with the admin token sourced from `/etc/garage/env` on the host, so the token never leaves
+garage-fsn1. It creates missing buckets and keys, writes each new key's secret straight into
+OpenBao with `bao kv put … S3_SECRET_ACCESS_KEY=-` (never printed), sets the exact permission set
+each declared key holds on each declared bucket (extra grants such as `owner` on `cnpg-backup`
+are denied), and sets quotas. It never deletes a bucket or a key, reports undeclared ones as
+unmanaged, refuses to run unless `GetClusterHealth` says `healthy`, refuses when a key name is
+used twice or when OpenBao holds a different access key ID than Garage, and never sets a quota
+below current usage: it holds the quota at usage plus `quotaHeadroom` (rounded up to a GiB) until
+usage drops under the declared size, so the same file serves before and after the Longhorn
+cleanup. Mutation test: `./scripts/test-garage-offsite-reconcile.sh` against a local Garage v2.1.0.
+
+Lifecycle rules are S3, not admin API. `homelab-etcd` gets its 7-day expiry from the CronJob
+`backup/homelab-etcd-lifecycle`, which puts `kubernetes/apps/backup/etcd/app/homelab-etcd-lifecycle.json`
+daily with the bucket's own write-only key and reads it back with the read-only `backup-verify`
+key. Garage lets a write-only key put a lifecycle but not read one, which is why the read-back
+uses the second key.
 
 | Option | How | Verdict |
 | --- | --- | --- |
-| **A. Desired-state file + idempotent apply script, run from the workstation over SSH** | `garage-fsn1/state.yaml` (buckets, quotas, key permissions, lifecycle) in this repo; `just garage-fsn1-plan` prints the diff from `garage bucket info` / `garage key info`; `just garage-fsn1-apply` runs the CLI commands for the differences | **Recommended for Phase 1b.** No new component, the admin token never leaves the host, the plan step makes drift visible, and the commands it runs are the ones in this RFC |
-| B. OpenTofu module against the Garage admin API v2, applied from the workstation | A community provider plus the admin token on the workstation | Later. The providers for the v2 admin API are young and third-party, and the token would have to travel over the network |
-| C. Reconcile from the cluster | tofu-controller or a CronJob with the admin token in OpenBao | **Rejected.** The cluster would then hold the one credential that can lift its own quotas and delete every key: the exact power the threat model takes away |
+| **A. Desired-state file + idempotent apply, run from the workstation over SSH** | `garage-fsn1/state.yaml`; `just garage-offsite-plan` / `garage-offsite-apply` | **Built.** No new component, the admin token stays on the host, the plan makes drift visible |
+| B. OpenTofu module against the admin API v2 | A community provider plus the admin token on the workstation | Later. Young third-party providers, and the token would travel |
+| C. Reconcile from the cluster | A CronJob with a Garage admin token in OpenBao | **Rejected again on 2026-10-25.** Garage v2.1 does have scoped admin tokens (`garage admin-token create --scope …`), but a scope lists API functions, not buckets. The smallest scope that can reconcile (`CreateBucket, UpdateBucket, CreateKey, AllowBucketKey, DenyBucketKey, …`) lets whoever holds it lift every quota and grant any key `write` or `owner` on Unfold's buckets, which a homelab compromise cannot touch today. Pulling the state from git on the host does not help either: git is served by the in-cluster Forgejo, so a cluster compromise can write the file the host would apply |
 
-Option A gets a ticket. Until it lands, the commands below are the source of truth and the owner
-records each run in the [garage-offsite runbook](../runbooks/garage-offsite.md#quotas).
+The owner runs `just garage-offsite-apply` after any change to `state.yaml`, and once after the
+Longhorn cleanup so the `cnpg-backups-bucket` quota drops to its declared size.
 
 ## Restore verification
 
@@ -385,176 +410,91 @@ In git (this repository):
    dependency-track); Longhorn and OpenBao drills added; all emit the restore metric.
 5. Homelab etcd snapshots every 6 h, age-encrypted, to bucket `homelab-etcd`; daily freshness drill.
 6. The inventory, alert set and Backups dashboard.
+7. Phase 1b, the same day: everything the first hand-over did by hand is declared or minted.
+
+| Former hand step | Now |
+| --- | --- |
+| Garage bucket `homelab-etcd`, keys `homelab-etcd-writer` and `backup-verify`, their OpenBao entries, `owner` off `cnpg-backup`, quotas | `garage-fsn1/state.yaml`, applied by `just garage-offsite-apply` ([how](#making-quotas-declarative)) |
+| 7-day lifecycle on `homelab-etcd` | CronJob `backup/homelab-etcd-lifecycle`, daily, with read-back |
+| Two etcd age identities and `bao kv put secret/backup/homelab-etcd` | Job `backup/homelab-etcd-age-keygen` generates both in the pod and writes them to OpenBao with `cas=0`. Its policy (`homelab-etcd-age-keygen.hcl`) grants `create` on that one path and `read` on its metadata, so it can write once and never overwrite. A later run sees the path and does nothing |
+| Unseal-key sha256 typed into a ConfigMap | The OpenBao drill seeds the immutable ConfigMap `security/openbao-unseal-key-fingerprint` from the live key on its first run and compares against it on every run after |
+| Talos patch on soyo-1..3 | Still one owner command: there is no GitOps path for Talos machine config in this cluster |
+| Deleting the retired Longhorn backups | `scripts/longhorn-retired-backups.sh` lists them read-only; deleting stays an owner decision |
+
+Two choices behind that table:
+
+- The escrow age identity is now generated in the cluster, where the drill identity already lives
+  and decrypts every snapshot, so holding the escrow identity in OpenBao gives an attacker nothing
+  new. What escrow needs is a copy outside the systems it unlocks: the owner copies
+  `AGE_ESCROW_IDENTITY` into the password manager and onto paper.
+- The unseal-key fingerprint is recorded on first use from the live key, so it detects a re-key
+  without a new escrow, but it cannot prove by itself that the escrowed copy equals the live key.
+  The quarterly escrow drill proves that: it unseals a restored snapshot with the escrowed copy,
+  and the [runbook](../runbooks/backup-restore-drills.md#quarterly-escrow-drill) compares the
+  escrowed copy's sha256 with the recorded one.
 
 Owner hand-over, in this order. **Nothing on garage-fsn1 runs until the compaction has finished
-and `garage status` is healthy.**
+and `garage status` is healthy;** `garage-offsite-apply` refuses to run otherwise.
 
-#### 1. Escrow (in progress)
+#### 1. Escrow
 
-Finish the escrow the owner started: OpenBao unseal key, age key, Unfold passwords into the
-password manager and on sealed paper. Then set the fingerprint the OpenBao drill checks. Compute
-it from the escrowed copy, not from the cluster:
-
-```sh
-read -rs UNSEAL_KEY && printf '%s' "$UNSEAL_KEY" | sha256sum | cut -d' ' -f1; unset UNSEAL_KEY
-```
-
-Put the printed hash into the fingerprint ConfigMap the drill reads (path in the
-[runbook](../runbooks/backup-restore-drills.md#openbao-snapshot-drill)) and commit it.
-
-#### 2. homelab etcd: age recipient, bucket and keys
-
-On the workstation, create two identities. The escrow identity is the one recovery uses; its
-private half never touches the cluster. The drill identity lets the daily in-cluster drill decrypt
-and restore every snapshot; it lives in OpenBao like every other homelab secret, so it adds nothing
-an attacker holding OpenBao would not already have (the cluster's own state):
+Finish the escrow the owner started: OpenBao unseal key, SOPS age key, Unfold passwords into the
+password manager and on sealed paper. Once the keygen Job has run, add the etcd escrow identity:
 
 ```sh
-age-keygen -o homelab-etcd-escrow.age.key
-age-keygen -o homelab-etcd-drill.age.key
-ESCROW="$(age-keygen -y homelab-etcd-escrow.age.key)"
-DRILL="$(age-keygen -y homelab-etcd-drill.age.key)"
-bao kv put secret/backup/homelab-etcd \
-  AGE_X25519_PUBLIC_KEY="${ESCROW},${DRILL}" \
-  AGE_DRILL_IDENTITY=@homelab-etcd-drill.age.key
-shred -u homelab-etcd-drill.age.key
+bao kv get -field=AGE_ESCROW_IDENTITY secret/backup/homelab-etcd
 ```
 
-Store `homelab-etcd-escrow.age.key` in the password manager and on paper, then `shred -u` it.
-
-On garage-fsn1, after the compaction. These commands run from the workstation so the secret goes
-straight into OpenBao without being typed or shown:
+#### 2. Garage: buckets, keys, grants, quotas
 
 ```sh
-ssh root@116.202.53.185 'set -a; . /etc/garage/env; set +a; garage bucket create homelab-etcd'
-
-out="$(ssh root@116.202.53.185 'set -a; . /etc/garage/env; set +a; garage key create homelab-etcd-writer')"
-KEY_ID="$(printf '%s\n' "$out" | awk '/Key ID/ {print $3}')"
-printf '%s\n' "$out" | awk '/Secret key/ {print $3}' | bao kv put secret/s3/homelab-etcd-writer \
-  S3_ACCESS_KEY_ID="$KEY_ID" S3_SECRET_ACCESS_KEY=- S3_REGION=garage \
-  S3_ENDPOINT=https://s3-offsite.webgrip.dev S3_BUCKET=homelab-etcd
-unset out KEY_ID
-ssh root@116.202.53.185 'set -a; . /etc/garage/env; set +a; garage bucket allow --write homelab-etcd --key homelab-etcd-writer'
-
-out="$(ssh root@116.202.53.185 'set -a; . /etc/garage/env; set +a; garage key create backup-verify')"
-KEY_ID="$(printf '%s\n' "$out" | awk '/Key ID/ {print $3}')"
-printf '%s\n' "$out" | awk '/Secret key/ {print $3}' | bao kv put secret/s3/backup-verify-offsite \
-  S3_ACCESS_KEY_ID="$KEY_ID" S3_SECRET_ACCESS_KEY=- S3_REGION=garage \
-  S3_ENDPOINT=https://s3-offsite.webgrip.dev S3_BUCKET=cnpg-backups-bucket
-unset out KEY_ID
-for b in cnpg-backups-bucket homelab-etcd unfold-cluster-etcd; do
-  ssh root@116.202.53.185 "set -a; . /etc/garage/env; set +a; garage bucket allow --read $b --key backup-verify"
-done
+mise exec -- just garage-offsite-plan
+mise exec -- just garage-offsite-apply
 ```
 
-Every command spells out its own SSH call so each one can be run alone. `bao kv put KEY=-` reads that one value from stdin, so the secret never
-appears on a command line.
+Run the plan first and read it: it lists every bucket and key it will create, every grant it will
+add or remove and every quota it will set. Before the Longhorn cleanup, the `cnpg-backups-bucket`
+quota is held at its usage plus 20 GiB; run `garage-offsite-apply` again after the cleanup to bring
+it down to 242 GiB.
 
-Lifecycle for `homelab-etcd` (keep 7 days; talos-backup never deletes). Run with the bucket's
-own writer key or any key with write on it, from the workstation:
+#### 3. Talos API access for the etcd backup
 
 ```sh
-cat > /tmp/homelab-etcd-lifecycle.json <<'EOF'
-{"Rules":[{"ID":"expire-7d","Status":"Enabled","Filter":{"Prefix":""},"Expiration":{"Days":7},"AbortIncompleteMultipartUpload":{"DaysAfterInitiation":1}}]}
-EOF
-AWS_ACCESS_KEY_ID="$(bao kv get -field=S3_ACCESS_KEY_ID secret/s3/homelab-etcd-writer)" \
-AWS_SECRET_ACCESS_KEY="$(bao kv get -field=S3_SECRET_ACCESS_KEY secret/s3/homelab-etcd-writer)" \
-aws --region garage --endpoint-url https://s3-offsite.webgrip.dev \
-  s3api put-bucket-lifecycle-configuration --bucket homelab-etcd \
-  --lifecycle-configuration file:///tmp/homelab-etcd-lifecycle.json
-rm /tmp/homelab-etcd-lifecycle.json
+mise exec -- just talos-generate-config && for n in soyo-1 soyo-2 10.0.0.22; do mise exec -- just talos-apply-node "$n" '' no-reboot; done
 ```
 
-Then apply the Talos patch that lets the `backup` namespace take etcd snapshots
-(`talos/patches/controller/kubernetes-talos-api-access.yaml`), one control plane at a time:
-
-```sh
-just talos-generate-config
-just talos-apply-node soyo-1
-just talos-apply-node soyo-2
-just talos-apply-node soyo-3
-```
-
-#### 3. Take `owner` away from `cnpg-backup`
-
-```sh
-ssh root@116.202.53.185 'set -a; . /etc/garage/env; set +a; garage key info cnpg-backup'
-```
-
-If the bucket line for `cnpg-backups-bucket` shows `O` (owner) next to `R W`:
-
-```sh
-ssh root@116.202.53.185 'set -a; . /etc/garage/env; set +a; garage bucket deny --owner cnpg-backups-bucket --key cnpg-backup'
-```
+`no-reboot` refuses instead of rebooting if a node would need one. Afterwards the
+`etcd-backup-talos-access` Kustomization reconciles within the hour.
 
 #### 4. Longhorn hand-over
 
-Wait until `gitops-backup-bulk` has completed twice for data-garage-0, meta-garage-0 and
-gitea-mirror (two nights after the policy change lands). Then list, read-only, what will go:
+Two nights after the enrolment change landed, `gitops-backup-bulk` has run twice on data-garage-0,
+meta-garage-0 and gitea-mirror. List what would go, read-only:
 
 ```sh
-for v in pvc-3b5bfd70-a65e-4405-a6f6-949f60b97ac9 pvc-ec70a81e-ee19-487c-8f19-b3a19dd68f6f pvc-c4030da3-f0bf-44d6-97d8-09c9e2cb15ef; do
-  mise exec -- kubectl -n longhorn-system get backups.longhorn.io -l backup-volume="$v" -o json \
-    | jq -r '.items[] | select(.status.labels.RecurringJob == "gitops-backup") | [.metadata.name, .status.volumeName, .status.backupCreatedAt, .status.state] | @tsv'
-done
-mise exec -- kubectl -n longhorn-system get backupvolumes.longhorn.io \
-  pvc-6d204c8b-8560-46ad-87e8-dc28b820fe4d-a8c98d0d \
-  pvc-615812d4-52b3-4ee7-95f1-4f1a8ab2aee9-e03a62aa \
-  pvc-98a4e2ac-4df4-448b-a752-9db7b77c4128-d85c1976 \
-  -o custom-columns=NAME:.metadata.name,VOLUME:.spec.volumeName,STORED:.status.dataStored
+mise exec -- ./scripts/longhorn-retired-backups.sh
 ```
 
-The first loop prints the old `gitops-backup` backups of the three bulk volumes; the second the
-BackupVolumes of vmsingle, vlsingle and vtsingle. Deleting a Backup or BackupVolume CR deletes its
-data on garage-fsn1, and that cannot be undone. When the listing is what you expect:
+On 2026-10-25 it showed the whole BackupVolumes of vmsingle (56.0 GB), vlsingle (23.6 GB) and
+vtsingle (11.9 GB), 91.5 GB, and seven superseded `gitops-backup` backups on each bulk volume, at
+most 13 GB, 5.8 GB and 0.2 GB more (blocks shared with the newer backups stay). Longhorn cannot
+prune these by itself: a recurring job only prunes backups that carry its own name on volumes it
+still runs on, and none of these qualify. The script only deletes superseded backups once the
+volume's current job has completed two backups, and never touches a BackupVolume whose volume no
+longer exists. Deleting is the owner's call and cannot be undone:
 
 ```sh
-for v in pvc-3b5bfd70-a65e-4405-a6f6-949f60b97ac9 pvc-ec70a81e-ee19-487c-8f19-b3a19dd68f6f pvc-c4030da3-f0bf-44d6-97d8-09c9e2cb15ef; do
-  mise exec -- kubectl -n longhorn-system get backups.longhorn.io -l backup-volume="$v" -o json \
-    | jq -r '.items[] | select(.status.labels.RecurringJob == "gitops-backup") | .metadata.name' \
-    | xargs -r mise exec -- kubectl -n longhorn-system delete backups.longhorn.io
-done
-mise exec -- kubectl -n longhorn-system delete backupvolumes.longhorn.io \
-  pvc-6d204c8b-8560-46ad-87e8-dc28b820fe4d-a8c98d0d \
-  pvc-615812d4-52b3-4ee7-95f1-4f1a8ab2aee9-e03a62aa \
-  pvc-98a4e2ac-4df4-448b-a752-9db7b77c4128-d85c1976
+CONFIRM=delete-retired-backups mise exec -- ./scripts/longhorn-retired-backups.sh delete
 ```
 
-Run these between 09:00 and 17:00 UTC: a backup deletion holds the volume's deletion lock for an
+Run it between 09:00 and 17:00 UTC: a backup deletion holds the volume's deletion lock for an
 hour or more (see [garage-offsite](../runbooks/garage-offsite.md#why-the-ttl-is-12-hours-not-24)).
-Garage frees the space after the 24-hour tombstone GC; LMDB pages are reused without compaction.
+Garage frees the space after its 24-hour tombstone GC; LMDB pages are reused without compaction.
 
-#### 5. Quotas
+#### 5. Metadata snapshots on garage-fsn1
 
-Measure first. A quota below the current size stops all writes to that bucket:
-
-```sh
-ssh root@116.202.53.185 'set -a; . /etc/garage/env; set +a; for b in $(garage bucket list | awk "NR>1 {print \$NF}"); do echo "== $b"; garage bucket info "$b" | grep -E "Size|Objects"; done'
-```
-
-Before the Longhorn hand-over has freed space, cap `cnpg-backups-bucket` at its current size plus
-20 GB (replace `<CURRENT_GB>`):
-
-```sh
-ssh root@116.202.53.185 'set -a; . /etc/garage/env; set +a; garage bucket set-quotas cnpg-backups-bucket --max-size <CURRENT_GB+20>GB'
-```
-
-After the hand-over, set the target quotas:
-
-```sh
-ssh root@116.202.53.185 'set -a; . /etc/garage/env; set +a;
-garage bucket set-quotas cnpg-backups-bucket --max-size 242GiB
-garage bucket set-quotas homelab-etcd --max-size 5GiB
-garage bucket set-quotas unfold-cluster-etcd --max-size 5GiB
-garage bucket set-quotas unfold-cluster-tfstate --max-size 1GiB
-garage bucket list'
-```
-
-Undo for any bucket: `garage bucket set-quotas <bucket> --max-size none`.
-
-Turn on metadata snapshots, the only way back from a corrupt `data.mdb` on a single node. In
-`/etc/garage/garage.toml`, add `metadata_auto_snapshot_interval = "6h"`, then
-`systemctl restart garage`.
+The only way back from a corrupt `data.mdb` on a single node. In `/etc/garage/garage.toml`, add
+`metadata_auto_snapshot_interval = "6h"`, then `systemctl restart garage`.
 
 #### 6. Capped filesystems for Immich and uptime-kuma
 
@@ -709,3 +649,7 @@ Owner decisions taken as defaults on 2026-10-25, to confirm:
   drill cadence). It named the holes; nothing was built.
 - 2026-10-25: Rewritten after the backup audit. Phase 1 accepted and built; Phase 2 and 3 proposed.
   Replaces the five candidate ADRs of the 2026-07-02 version with ADR-0081.
+- 2026-10-25: Phase 1b built. Garage state is declared in `garage-fsn1/state.yaml` and applied by
+  one recipe; etcd identities, the lifecycle rule and the unseal-key fingerprint are minted in the
+  cluster. Option C (an in-cluster Garage admin token) re-examined against v2.1's scoped tokens
+  and still rejected.

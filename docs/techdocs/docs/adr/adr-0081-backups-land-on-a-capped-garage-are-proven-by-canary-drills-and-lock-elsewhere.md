@@ -129,3 +129,7 @@ option that survives both a cluster compromise and a stolen owner credential, it
 * Re-evaluate when Garage ships versioning and object lock (v3), or when the landing copy fills
   again despite quotas (then move the landing to option B).
 * 2026-10-25 — Accepted by Ryan Grippeling for Phase 1. Phase 2 waits for the owner's purchase.
+* 2026-10-25 — Phase 1b: the declarative apply exists (`garage-fsn1/state.yaml`,
+  `just garage-offsite-apply`, run by the owner over SSH; the admin token stays on the host).
+  The in-cluster option stays rejected: Garage v2.1 admin-token scopes name API functions, not
+  buckets, so any scope that can reconcile can also lift quotas and grant itself Unfold's buckets.

@@ -128,14 +128,24 @@ which key holds what, and why the immutable copy lives at another provider are i
 | `homelab-etcd-writer` | `homelab-etcd`: write | `backup/etcd-backup` |
 | `backup-verify` | `cnpg-backups-bucket`, `homelab-etcd`, `unfold-cluster-etcd`: read | restore drills |
 
-Check a key with `garage key info <key>`; the creation commands are in the RFC's Phase 1
-hand-over.
+Keys, buckets, grants and quotas are declared in `garage-fsn1/state.yaml`. Compare the host with
+it, read-only, and converge it:
+
+```sh
+mise exec -- just garage-offsite-plan
+mise exec -- just garage-offsite-apply
+```
+
+The apply runs Garage's admin API on the host's loopback over SSH, puts new key secrets straight
+into OpenBao, and never deletes a bucket or key. How it decides, and why it does not run from the
+cluster, is in the [backup RFC](../rfc/rfc-backup-dr.md#making-quotas-declarative).
 
 ## Quotas
 
 Every bucket carries a quota so one runaway writer cannot fill the disk for all of them. The
-proposed sizes, the order of steps (measure first, never cap below the current size) and the
-commands are in the [backup RFC](../rfc/rfc-backup-dr.md#quotas-proposed). Read the current state:
+sizes live in `garage-fsn1/state.yaml` (reasoning in the
+[backup RFC](../rfc/rfc-backup-dr.md#quotas-proposed)); `just garage-offsite-apply` sets them and
+never caps a bucket below its current usage plus `quotaHeadroom`. Read the current state:
 
 ```sh
 for b in $(garage bucket list | awk 'NR>1 {print $NF}'); do echo "== $b"; garage bucket info "$b" | grep -E 'Size|Objects|quota'; done

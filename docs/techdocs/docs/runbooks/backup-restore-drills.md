@@ -102,13 +102,12 @@ weekly on Sunday 11:00 UTC.
    production root token is revoked by design.
 5. Reads `secret/backup-canary/openbao` and compares it with the expected window. Restore, unseal,
    generate-root or nonce failure is corrupt: fail. Records `restore-verified-openbao-openbao-raft`.
-6. Compares the live unseal key's sha256 with the owner's escrow fingerprint, the `sha256` key of
-   ConfigMap `security/openbao-unseal-key-escrow`
-   (`kubernetes/apps/security/openbao/bootstrap/restore-drill-cronjob.yaml`; empty in git until the
-   owner fills it from the password-manager copy with `printf %s "$KEY" | sha256sum`). A match records
-   `restore-verified-escrow-openbao-unseal-key`. No fingerprint, or a different one, leaves that
-   dataset unverified and its alert fires: either the escrow was never fingerprinted or the key
-   changed without a new escrow.
+6. Compares the live unseal key's sha256 with the `sha256` key of the immutable ConfigMap
+   `security/openbao-unseal-key-fingerprint`. The first drill finds no such ConfigMap, records the
+   live key's fingerprint there and leaves the escrow dataset unverified for that run; every later
+   drill compares against it. A match records `restore-verified-escrow-openbao-unseal-key`; a
+   different key fails the drill, because the key changed without a new escrow. After a deliberate
+   re-key and a new escrow, delete the ConfigMap and the next drill records the new key.
 
 The scratch server and its token die with the pod. The drill never talks to production OpenBao
 except through the snapshot it downloaded.
@@ -120,8 +119,15 @@ Namespace `backup`, app `kubernetes/apps/backup/etcd`. `etcd-backup` runs talos-
 write-only key `homelab-etcd-writer`. Each snapshot is encrypted to two recipients, both listed in
 OpenBao `secret/backup/homelab-etcd` property `AGE_X25519_PUBLIC_KEY` (comma-separated):
 
-- the owner's escrow recipient, whose identity lives only in the password manager and on paper;
+- the escrow recipient, whose identity (`AGE_ESCROW_IDENTITY`, same path) the owner copies into the
+  password manager and onto paper, and which no workload reads;
 - a drill recipient, whose identity (`AGE_DRILL_IDENTITY`, same path) the daily drill uses.
+
+Both identities are generated once by the Job `homelab-etcd-age-keygen` in `backup`, inside its pod,
+and written to OpenBao with `cas=0` under a policy that can create that path but never update it.
+A later run, or a Flux re-creation of the Job, finds the path and does nothing. The bucket's 7-day
+expiry is the CronJob `homelab-etcd-lifecycle` (08:05 UTC daily): it puts
+`homelab-etcd-lifecycle.json` with the write-only key and reads it back with `backup-verify`.
 
 `etcd-restore-drill` (07:40 UTC daily, image `infra-runner`) downloads the newest snapshot with the
 read-only `backup-verify` key, refuses one older than 7 h, decrypts it with the drill identity,
@@ -133,8 +139,8 @@ canary, seeds one and records nothing; from then on a missing canary is a failur
 `restore-verified-etcd-homelab-etcd` in `backup`.
 
 The talos-backup pod needs Talos API access (`os:etcd:backup`, namespace `backup`), which is the
-machine-config patch `talos/patches/controller/kubernetes-talos-api-access.yaml`. Until the owner
-applies it to the three control planes, the `etcd-backup-talos-access` Kustomization fails (its
+machine-config patch `talos/patches/controller/kubernetes-talos-api-access.yaml`, applied with
+`just talos-apply-node <node> '' no-reboot` per control plane. Until it is on all three, the `etcd-backup-talos-access` Kustomization fails (its
 `talos.dev/v1alpha1` ServiceAccount kind does not exist yet) and `HomelabEtcdBackupStale` /
 `BackupDatasetNeverBackedUp` fire, as they should.
 
@@ -205,6 +211,15 @@ does not. Rehearsed locally on 2026-10-25 with `bao` 2.5.5: a forced restore lea
 sealed, the original key unseals it, generate-root mints a working root token, the canary reads
 back.
 
+Then check that the escrowed key is the one the drill fingerprinted:
+
+```sh
+read -rs ESCROWED_UNSEAL_KEY; printf '%s' "$ESCROWED_UNSEAL_KEY" | sha256sum | cut -d' ' -f1; unset ESCROWED_UNSEAL_KEY
+mise exec -- kubectl -n security get configmap openbao-unseal-key-fingerprint -o jsonpath='{.data.sha256}{"\n"}'
+```
+
+The two lines must be equal.
+
 ### SOPS age key
 
 ```sh
@@ -243,7 +258,16 @@ mise exec -- ./scripts/test-cnpg-restore-drill.sh
 ./scripts/test-openbao-restore-drill.sh
 ./scripts/test-etcd-restore-drill.sh
 mise exec -- ./scripts/test-longhorn-restore-drill.sh
+./scripts/test-homelab-etcd-age-keygen.sh
+mise exec -- ./scripts/test-garage-offsite-reconcile.sh
+mise exec -- ./scripts/test-longhorn-retired-backups.sh
 ```
+
+The last three cover the provisioning around the drills: the etcd identity Job (generates once,
+never overwrites, never prints a key), the Garage reconciler with the lifecycle job (converges,
+repairs drift, never deletes, refuses an unhealthy cluster, duplicate key names or a mismatched
+OpenBao entry) and the retired-backup listing (read-only by default, deletes superseded backups
+only after two replacements, never an orphaned BackupVolume).
 
 The alert rules are covered by `./scripts/test-vmalert-rules.sh`
 (`scripts/vmalert-tests/platform-backups.test.yaml` and the fixed CNPG and Longhorn rules).
