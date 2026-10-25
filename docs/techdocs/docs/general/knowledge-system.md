@@ -99,7 +99,7 @@ characters) and 2,544 topics. Two kinds of search exist in the graph:
 
 Hybrid search that combines the two already exists as stored queries on `brain`: `recall_notes`,
 `recall_passages` and `recall_topics`. **Your chat and Claude Code cannot call them by name.** The
-LiteLLM MCP bridge (`@modernrelay/omnigraph-mcp` 0.10.0) only offers raw tools, such as `query`
+Omnigraph MCP endpoint offers generic tools, such as `read`
 with a hand-written query and `mutate`, so the model has to write the query language itself.
 Cheap models often get that wrong, and `recall_notes` returns whole notes (tens of thousands of
 tokens for ten results). Purpose-built brain tools (`search`, `read`, `about`, `connect`,

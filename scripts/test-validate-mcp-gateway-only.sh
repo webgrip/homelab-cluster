@@ -5,7 +5,6 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 wrong=0
 bridge=kubernetes/apps/vikunja/mcp-vikunja/app
-omnigraph_bridge=kubernetes/apps/ai/omnigraph-mcp/app
 namespace_policy=kubernetes/apps/vikunja/vikunja/app/networkpolicy.yaml
 litellm=kubernetes/apps/ai/litellm/app/litellm-config.configmap.yaml
 omnigraph_next=kubernetes/apps/ai/omnigraph/app/next
@@ -94,37 +93,6 @@ d=$(fresh read-only-group)
 rewrite 's/access_groups: \["board"\]/access_groups: ["observability"]/' "$d/$litellm"
 rewrite '/mcp.webgrip.io\/access: litellm-gateway-only/d' "$d/$bridge/service.yaml"
 expect pass "unlabelled bridge served only to a read-only group" "$d"
-
-d=$(fresh omnigraph-unlabelled-service)
-rewrite '/mcp.webgrip.io\/access: litellm-gateway-only/d' "$d/$omnigraph_bridge/service.yaml"
-expect fail "omnigraph bridges lose the label while LiteLLM serves them to write groups" "$d"
-
-d=$(fresh omnigraph-extra-peer)
-python3 - "$d/$omnigraph_bridge/networkpolicy.yaml" <<'EOF2'
-import sys
-path = sys.argv[1]
-text = open(path).read()
-peer = "              app.kubernetes.io/name: litellm\n"
-open(path, "w").write(text.replace(peer, peer + "        - podSelector:\n            matchLabels:\n              app.kubernetes.io/name: omnigraph-explorer\n", 1))
-EOF2
-expect fail "omnigraph bridge policy also admits omnigraph-explorer" "$d"
-
-d=$(fresh omnigraph-cilium-ingress)
-cat >> "$d/$omnigraph_bridge/networkpolicy.yaml" <<'EOF2'
----
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: omnigraph-mcp-from-world
-spec:
-  endpointSelector:
-    matchLabels:
-      app.kubernetes.io/name: omnigraph-mcp
-  ingress:
-    - fromEntities:
-        - world
-EOF2
-expect fail "a CiliumNetworkPolicy opens ingress to the omnigraph bridges" "$d"
 
 d=$(fresh native-loses-credential)
 python3 - "$d/$litellm" <<'EOF2'

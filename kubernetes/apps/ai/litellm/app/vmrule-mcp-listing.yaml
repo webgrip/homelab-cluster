@@ -33,12 +33,12 @@ spec:
               - A Claude Code session that started while this fired has none of that server's tools until /mcp reconnects; before the 20-second cap it lost every gateway tool, Vikunja's included (2026-10-23).
 
               Likely causes:
-              - The backend is down or unready, so its Service has no endpoints and the connection hangs: omnigraph-mcp while Omnigraph is down, brain-tools, mcp-vikunja.
+              - The backend is down or unready, so its Service has no endpoints and the connection hangs: omnigraph-next while it starts, brain-tools, mcp-vikunja.
               - A network policy between ai and the backend's namespace drops the connection.
               - The backend lists slowly after an upgrade.
 
               First actions:
               - kubectl -n ai logs deploy/litellm -c app --since=15m | grep "listing tools from"
-              - kubectl get pods -A -l 'app.kubernetes.io/name in (omnigraph-mcp,brain-tools,mcp-vikunja)'
+              - kubectl get pods -A -l 'app.kubernetes.io/name in (omnigraph-next,brain-tools,mcp-vikunja)'
               - Time one listing: GET /mcp-rest/tools/list?server_id=<server> with a key that holds the server
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/general/litellm/"

@@ -129,7 +129,7 @@ just omnigraph-login
 
 Agents reach the graphs through the LiteLLM MCP gateway. Since the 0.14 cutover (2026-10-24) the servers `omnigraph_memory` (access group `memory`, actor `act-agent`) and `omnigraph_brain` (group `brain`, actor `act-brain-agent`) are Omnigraph's own `/mcp` endpoint on `omnigraph-next`, started with `--mcp-allow-adhoc` and `--mcp-allow-writes`. LiteLLM sends each actor's bearer token from the `litellm-omnigraph-mcp` Secret, and the server's policy decides every call: `act-agent` reads everything and writes only on its own unprotected branches, never merges; `act-brain-agent` reads and writes `brain` on `main` directly, so "remember …" lands at once and every write is a revertible commit. Each tool takes a `graph` argument: `query` runs a stored query by name, `read` runs ad-hoc GQ, `mutate` and `load` write, and `branches_*` manage branches. A LiteLLM key sees these tools only when its `object_permission.mcp_access_groups` holds the group. The design and why the server, not the network, is the gate: [LiteLLM: Omnigraph MCP](../general/litellm.md#omnigraph-mcp).
 
-The 0.11 stdio bridge `@modernrelay/omnigraph-mcp@0.10.0` now serves only `omnigraph_glide_webgrip`, until Ploeg's tenant graphs move (VIK-2337).
+The 0.11 stdio bridges (`@modernrelay/omnigraph-mcp@0.10.0`) were removed on 2026-10-25 once `omnigraph_glide_webgrip` moved to 0.14.
 
 Two keys see both groups: `open-webui` for [Open WebUI](open-webui.md) and `claude-code` for Claude Code on Ryan's workstation (setup in [Open WebUI: Claude Code](open-webui.md#claude-code)).
 
@@ -141,9 +141,9 @@ Glide runs read and write `memory`, `brain` and `webgrip` through three MCP serv
 |---|---|---|
 | `omnigraph_glide_memory` | `memory` (pass `graph: memory`) | `omnigraph-next` `/mcp`, 0.14 |
 | `omnigraph_glide_brain` | `brain` (pass `graph: brain`) | `omnigraph-next` `/mcp`, 0.14 |
-| `omnigraph_glide_webgrip` | `webgrip` | the `omnigraph-mcp` bridge to 0.11 |
+| `omnigraph_glide_webgrip` | `webgrip` (pass `graph: webgrip`) | `omnigraph-next` `/mcp`, 0.14 |
 
-The servers sit in access group `glide`. The token is `secret/omnigraph/glide`: LiteLLM holds it as `OMNIGRAPH_MCP_GLIDE_TOKEN`, the bridge as the `omnigraph-mcp-glide` Secret.
+The servers sit in access group `glide`. The token is `secret/omnigraph/glide`: LiteLLM holds it as `OMNIGRAPH_MCP_GLIDE_TOKEN`.
 
 **How a run gets the tools.** The run holds a LiteLLM virtual key whose `object_permission.mcp_access_groups` contains `glide`. The harness connects to the MCP endpoint `http://litellm.ai.svc.cluster.local:4000/mcp/` over streamable HTTP with `Authorization: Bearer <run key>`. A key without the `glide` group sees none of these tools.
 

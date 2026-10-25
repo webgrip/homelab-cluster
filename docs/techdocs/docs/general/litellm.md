@@ -41,7 +41,7 @@ Registered servers (`mcp_servers:` in the config) and their groups:
 | `board` | vikunja | **write** (task CRUD) |
 | `memory` | omnigraph_memory (Omnigraph 0.14's own `omnigraph-next:8080/mcp`, `act-agent`) | read `memory`, write on its own branches |
 | `brain` | omnigraph_brain (`omnigraph-next:8080/mcp`, `act-brain-agent`) | read and write `brain`, including `main` |
-| `glide` | omnigraph_glide_memory and omnigraph_glide_brain (`omnigraph-next:8080/mcp`), omnigraph_glide_webgrip (bridge `omnigraph-mcp:8006` to 0.11), all `act-glide` | read every branch of `memory`, `brain` and `webgrip`; write only on unprotected branches (`glide/<run-id>`); never merge ([runbooks/omnigraph](../runbooks/omnigraph.md#glide-agents)) |
+| `glide` | omnigraph_glide_memory, omnigraph_glide_brain and omnigraph_glide_webgrip (`omnigraph-next:8080/mcp`, `act-glide`) | read every branch of `memory`, `brain` and `webgrip`; write only on unprotected branches (`glide/<run-id>`); never merge ([runbooks/omnigraph](../runbooks/omnigraph.md#glide-agents)) |
 | `brain-dogfood` | brain_tools (HTTP, `brain-tools:8080/mcp`, `act-brain-reader`) | `search` and `read` over `brain` with plain questions, read-only; the dogfood grant of brain retrieval P4, held by `claude-code` only until P6 regroups it ([runbooks/omnigraph](../runbooks/omnigraph.md#brain-tools)) |
 | `brain-eval-raw` | omnigraph_brain_eval (`omnigraph-next:8080/mcp`, `act-brain-eval`) | read every branch of `brain` and run stored queries; `mutate`, `load` and the branch writes are hidden by `disallowed_tools` and refused by policy. Only the brain eval key holds it, to score today's raw-query chat path as baseline B0 ([runbooks/omnigraph](../runbooks/omnigraph.md#brain-eval)) |
 
@@ -59,8 +59,8 @@ Code and Open WebUI reach `memory` and `brain` through the gateway with the keys
 
 ## Omnigraph MCP
 
-Since the 0.14 cutover (2026-10-24, [RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md)) five of
-the `omnigraph_*` servers are Omnigraph's own `/mcp` endpoint on `omnigraph-next`, started with
+Since the 0.14 cutover (2026-10-24, [RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md)) all six
+`omnigraph_*` servers are Omnigraph's own `/mcp` endpoint on `omnigraph-next`, started with
 `--mcp-allow-adhoc` and `--mcp-allow-writes`. Each entry is one actor: LiteLLM sends that actor's
 bearer token (`auth_type: bearer_token`, `authentication_token: os.environ/...` from the Secret
 `litellm-omnigraph-mcp`), and the server's applied Cedar policy decides every call. The tools take
@@ -74,6 +74,7 @@ a `graph` argument; `query` runs a stored query by name, `read` runs ad-hoc GQ, 
 | `omnigraph_brain_eval` | `act-brain-eval` | `brain` | `OMNIGRAPH_MCP_BRAIN_EVAL_TOKEN`, `omnigraph/brain-eval` |
 | `omnigraph_glide_memory` | `act-glide` | `memory` | `OMNIGRAPH_MCP_GLIDE_TOKEN`, `omnigraph/glide` |
 | `omnigraph_glide_brain` | `act-glide` | `brain` | `OMNIGRAPH_MCP_GLIDE_TOKEN`, `omnigraph/glide` |
+| `omnigraph_glide_webgrip` | `act-glide` | `webgrip` | `OMNIGRAPH_MCP_GLIDE_TOKEN`, `omnigraph/glide` |
 
 **Why the server, not the network, is the gate.** `omnigraph-next` also serves the importers,
 brain-tools and the brain eval over HTTP, so it cannot be a `litellm-gateway-only` service. It
@@ -86,78 +87,9 @@ is written into the config, or when the credential is dropped
 ([test](../../../../scripts/test-validate-mcp-gateway-only.sh)). `omnigraph_brain_eval` keeps
 `disallowed_tools` so the write tools do not show; the policy refuses them anyway.
 
-`omnigraph_glide_webgrip` stays on the stdio bridge below until Ploeg's tenant graphs move to
-0.14 (VIK-2337); `webgrip` on 0.11 is the copy Ploeg reads.
-
-## Omnigraph bridge (`webgrip`, 0.11)
-
-The remaining `omnigraph_*` server is the stdio bridge `@modernrelay/omnigraph-mcp` 0.10.0, which has no
-HTTP mode. It runs behind supergateway 4.0.0 as the one container of the `omnigraph-mcp` Deployment
-([app](../../../../kubernetes/apps/ai/omnigraph-mcp/app/)), and LiteLLM reaches it over streamable
-HTTP. LiteLLM itself runs no stdio server, and `LITELLM_ENABLE_MCP_STDIO` is unset, so the proxy
-also refuses to register one through its API.
-
-| Server | Container and port | Graph | Token (Secret, OpenBao path) |
-|---|---|---|---|
-| `omnigraph_glide_webgrip` | `glide-webgrip` :8006 | `webgrip` | `omnigraph-mcp-glide`, `omnigraph/glide` |
-
-Why it is built this way:
-
-- **Why not stdio in LiteLLM.** From 1.104 LiteLLM runs stdio servers only with
-  `LITELLM_ENABLE_MCP_STDIO=true`. With the flag on, whoever can register an MCP server (a
-  `proxy_admin`, or a config change) can make the proxy run `node`, `npx`, `uvx`, `python`,
-  `docker` or `deno` inside the pod that holds every provider key, the master key and the database
-  URL. The bridges were the only reason for the flag.
-- **One container per bridge, one token each.** A container sees only its own `OMNIGRAPH_TOKEN`
-  (`envFrom` its own Secret). The pod does not share a process namespace, so a bridge cannot read another
-  bridge's environment. The three `glide` bridges are one actor, `act-glide`, and share its token
-  by design. The provider keys never enter this pod.
-- **Only LiteLLM gets in.** `omnigraph-mcp-ingress` admits the `litellm` pod alone, on 8006.
-  The pods and the Service carry `mcp.webgrip.io/access: litellm-gateway-only`, so
-  `scripts/validate_mcp_gateway_only.py` fails the build if a route, a non-ClusterIP Service or a
-  wider ingress rule ever reaches them. The bridges' write grants (`memory`, `brain`, `glide`) are
-  only as narrow as the access group in front of them, which is why the gateway has to be the only
-  way in.
-- **The bridges reach Omnigraph and the npm registry, nothing else.** `omnigraph-mcp-egress` allows
-  `omnigraph` :8080. `omnigraph-mcp-npm-registry` (Cilium `toFQDNs`) allows `registry.npmjs.org`
-  :443, which the `install-omnigraph-mcp` init container needs for `npm ci` from the lockfile in
-  [bridge/](../../../../kubernetes/apps/ai/omnigraph-mcp/app/bridge/). A network policy covers the
-  whole pod, so the bridge containers can reach the registry too. LiteLLM no longer reaches
-  Omnigraph directly.
-- **Stateless supergateway.** Each POST starts a fresh bridge process and ends it with the
-  response, the same mode as `mcp-vikunja`. supergateway 3.4.3 kept one child per request alive
-  (the 2026-09-27 `mcp-vikunja` memory climb), and 4.0.0 does not.
-- **`--logLevel none`.** At `info` supergateway logs every JSON-RPC message, which would put query
-  text, loaded notes and results into VictoriaLogs and undo PATCH 3
-  ([MCP tool arguments](#mcp-tool-arguments)). The cost is that a bridge failure shows up only as
-  an MCP error in LiteLLM's log and as a container restart.
-- **Ingress through LiteLLM keeps PATCH 2.** LiteLLM caps the MCP protocol version it proposes at
-  `2025-06-18` ([runtime patches](#mcp-tool-arguments)), which supergateway serves.
-
-A bridge that cannot start shows as a container in `CrashLoopBackOff` or not ready
-(`AppContainerCrashLooping`), and its tools vanish from `tools/list`. The other bridges keep
-working. A wrong or rotated-out token shows only on the first graph read: `tools/list` and
-`health` need no token, `graphs_list` answers 401 `invalid bearer token`.
-
-### Checked before the move
-
-On 2026-10-17, locally, against the pinned images: the six bridge containers ran as they do in
-the Deployment (supergateway 4.0.0, user 65534, read-only root, all capabilities dropped,
-`npm ci` from the lockfile) against a port-forward to `svc/omnigraph` with an invalid token.
-LiteLLM 1.105.1 ran this repository's `config.yaml` and `sitecustomize.py` with
-`LITELLM_ENABLE_MCP_STDIO` unset, with the bridge URLs pointed at localhost. A key holding
-`memory`, `brain`, `brain-eval-raw` and `glide` called `/mcp`:
-
-- `initialize` answered with protocol `2025-06-18`.
-- `tools/list` returned 15 tools for each bridge and 10 for `omnigraph_brain_eval` (`mutate`,
-  `load` and the three `branches_*` writes hidden).
-- `omnigraph_memory-health` reached Omnigraph and returned `ok` (server 0.11.0).
-  `omnigraph_glide_webgrip-graphs_list` returned 401 `invalid bearer token`, so the token
-  travels from the container to Omnigraph.
-- `omnigraph_brain_eval-mutate` and `-branches_create` were refused by LiteLLM ("not allowed for
-  server omnigraph_brain_eval").
-- Registering a stdio server through `POST /v1/mcp/server` was refused: "stdio MCP servers are
-  disabled on this proxy".
+The stdio bridges (`@modernrelay/omnigraph-mcp` 0.10.0 behind supergateway in the `omnigraph-mcp`
+Deployment) were removed on 2026-10-25, after the last one, `omnigraph_glide_webgrip`, moved to
+0.14 with Ploeg's tenant graphs; their design is in git history before that removal.
 
 ## Virtual keys from git
 
@@ -226,7 +158,7 @@ LiteLLM 1.104 and 1.105 changed two defaults homelab depended on; no setting put
 behaviour back any more.
 
 - 1.104 turned stdio MCP servers off. Homelab keeps them off, because the
-  [Omnigraph bridges](#omnigraph-bridge-webgrip-011) run over HTTP.
+  [Omnigraph bridges](#omnigraph-mcp) run over HTTP.
 - A spent budget answers HTTP 422 since 1.104.0. Homelab kept 429 with
   `budget_exceeded_status_code: 429` until Unfold and Ploeg recognised a spent budget by its body
   at any status (Unfold #401 in 0.4.0-rc.82, Ploeg #151 in 0.2.0-rc.23); the setting was removed
@@ -355,7 +287,7 @@ From 1.106.0 ([BerriAI/litellm#45401](https://github.com/BerriAI/litellm/pull/45
 removes the caller's key from every header it sends to an MCP server. Nothing here needs that key:
 
 - `grafana`, `victorialogs`, `kubernetes`, `opencost`, `vikunja`, `brain_tools` and the six
-  `omnigraph_*` [bridges](#omnigraph-bridge-webgrip-011) are HTTP
+  `omnigraph_*` [bridges](#omnigraph-mcp) are HTTP
   servers without `auth_type`, `extra_headers` or a pass-through setting, so LiteLLM forwards no
   caller credential to them. A header-recording HTTP MCP server registered the same way received
   no LiteLLM key on `initialize`, `tools/list` or `tools/call`, with the key in `Authorization`
@@ -423,11 +355,10 @@ declares.
 
 | Workload | Egress (beyond DNS) | Ingress | Policy objects |
 |---|---|---|---|
-| `litellm` | valkey :6379, `litellm-db` instances :5432, `tei-embeddings` and `brain-tools` :8080, `omnigraph-mcp` :8001–8006, namespaces `observability` and `vikunja` (MCP backends, OTLP to alloy-gateway), namespace `network` (gateway hairpin: Authentik OIDC, own hostname), internet TCP 443 outside RFC1918, CGNAT and link-local | :4000 from `ai`, `network`, `ploeg`, `unfold-workspaces`, LAN; :9187 from `observability` | `litellm-allow-egress`, `litellm-allow-gateway-egress`, `litellm-private-ingress`, `litellm-allow-internal` |
+| `litellm` | valkey :6379, `litellm-db` instances :5432, `tei-embeddings`, `brain-tools` and `omnigraph-next` :8080, namespaces `observability` and `vikunja` (MCP backends, OTLP to alloy-gateway), namespace `network` (gateway hairpin: Authentik OIDC, own hostname), internet TCP 443 outside RFC1918, CGNAT and link-local | :4000 from `ai`, `network`, `ploeg`, `unfold-workspaces`, LAN; :9187 from `observability` | `litellm-allow-egress`, `litellm-allow-gateway-egress`, `litellm-private-ingress`, `litellm-allow-internal` |
 | `litellm-valkey` | none | :6379 from `litellm` | `litellm-valkey-ingress` |
 | `litellm-db` (CNPG instances and jobs) | kube-apiserver, the off-site store `116.202.53.185/32` :443, other `litellm-db` instances :5432 | :5432 from `litellm`, `observability` (Grafana SQL datasource) and its own instances; :9187 from `observability`; :8000 and :5432 from `cnpg-system` | `litellm-db-ingress`, `litellm-db-replication-egress` (DB layer) plus `components/cnpg-netpol` |
-| `omnigraph` | `litellm` :4000 (embeddings, init and server) | :8080 from `omnigraph-mcp`, `omnigraph-explorer`, `omnigraph-vault-import`, `omnigraph-forge-import`, `omnigraph-distill`, `omnigraph-brain-eval`, `brain-tools`, `network` | `omnigraph-egress`, `omnigraph-ingress` |
-| `omnigraph-mcp` | `omnigraph` :8080, `registry.npmjs.org` :443 (`npm ci` in the init container) | :8001–8006 from `litellm` only | `omnigraph-mcp-ingress`, `omnigraph-mcp-egress`, `omnigraph-mcp-npm-registry` |
+| `omnigraph` | `litellm` :4000 (embeddings, init and server) | :8080 from `omnigraph-explorer`, `omnigraph-vault-import`, `omnigraph-forge-import`, `omnigraph-distill`, `omnigraph-brain-eval`, `brain-tools`, `network` | `omnigraph-egress`, `omnigraph-ingress` |
 | `brain-tools` | `omnigraph` :8080, `litellm` :4000 | :8080 (MCP) from `litellm`; :8081 (REST and metrics) from `omnigraph-brain-eval` and `observability` | `brain-tools` |
 | `omnigraph-explorer` | `omnigraph` :8080 | :8080 from `network` and the blackbox exporter | `omnigraph-explorer` |
 | `omnigraph-embed-key-register` Job | `litellm` :4000 | none | `omnigraph-embed-key-register-egress` |
