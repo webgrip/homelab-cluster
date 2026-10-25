@@ -14,7 +14,7 @@ spec:
       "schemaVersion": 39,
       "title": "Unfold cloud costs",
       "uid": "unfold-cloud-costs",
-      "timezone": "browser",
+      "timezone": "utc",
       "tags": [
         "finops",
         "cost",
@@ -75,10 +75,10 @@ spec:
           "id": 3,
           "type": "stat",
           "title": "Month to date",
-          "description": "Started hours this month x hourly price, capped at each resource's monthly price.",
+          "description": "Started hours this month x hourly price, capped at each resource's monthly price. Turns red above the monthly budget (recording rule hcloud:budget_month_eur).",
           "gridPos": {
             "h": 4,
-            "w": 4,
+            "w": 3,
             "x": 0,
             "y": 4
           },
@@ -91,54 +91,12 @@ spec:
               "refId": "A",
               "expr": "sum(max by (kind, id) (hcloud_cost_resource_month_to_date_eur{project=\"unfold\"}))",
               "instant": true
-            }
-          ],
-          "options": {
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
             },
-            "textMode": "value",
-            "colorMode": "value",
-            "graphMode": "none",
-            "justifyMode": "center"
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "currencyEUR",
-              "decimals": 2,
-              "color": {
-                "mode": "fixed",
-                "fixedColor": "blue"
-              },
-              "noValue": "no data"
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 4,
-          "type": "stat",
-          "title": "Projected end of month",
-          "description": "Month to date plus every current resource running until the 1st, each capped at its monthly price. Budget alert at EUR 50.",
-          "gridPos": {
-            "h": 4,
-            "w": 4,
-            "x": 4,
-            "y": 4
-          },
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "targets": [
             {
-              "refId": "A",
-              "expr": "sum(max by (kind, id) (hcloud_cost_resource_projected_month_eur{project=\"unfold\"}))",
-              "instant": true
+              "refId": "BUDGET",
+              "expr": "max(hcloud:budget_month_eur{project=\"unfold\"})",
+              "instant": true,
+              "legendFormat": "Budget"
             }
           ],
           "options": {
@@ -168,30 +126,37 @@ spec:
                   {
                     "color": "green",
                     "value": null
-                  },
-                  {
-                    "color": "orange",
-                    "value": 40
-                  },
-                  {
-                    "color": "red",
-                    "value": 50
                   }
                 ]
               }
             },
             "overrides": []
-          }
+          },
+          "transformations": [
+            {
+              "id": "configFromQuery",
+              "options": {
+                "configRefId": "BUDGET",
+                "mappings": [
+                  {
+                    "fieldName": "Budget",
+                    "handlerKey": "threshold1",
+                    "reducerId": "lastNotNull"
+                  }
+                ]
+              }
+            }
+          ]
         },
         {
-          "id": 5,
+          "id": 19,
           "type": "stat",
-          "title": "Full-month run-rate",
-          "description": "Sum of monthly caps: what a whole month of the current inventory costs.",
+          "title": "Budget used",
+          "description": "Month to date as a share of the monthly budget (recording rule hcloud:budget_month_eur). Compare with how far the month is: on the 15th about 50% is on track.",
           "gridPos": {
             "h": 4,
-            "w": 4,
-            "x": 8,
+            "w": 3,
+            "x": 3,
             "y": 4
           },
           "datasource": {
@@ -201,8 +166,78 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(max by (kind, id) (hcloud_cost_resource_monthly_cap_eur{project=\"unfold\"}))",
+              "expr": "sum(max by (kind, id) (hcloud_cost_resource_month_to_date_eur{project=\"unfold\"})) / scalar(max(hcloud:budget_month_eur{project=\"unfold\"}))",
               "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "decimals": 0,
+              "color": {
+                "mode": "thresholds"
+              },
+              "noValue": "no data",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.8
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Projected end of month",
+          "description": "Month to date plus every current resource running until the 1st, each capped at its monthly price. Turns red above the monthly budget (recording rule hcloud:budget_month_eur), the same series the budget alert compares against.",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 6,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(hcloud:projected_month_eur:sum{project=\"unfold\"})",
+              "instant": true
+            },
+            {
+              "refId": "BUDGET",
+              "expr": "max(hcloud:budget_month_eur{project=\"unfold\"})",
+              "instant": true,
+              "legendFormat": "Budget"
             }
           ],
           "options": {
@@ -223,13 +258,113 @@ spec:
               "unit": "currencyEUR",
               "decimals": 2,
               "color": {
-                "mode": "fixed",
-                "fixedColor": "purple"
+                "mode": "thresholds"
               },
-              "noValue": "no data"
+              "noValue": "no data",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
             },
             "overrides": []
-          }
+          },
+          "transformations": [
+            {
+              "id": "configFromQuery",
+              "options": {
+                "configRefId": "BUDGET",
+                "mappings": [
+                  {
+                    "fieldName": "Budget",
+                    "handlerKey": "threshold1",
+                    "reducerId": "lastNotNull"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Full-month run-rate",
+          "description": "Sum of monthly caps: what a whole month of the current inventory costs. Turns red above the monthly budget (recording rule hcloud:budget_month_eur).",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 9,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(max by (kind, id) (hcloud_cost_resource_monthly_cap_eur{project=\"unfold\"}))",
+              "instant": true
+            },
+            {
+              "refId": "BUDGET",
+              "expr": "max(hcloud:budget_month_eur{project=\"unfold\"})",
+              "instant": true,
+              "legendFormat": "Budget"
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value",
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyEUR",
+              "decimals": 2,
+              "color": {
+                "mode": "thresholds"
+              },
+              "noValue": "no data",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "transformations": [
+            {
+              "id": "configFromQuery",
+              "options": {
+                "configRefId": "BUDGET",
+                "mappings": [
+                  {
+                    "fieldName": "Budget",
+                    "handlerKey": "threshold1",
+                    "reducerId": "lastNotNull"
+                  }
+                ]
+              }
+            }
+          ]
         },
         {
           "id": 6,
@@ -535,7 +670,7 @@ spec:
           "id": 12,
           "type": "stat",
           "title": "API token",
-          "description": "1 = token mounted and accepted by Hetzner. 0 = not seeded yet or rejected.",
+          "description": "OK = token mounted and accepted by Hetzner. Missing or rejected = not seeded yet, or Hetzner answers 401/403.",
           "gridPos": {
             "h": 4,
             "w": 4,
@@ -586,7 +721,24 @@ spec:
                     "value": 1
                   }
                 ]
-              }
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "Missing or rejected",
+                      "color": "red",
+                      "index": 0
+                    },
+                    "1": {
+                      "text": "OK",
+                      "color": "green",
+                      "index": 1
+                    }
+                  }
+                }
+              ]
             },
             "overrides": []
           }
@@ -710,7 +862,24 @@ spec:
                     "value": 1
                   }
                 ]
-              }
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "Down",
+                      "color": "red",
+                      "index": 0
+                    },
+                    "1": {
+                      "text": "OK",
+                      "color": "green",
+                      "index": 1
+                    }
+                  }
+                }
+              ]
             },
             "overrides": []
           }
@@ -793,17 +962,6 @@ spec:
           "options": {
             "showHeader": true,
             "cellHeight": "sm",
-            "footer": {
-              "show": true,
-              "reducer": [
-                "sum"
-              ],
-              "fields": [
-                "Month to date EUR",
-                "Projected month EUR",
-                "Full month EUR"
-              ]
-            },
             "sortBy": [
               {
                 "displayName": "Projected month EUR",
@@ -844,6 +1002,20 @@ spec:
                   {
                     "id": "decimals",
                     "value": 4
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "^(Month to date EUR|Projected month EUR|Full month EUR)$"
+                },
+                "properties": [
+                  {
+                    "id": "custom.footer.reducers",
+                    "value": [
+                      "sum"
+                    ]
                   }
                 ]
               }
@@ -937,18 +1109,6 @@ spec:
           "options": {
             "showHeader": true,
             "cellHeight": "sm",
-            "footer": {
-              "show": true,
-              "reducer": [
-                "sum"
-              ],
-              "fields": [
-                "Monthly cap EUR",
-                "Month to date EUR",
-                "Projected month EUR",
-                "Hourly EUR"
-              ]
-            },
             "sortBy": [
               {
                 "displayName": "Projected month EUR",
@@ -1001,6 +1161,20 @@ spec:
                   {
                     "id": "decimals",
                     "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "^(Monthly cap EUR|Month to date EUR|Projected month EUR|Hourly EUR)$"
+                },
+                "properties": [
+                  {
+                    "id": "custom.footer.reducers",
+                    "value": [
+                      "sum"
+                    ]
                   }
                 ]
               }

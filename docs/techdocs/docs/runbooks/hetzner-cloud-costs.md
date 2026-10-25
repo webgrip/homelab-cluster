@@ -62,14 +62,19 @@ All carry `project="unfold"`. The per-resource series also carry `kind` (`server
 
 | Alert | Fires when |
 | --- | --- |
-| `HetznerProjectedMonthOverBudget` | projected month > €50 for 15 min |
+| `HetznerProjectedMonthOverBudget` | projected month > €75 for 15 min |
 | `HetznerServerOutsideCluster` | a server without `cluster=unfold-main` is older than 2 h, such as a leftover `hcloud-upload-image` temp server |
 | `HetznerCostExporterDown` | no successful scrape of `hcloud-cost-exporter` for 15 min |
 | `HetznerApiTokenRejected` | a token is mounted and Hetzner rejects it for 10 min |
 | `HetznerCostRefreshFailing` | an accepted token stops refreshing for 30 min (egress, API outage) |
 | `HetznerApiTokenNotSeeded` | info: no token mounted for 1 h |
 
-The budget is the literal `50` in the rule; change it there and in its vmalert test.
+The budget, €75 a month, lives in one place: the recording rule `hcloud:budget_month_eur` in
+`prometheusrule-platform-hetzner-costs.yaml`. The alert compares `hcloud:projected_month_eur:sum`
+(each resource counted once, by `kind` and `id`, so a duplicate scrape does not double it) with it,
+and the dashboard reads it for the red threshold on Month to date, Projected end of month and
+Full-month run-rate, and for the Budget used share. To change the budget, edit the number in that
+rule and the expected sample in `scripts/vmalert-tests/platform-hetzner-costs.test.yaml`.
 
 ## Seed or rotate the read-only token
 

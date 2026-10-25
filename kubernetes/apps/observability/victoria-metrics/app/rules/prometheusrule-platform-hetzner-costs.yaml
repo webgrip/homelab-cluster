@@ -12,18 +12,24 @@ spec:
   groups:
     - name: platform.hetzner-costs
       rules:
+        - record: hcloud:budget_month_eur
+          expr: label_replace(vector(75), "project", "unfold", "", "")
+
+        - record: hcloud:projected_month_eur:sum
+          expr: sum by (project) (max by (project, kind, id) (hcloud_cost_resource_projected_month_eur))
+
         - alert: HetznerProjectedMonthOverBudget
-          expr: sum by (project) (hcloud_cost_resource_projected_month_eur) > 50
+          expr: hcloud:projected_month_eur:sum > on (project) hcloud:budget_month_eur
           for: 15m
           labels:
             severity: warning
             owner: platform
             service: hetzner-costs
           annotations:
-            summary: "Hetzner Cloud projected month spend is above EUR 50 (hetzner/{{ $labels.project }})"
+            summary: "Hetzner Cloud projected month spend is above budget (hetzner/{{ $labels.project }})"
             description: |
               What's happening:
-              - If every resource in Hetzner project {{ $labels.project }} lives to the end of the month, the bill reaches EUR {{ $value | printf "%.2f" }} (net), above the EUR 50 budget.
+              - If every resource in Hetzner project {{ $labels.project }} lives to the end of the month, the bill reaches EUR {{ $value | printf "%.2f" }} (net), above the monthly budget in the recording rule hcloud:budget_month_eur.
 
               Impact/risk:
               - The Unfold production cluster costs more than planned; the bill arrives at month end with no undo.
@@ -35,7 +41,7 @@ spec:
 
               First actions:
               - Open the Unfold cloud costs dashboard and sort the resource table by projected cost
-              - Delete what is not part of unfold-main, or raise the budget in this rule on purpose
+              - Delete what is not part of unfold-main, or raise hcloud:budget_month_eur on purpose
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/hetzner-cloud-costs/"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/unfold-cloud-costs"
 

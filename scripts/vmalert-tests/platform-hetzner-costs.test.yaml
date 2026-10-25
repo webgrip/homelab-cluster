@@ -3,19 +3,36 @@ rule_files:
   - rules/platform-hetzner-costs.yaml
 evaluation_interval: 1m
 tests:
-  - name: a projected month over budget fires and one under budget does not
+  - name: a projected month over the EUR 75 budget fires, the old EUR 50 level and a duplicate scrape do not
     interval: 1m
     input_series:
-      - series: 'hcloud_cost_resource_projected_month_eur{project="unfold", kind="server", name="unfold-app-1"}'
-        values: "8.49x60"
-      - series: 'hcloud_cost_resource_projected_month_eur{project="unfold", kind="server", name="big"}'
-        values: "_x20 45x40"
+      - series: 'hcloud_cost_resource_projected_month_eur{project="unfold", kind="server", id="1", name="unfold-app-1", instance="a"}'
+        values: "8.49x110"
+      - series: 'hcloud_cost_resource_projected_month_eur{project="unfold", kind="server", id="2", name="big", instance="a"}'
+        values: "_x20 60x40 70x48"
+      - series: 'hcloud_cost_resource_projected_month_eur{project="unfold", kind="server", id="2", name="big", instance="b"}'
+        values: "_x20 60x40 70x48"
+    metricsql_expr_test:
+      - expr: hcloud:budget_month_eur
+        eval_time: 5m
+        exp_samples:
+          - labels: 'hcloud:budget_month_eur{project="unfold"}'
+            value: 75
+      - expr: hcloud:projected_month_eur:sum
+        eval_time: 55m
+        exp_samples:
+          - labels: 'hcloud:projected_month_eur:sum{project="unfold"}'
+            value: 68.49
     alert_rule_test:
       - eval_time: 19m
         groupname: platform.hetzner-costs
         alertname: HetznerProjectedMonthOverBudget
         exp_alerts: []
-      - eval_time: 40m
+      - eval_time: 55m
+        groupname: platform.hetzner-costs
+        alertname: HetznerProjectedMonthOverBudget
+        exp_alerts: []
+      - eval_time: 90m
         groupname: platform.hetzner-costs
         alertname: HetznerProjectedMonthOverBudget
         exp_alerts:
@@ -25,7 +42,7 @@ tests:
               owner: platform
               service: hetzner-costs
             exp_annotations:
-              summary: "Hetzner Cloud projected month spend is above EUR 50 (hetzner/unfold)"
+              summary: "Hetzner Cloud projected month spend is above budget (hetzner/unfold)"
 
   - name: an unlabelled server older than two hours fires and cluster servers do not
     interval: 1m
