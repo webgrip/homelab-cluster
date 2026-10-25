@@ -81,15 +81,21 @@ while read -r stale; do
   changed=1
 done < <(jq -c --argjson desired "$desired" '.[] | select(.name as $n | $desired | map(.name) | index($n) | not)' <<<"$existing")
 
-if [[ "$changed" == 1 ]]; then
-  jq -e '.status == "ok"' >/dev/null <<<"$(opnsense POST service/reconfigure '{}')" \
-    || { echo "OPNsense did not apply the WireGuard change" >&2; exit 1; }
+peers="$(opnsense POST client/searchClient '{"current":1,"rowCount":-1}' \
+  | jq --arg p "$peer_prefix" '[.rows[] | select(.name | startswith($p))]')"
+peers_digest="$(jq -cS '[.[] | {name, pubkey, tunneladdress, enabled}] | sort_by(.name)' <<<"$peers" \
+  | sha256sum | cut -d' ' -f1)"
+applied_digest="$(kubectl get configmap "$PEER_CONFIGMAP" -n "$NAMESPACE" \
+  -o jsonpath='{.metadata.annotations.access\.webgrip\.io/applied-peers}' 2>/dev/null || true)"
+
+if [[ "$changed" == 1 || "$peers_digest" != "$applied_digest" ]]; then
+  answer="$(opnsense POST service/reconfigure '{}' 2>&1 || true)"
+  jq -e '(.status // "" | ascii_downcase) == "ok"' >/dev/null 2>&1 <<<"$answer" \
+    || { echo "OPNsense did not apply the WireGuard change; it answered: ${answer}" >&2; exit 1; }
   echo "applied on ${server_name}"
 fi
 
 info="$(opnsense GET "client/getServerInfo/${server_uuid}")"
-peers="$(opnsense POST client/searchClient '{"current":1,"rowCount":-1}' \
-  | jq --arg p "$peer_prefix" '[.rows[] | select(.name | startswith($p))]')"
 configs="$(jq -n --argjson peers "$peers" --argjson info "$info" \
   --arg endpoint "$WG_ENDPOINT" --arg dns "$WG_PEER_DNS" --arg allowed "$WG_ALLOWED_IPS" '
   [$peers[] | {key: .name, value: ([
@@ -107,6 +113,7 @@ configs="$(jq -n --argjson peers "$peers" --argjson info "$info" \
     ""] | join("\n"))}] | from_entries')"
 
 kubectl create configmap "$PEER_CONFIGMAP" -n "$NAMESPACE" --dry-run=client -o json \
-  | jq --argjson data "$configs" '.data = $data' \
+  | jq --argjson data "$configs" --arg digest "$peers_digest" \
+    '.data = $data | .metadata.annotations["access.webgrip.io/applied-peers"] = $digest' \
   | kubectl apply -f - >/dev/null
 echo "wrote $(jq 'length' <<<"$configs") peer configurations to ConfigMap ${PEER_CONFIGMAP}"
