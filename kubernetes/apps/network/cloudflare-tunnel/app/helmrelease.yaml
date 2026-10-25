@@ -116,6 +116,14 @@ spec:
               # already admits the `network` namespace on all ports.
               - hostname: "forgejo-ssh.${SECRET_DOMAIN}"
                 service: ssh://forgejo-ssh.forgejo.svc.cluster.local:22
+              - hostname: "authentik.${SECRET_DOMAIN}"
+                path: '^/application/o/unfold-kubernetes/(\.well-known/openid-configuration|jwks/)\z'
+                originRequest:
+                  http2Origin: true
+                  originServerName: authentik.${SECRET_DOMAIN}
+                service: https://envoy-internal.{{ .Release.Namespace }}.svc.cluster.local:443
+              - hostname: "authentik.${SECRET_DOMAIN}"
+                service: http_status:404
               - hostname: "*.${SECRET_DOMAIN}"
                 originRequest:
                   http2Origin: true

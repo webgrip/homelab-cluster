@@ -81,6 +81,36 @@ mise exec -- bao kv get secret/<app>/oidc
 The OpenBao client is the exception: Authentik generated its secret and the module reads it
 from the provider resource into the OpenBao auth mount, so it exists in no vault path.
 
+## The one public path: the Unfold cluster's signing keys
+
+Authentik answers on the LAN only, with one exception. The Unfold production cluster on Hetzner
+signs people in to its Kubernetes API with the public client `unfold-kubernetes`, and its API
+servers fetch that provider's discovery document and signing keys themselves. The Cloudflare
+tunnel publishes `authentik.${SECRET_DOMAIN}` for exactly two paths,
+`/application/o/unfold-kubernetes/.well-known/openid-configuration` and
+`/application/o/unfold-kubernetes/jwks/`, and answers 404 to every other path on that name
+before the request reaches the cluster. Both documents are public by design: they hold the
+endpoints and the public half of the signing key. The login itself, the authorize and token
+endpoints, stays on the LAN and the VPN: k8s-gateway answers the name with envoy-internal
+there, and only off-LAN resolvers see the tunnel.
+
+| Piece | Where |
+| --- | --- |
+| Public record | `kubernetes/apps/network/cloudflare-tunnel/app/dnsendpoint.yaml` |
+| Path allowlist | the `authentik.${SECRET_DOMAIN}` rules in the tunnel's `config.yaml`, above the wildcard |
+| Client, scope `unfold_kubernetes` with claim `unfold_groups` | `tofu/broker/applications.tf` |
+| Groups `unfold-admins` and `unfold-viewers` | capabilities `unfold-cluster-operate` and `unfold-cluster-view` |
+| The cluster side | `webgrip/unfold-cluster`, `docs/runbooks/kubernetes-login.md` |
+
+Check it as the internet sees it, through a public resolver:
+
+```sh
+curl -s --doh-url https://1.1.1.1/dns-query https://authentik.${SECRET_DOMAIN}/application/o/unfold-kubernetes/jwks/
+curl -s -o /dev/null -w '%{http_code}\n' --doh-url https://1.1.1.1/dns-query https://authentik.${SECRET_DOMAIN}/application/o/authorize/
+```
+
+The first prints a key set; the second must print `404`.
+
 ## Operations
 
 ```sh
