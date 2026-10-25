@@ -74,6 +74,7 @@ spec:
               env:
                 - {name: HOME, value: /tmp}
                 - {name: CURL_TIMEOUT, value: "30"}
+                - {name: CURL_RETRIES, value: "12"}
                 - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
                 - {name: NAMESPACE, value: forgejo}
                 - {name: ORG, value: webgrip}
@@ -90,7 +91,7 @@ spec:
                 - |
                   api="${FORGEJO_URL}/api/v1"
                   admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
-                  curl() { command curl --connect-timeout 10 --max-time "$CURL_TIMEOUT" "$@"; }
+                  curl() { command curl --connect-timeout 10 --max-time "$CURL_TIMEOUT" --retry "$CURL_RETRIES" --retry-connrefused --retry-delay 15 "$@"; }
                   kubectl() { timeout 30 kubectl "$@"; }
                   stored() { kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" -o "jsonpath={.data.$1}" 2>/dev/null | base64 -d 2>/dev/null || true; }
 
