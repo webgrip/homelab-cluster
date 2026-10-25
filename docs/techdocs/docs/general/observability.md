@@ -99,6 +99,49 @@ wiring/troubleshooting → `authentik-oidc` skill + [Authentik OIDC login runboo
   (`victoria-metrics/app/rules/prometheusrule-observability-backend.yaml`) page before dashboards
   go blank again.
 
+## Total cost of ownership
+
+`finops:monthly_total_eur` is what the homelab costs per month in EUR. It is the sum of
+`finops:monthly_cost_eur`, one series per cost line with a `line` and a `source` label, recorded in
+`kubernetes/apps/observability/victoria-metrics/app/rules/prometheusrule-finops.yaml`. Executive /
+Overview shows the total; FinOps & Cost lists the lines. `finops:monthly_cost_lines_missing` counts
+the expected lines (`finops:monthly_cost_lines_expected`, 7) that have no number yet, so a total
+that is too low says so.
+
+| Line | Source | State on 2026-10-25 |
+| --- | --- | --- |
+| `electricity` | Kepler CPU+DRAM watts × 730 h × `finops:eur_per_kwh` (EUR 0.30) | measured floor; wall power is higher |
+| `hetzner-cloud` | `hcloud:projected_month_eur:sum` | measured |
+| `model-spend` | LiteLLM `litellm_spend_metric_total`, 7-day run-rate × `finops:eur_per_usd` | waits for `finops:eur_per_usd` |
+| `offsite-garage` | the Hetzner dedicated server's monthly price | missing |
+| `subscriptions` | Claude and other flat-fee subscriptions | missing |
+| `domains` | domain registrations, per month | missing |
+| `hardware` | purchase price ÷ expected lifetime in months, all nodes | missing |
+
+A fixed line is one recording rule in the `finops.monthly` group, with its source and the date
+it was checked:
+
+```yaml
+- record: finops:monthly_cost_eur
+  expr: vector(39.00)
+  labels:
+    line: offsite-garage
+    source: hetzner-robot-invoice-2026-10
+```
+
+`finops:eur_per_usd` is the same shape in the `finops.inputs` group (no `line` label). A line
+whose source stops reporting drops out of the sum instead of reading 0, and the missing count
+rises.
+
+**Home Assistant.** VMAgent scrapes Home Assistant's Prometheus endpoint
+(`victoria-metrics/app/scrapes/vmstaticscrape-home-assistant.yaml`, job `home-assistant`) once
+Home Assistant enables its `prometheus:` integration and a token sits in OpenBao at
+`secret/home-assistant/prometheus`, key `token`. TLS is verified against the Cloudflare Origin CA
+root for `ha.home.webgrip.nl`, so the bearer token is never sent to whatever device takes over the
+address. Home Assistant has no scoped tokens: create the long-lived token as a dedicated non-admin
+user. Once whole-house (P1) or per-socket power is in, it replaces the Kepler floor as the
+`electricity` line.
+
 ## VictoriaLogs
 
 - VLSingle CR: `kubernetes/apps/observability/victorialogs/app/vlsingle.yaml` (managed by vm-operator; apiVersion `operator.victoriametrics.com/v1`).

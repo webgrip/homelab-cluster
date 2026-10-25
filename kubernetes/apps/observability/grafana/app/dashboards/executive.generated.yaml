@@ -437,8 +437,8 @@ spec:
         },
         {
           "type": "stat",
-          "title": "Homelab, modelled per month",
-          "description": "What the six nodes cost per month in OpenCost's model: power plus hardware amortisation at the hourly rates in the OpenCost HelmRelease. Grey at every value: it moves when nodes or rates change, and the FinOps dashboard shows which namespace pays for what.",
+          "title": "Homelab, total per month",
+          "description": "Everything the homelab costs per month in EUR: measured electricity, the Hetzner Cloud bill, model spend and the fixed costs kept in git (prometheusrule-finops.yaml). Inputs missing counts the cost lines that have no number yet; amber from one, because the total is then too low. The FinOps dashboard lists each line and its source.",
           "gridPos": {
             "h": 5,
             "w": 6,
@@ -458,7 +458,7 @@ spec:
               "values": false
             },
             "orientation": "auto",
-            "textMode": "auto",
+            "textMode": "value_and_name",
             "wideLayout": true,
             "colorMode": "value",
             "graphMode": "none",
@@ -467,8 +467,6 @@ spec:
           "fieldConfig": {
             "defaults": {
               "noValue": "no data",
-              "unit": "currencyEUR",
-              "decimals": 2,
               "color": {
                 "mode": "fixed",
                 "fixedColor": "#898781"
@@ -481,16 +479,79 @@ spec:
                 }
               ]
             },
-            "overrides": []
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "total"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "currencyEUR"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 2
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "inputs missing"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
           },
           "targets": [
             {
               "refId": "A",
-              "expr": "opencost:node_hourly_cost:sum * 730",
+              "expr": "finops:monthly_total_eur",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"
               },
+              "legendFormat": "total",
+              "instant": true,
+              "range": false
+            },
+            {
+              "refId": "B",
+              "expr": "finops:monthly_cost_lines_missing",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "inputs missing",
               "instant": true,
               "range": false
             }
@@ -500,7 +561,7 @@ spec:
         {
           "type": "stat",
           "title": "Electricity per month, measured floor",
-          "description": "Kepler's measured CPU and memory power at EUR 0.30 per kWh. The wall socket draws more (power supplies, disks, fans), so this is the least the cluster costs to run. Each continuous watt is about EUR 3 a year.",
+          "description": "Kepler's measured CPU and memory power at the kWh price in prometheusrule-finops.yaml. The wall socket draws more (power supplies, disks, fans), so this is the least the cluster costs to run. Each continuous watt is about EUR 3 a year.",
           "gridPos": {
             "h": 5,
             "w": 6,
@@ -548,7 +609,7 @@ spec:
           "targets": [
             {
               "refId": "A",
-              "expr": "sum(kepler_node_cpu_watts{zone=~\"package|dram\"}) / 1000 * 730 * 0.3",
+              "expr": "finops:monthly_cost_eur{line=\"electricity\"}",
               "datasource": {
                 "type": "prometheus",
                 "uid": "prometheus"

@@ -1,0 +1,25 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMStaticScrape
+metadata:
+  name: home-assistant
+spec:
+  jobName: home-assistant
+  targetEndpoints:
+    - targets:
+        - 10.0.0.133:8123
+      scheme: https
+      path: /api/prometheus
+      interval: 60s
+      scrapeTimeout: 30s
+      bearerTokenSecret:
+        name: home-assistant-metrics
+        key: token
+      tlsConfig:
+        serverName: ha.home.webgrip.nl
+        ca:
+          configMap:
+            name: cloudflare-origin-ca
+            key: ca.pem
+      labels:
+        site: home

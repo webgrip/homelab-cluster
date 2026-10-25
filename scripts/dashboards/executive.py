@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import alerts
-from lib import NEUTRAL, alarm_at, dashboard, doc_link, link, low_is_bad, sql, stat, target
+from lib import NEUTRAL, alarm_at, col, dashboard, doc_link, link, low_is_bad, sql, stat, target
 from platform_walls import backups_late, flux_not_ready, place, probes_failing, slo_worst
 
 FOLDER = "executive"
@@ -9,8 +9,6 @@ DOC = "docs/techdocs/docs/general/information-radiators.md"
 LITELLM_DB = {"type": "grafana-postgresql-datasource", "uid": "litellm-db"}
 TZ = "Europe/Amsterdam"
 MONTH_START = f"date_trunc('month', now() AT TIME ZONE '{TZ}') AT TIME ZONE '{TZ}'"
-EUR_PER_KWH = 0.30
-HOURS_PER_MONTH = 730
 UNFOLD = 'project="unfold"'
 
 
@@ -23,23 +21,31 @@ def money(title, expr, *, unit, desc, uid, targets=None):
                 links=drill(f"Open {uid}", uid))
 
 
-def homelab_cost():
-    return money(
-        "Homelab, modelled per month", f"opencost:node_hourly_cost:sum * {HOURS_PER_MONTH}", unit="currencyEUR",
-        uid="exec-finops",
-        desc="What the six nodes cost per month in OpenCost's model: power plus hardware amortisation at the hourly "
-             "rates in the OpenCost HelmRelease. Grey at every value: it moves when nodes or rates change, and "
-             "the FinOps dashboard shows which namespace pays for what.")
+def total_cost():
+    panel = stat(
+        "Homelab, total per month", None, text_mode="value_and_name", fixed_color=NEUTRAL,
+        targets=[target("finops:monthly_total_eur", "A", "total", instant=True),
+                 target("finops:monthly_cost_lines_missing", "B", "inputs missing", instant=True)],
+        links=drill("Open exec-finops", "exec-finops"),
+        desc="Everything the homelab costs per month in EUR: measured electricity, the Hetzner Cloud bill, "
+             "model spend and the fixed costs kept in git (prometheusrule-finops.yaml). Inputs missing counts "
+             "the cost lines that have no number yet; amber from one, because the total is then too low. The "
+             "FinOps dashboard lists each line and its source.")
+    panel["fieldConfig"]["overrides"] = [
+        col("total", unit="currencyEUR", decimals=2),
+        col("inputs missing", decimals=0, thresholds=alarm_at(amber=1)),
+    ]
+    return panel
 
 
 def electricity():
     return money(
         "Electricity per month, measured floor",
-        f'sum(kepler_node_cpu_watts{{zone=~"package|dram"}}) / 1000 * {HOURS_PER_MONTH} * {EUR_PER_KWH}',
+        'finops:monthly_cost_eur{line="electricity"}',
         unit="currencyEUR", uid="exec-finops",
-        desc=f"Kepler's measured CPU and memory power at EUR {EUR_PER_KWH:.2f} per kWh. The wall socket draws more "
-             "(power supplies, disks, fans), so this is the least the cluster costs to run. Each continuous watt "
-             "is about EUR 3 a year.")
+        desc="Kepler's measured CPU and memory power at the kWh price in prometheusrule-finops.yaml. The "
+             "wall socket draws more (power supplies, disks, fans), so this is the least the cluster costs to "
+             "run. Each continuous watt is about EUR 3 a year.")
 
 
 def hetzner_budget():
@@ -100,7 +106,7 @@ def overview():
         "exec-overview", "Executive / Overview", place([
             (critical, 0, 0, 6, 5), (probes_failing(), 6, 0, 6, 5), (flux_not_ready(), 12, 0, 6, 5),
             (backups_late(), 18, 0, 6, 5),
-            (homelab_cost(), 0, 5, 6, 5), (electricity(), 6, 5, 6, 5), (hetzner_budget(), 12, 5, 6, 5),
+            (total_cost(), 0, 5, 6, 5), (electricity(), 6, 5, 6, 5), (hetzner_budget(), 12, 5, 6, 5),
             (llm_spend(), 18, 5, 6, 5),
             (slo_worst(), 0, 10, 8, 5), (critical_cves(), 8, 10, 8, 5), (memory_headroom(), 16, 10, 8, 5),
             (firing(), 0, 15, 24, 9),

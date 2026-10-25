@@ -1,0 +1,58 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: finops
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: finops
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: finops.inputs
+      interval: 5m
+      rules:
+        - record: finops:eur_per_kwh
+          expr: vector(0.30)
+          labels:
+            source: nl-all-in-tariff-estimate-2026-10
+
+        - record: finops:monthly_cost_lines_expected
+          expr: vector(7)
+
+    - name: finops.monthly
+      interval: 5m
+      rules:
+        - record: finops:monthly_cost_eur
+          expr: |
+            sum(kepler_node_cpu_watts{zone=~"package|dram"}) / 1000 * 730
+            * on () group_left () finops:eur_per_kwh
+          labels:
+            line: electricity
+            source: kepler-cpu-dram-floor
+
+        - record: finops:monthly_cost_eur
+          expr: sum(hcloud:projected_month_eur:sum)
+          labels:
+            line: hetzner-cloud
+            source: hcloud-cost-exporter
+
+        - record: finops:monthly_cost_eur
+          expr: |
+            sum(rate(litellm_spend_metric_total[7d])) * 86400 * 30.44
+            * on () group_left () finops:eur_per_usd
+          labels:
+            line: model-spend
+            source: litellm-7d-run-rate
+
+    - name: finops.totals
+      interval: 5m
+      rules:
+        - record: finops:monthly_total_eur
+          expr: sum(finops:monthly_cost_eur)
+
+        - record: finops:monthly_cost_lines_missing
+          expr: |-
+            scalar(finops:monthly_cost_lines_expected)
+            - count(count by (line) (finops:monthly_cost_eur))

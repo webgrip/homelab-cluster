@@ -211,6 +211,29 @@ spec:
         {
           "id": 66, "type": "text", "title": "", "gridPos": {"h": 4, "w": 24, "x": 0, "y": 59},
           "options": {"mode": "markdown", "content": "**Measured energy (Kepler + Intel RAPL).** These are REAL watts read from `/sys/class/powercap/intel-rapl`, summed over the **package + dram** zones. Caveat: RAPL covers **CPU + memory only** — it does **not** include PSU loss, motherboard, disks, fans or NIC, so true wall-socket power (your actual bill) is meaningfully higher (RAPL is typically ~40–60% of wall). Treat these as a **floor**. Tune the **EUR 0.30/kWh** and **0.33 kgCO2/kWh** constants directly in the panel queries for your tariff + grid factor. Per-pod/container power is also available (`kepler_pod_cpu_watts`, `kepler_container_cpu_watts`) — attribution of the node total by CPU-time, not a per-pod meter."}
+        },
+
+        {"id": 70, "type": "row", "title": "Total cost of ownership (EUR per month)", "collapsed": false, "gridPos": {"h": 1, "w": 24, "x": 0, "y": 63}, "panels": []},
+        {
+          "id": 71, "type": "stat", "title": "Total per month", "description": "Sum of every cost line below. Inputs missing counts the expected lines that have no number yet, so the total is too low while it is above zero. Lines and fixed amounts live in kubernetes/apps/observability/victoria-metrics/app/rules/prometheusrule-finops.yaml.", "gridPos": {"h": 6, "w": 6, "x": 0, "y": 64},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [
+            {"refId": "A", "expr": "finops:monthly_total_eur", "instant": true, "legendFormat": "total"},
+            {"refId": "B", "expr": "finops:monthly_cost_lines_missing", "instant": true, "legendFormat": "inputs missing"}
+          ],
+          "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value_and_name", "colorMode": "value", "graphMode": "none"},
+          "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "text"}}, "overrides": [
+            {"matcher": {"id": "byName", "options": "total"}, "properties": [{"id": "unit", "value": "currencyEUR"}, {"id": "decimals", "value": 2}]},
+            {"matcher": {"id": "byName", "options": "inputs missing"}, "properties": [{"id": "decimals", "value": 0}, {"id": "color", "value": {"mode": "thresholds"}}, {"id": "thresholds", "value": {"mode": "absolute", "steps": [{"color": "text", "value": null}, {"color": "#e69f00", "value": 1}]}}]}
+          ]}
+        },
+        {
+          "id": 72, "type": "table", "title": "Cost lines", "description": "Each cost line with where its number comes from. A line whose source stops reporting disappears here rather than reading 0.", "gridPos": {"h": 6, "w": 18, "x": 6, "y": 64},
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "targets": [{"refId": "A", "expr": "finops:monthly_cost_eur", "instant": true, "format": "table"}],
+          "transformations": [{"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true}, "renameByName": {"line": "Line", "source": "Source", "Value": "EUR per month"}, "indexByName": {"line": 0, "source": 1, "Value": 2}}}, {"id": "sortBy", "options": {"sort": [{"field": "EUR per month", "desc": true}]}}],
+          "options": {"showHeader": true, "cellHeight": "sm"},
+          "fieldConfig": {"defaults": {"custom": {"align": "auto"}}, "overrides": [{"matcher": {"id": "byName", "options": "EUR per month"}, "properties": [{"id": "unit", "value": "currencyEUR"}, {"id": "decimals", "value": 2}]}]}
         }
       ]
     }
