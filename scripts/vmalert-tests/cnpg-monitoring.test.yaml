@@ -1,0 +1,97 @@
+---
+rule_files:
+  - rules/cnpg-monitoring.yaml
+evaluation_interval: 5m
+tests:
+  - name: one suspended drill no longer hides the others; stale, never-run and failed drills fire per namespace, suspended and young ones do not
+    interval: 5m
+    input_series:
+      - series: 'kube_cronjob_spec_suspend{job="kube-state-metrics", namespace="observability", exported_namespace="forgejo", cronjob="cnpg-restore-test"}'
+        values: "1x2700"
+      - series: 'kube_cronjob_status_last_successful_time{job="kube-state-metrics", namespace="observability", exported_namespace="forgejo", cronjob="cnpg-restore-test"}'
+        values: "1000x2700"
+      - series: 'kube_cronjob_created{job="kube-state-metrics", namespace="observability", exported_namespace="forgejo", cronjob="cnpg-restore-test"}'
+        values: "1000x2700"
+      - series: 'kube_cronjob_spec_suspend{job="kube-state-metrics", namespace="observability", exported_namespace="vikunja", cronjob="cnpg-restore-test"}'
+        values: "0x2700"
+      - series: 'kube_cronjob_status_last_successful_time{job="kube-state-metrics", namespace="observability", exported_namespace="vikunja", cronjob="cnpg-restore-test"}'
+        values: "1000x2700"
+      - series: 'kube_cronjob_created{job="kube-state-metrics", namespace="observability", exported_namespace="vikunja", cronjob="cnpg-restore-test"}'
+        values: "1000x2700"
+      - series: 'kube_cronjob_spec_suspend{job="kube-state-metrics", namespace="observability", exported_namespace="freshrss", cronjob="cnpg-restore-test"}'
+        values: "0x2700"
+      - series: 'kube_cronjob_status_last_successful_time{job="kube-state-metrics", namespace="observability", exported_namespace="freshrss", cronjob="cnpg-restore-test"}'
+        values: "700000x2700"
+      - series: 'kube_cronjob_created{job="kube-state-metrics", namespace="observability", exported_namespace="freshrss", cronjob="cnpg-restore-test"}'
+        values: "1000x2700"
+      - series: 'kube_cronjob_spec_suspend{job="kube-state-metrics", namespace="observability", exported_namespace="authentik", cronjob="cnpg-restore-test"}'
+        values: "0x2700"
+      - series: 'kube_cronjob_created{job="kube-state-metrics", namespace="observability", exported_namespace="authentik", cronjob="cnpg-restore-test"}'
+        values: "1000x2700"
+      - series: 'kube_cronjob_spec_suspend{job="kube-state-metrics", namespace="observability", exported_namespace="observability", cronjob="cnpg-restore-test"}'
+        values: "0x2700"
+      - series: 'kube_cronjob_created{job="kube-state-metrics", namespace="observability", exported_namespace="observability", cronjob="cnpg-restore-test"}'
+        values: "780000x2700"
+      - series: 'kube_job_status_failed{job="kube-state-metrics", namespace="observability", exported_namespace="harbor", job_name="cnpg-restore-test-29321"}'
+        values: "1x2700"
+      - series: 'kube_job_created{job="kube-state-metrics", namespace="observability", exported_namespace="harbor", job_name="cnpg-restore-test-29321"}'
+        values: "780000x2700"
+      - series: 'kube_cronjob_spec_suspend{job="kube-state-metrics", namespace="observability", exported_namespace="harbor", cronjob="cnpg-restore-test"}'
+        values: "0x2700"
+      - series: 'kube_job_status_failed{job="kube-state-metrics", namespace="observability", exported_namespace="forgejo", job_name="cnpg-restore-test-29322"}'
+        values: "1x2700"
+      - series: 'kube_job_created{job="kube-state-metrics", namespace="observability", exported_namespace="forgejo", job_name="cnpg-restore-test-29322"}'
+        values: "780000x2700"
+    alert_rule_test:
+      - eval_time: 220h
+        groupname: cnpg-restore-test.rules
+        alertname: CNPGRestoreTestStale
+        exp_alerts:
+          - exp_labels:
+              exported_namespace: authentik
+              severity: warning
+              owner: platform
+              service: cnpg
+            exp_annotations:
+              summary: "CNPG restore test has not succeeded recently (authentik)"
+          - exp_labels:
+              exported_namespace: vikunja
+              severity: warning
+              owner: platform
+              service: cnpg
+            exp_annotations:
+              summary: "CNPG restore test has not succeeded recently (vikunja)"
+      - eval_time: 220h
+        groupname: cnpg-restore-test.rules
+        alertname: CNPGRestoreTestFailed
+        exp_alerts:
+          - exp_labels:
+              exported_namespace: harbor
+              severity: warning
+              owner: platform
+              service: cnpg
+            exp_annotations:
+              summary: "CNPG restore test failed (harbor)"
+
+  - name: the operator alert fires when no ready operator pod exists and stays quiet when one is ready
+    interval: 1m
+    input_series:
+      - series: 'kube_pod_status_ready{job="kube-state-metrics", namespace="observability", exported_namespace="cnpg-system", exported_pod="cloudnative-pg-6bbd84c7f9-pdt2w", condition="true"}'
+        values: "1x30 0x30"
+      - series: 'kube_pod_status_ready{job="kube-state-metrics", namespace="observability", exported_namespace="cnpg-system", exported_pod="plugin-barman-cloud-fb486cc6d-vwxk2", condition="true"}'
+        values: "1x60"
+    alert_rule_test:
+      - eval_time: 25m
+        groupname: cnpg-backup.rules
+        alertname: CNPGOperatorDown
+        exp_alerts: []
+      - eval_time: 55m
+        groupname: cnpg-backup.rules
+        alertname: CNPGOperatorDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              owner: platform
+              service: cnpg
+            exp_annotations:
+              summary: "CNPG operator down (cnpg-system)"

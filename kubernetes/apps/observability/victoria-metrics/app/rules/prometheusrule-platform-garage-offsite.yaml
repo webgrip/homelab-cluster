@@ -124,6 +124,38 @@ spec:
               - Compare garage bucket info object counts with yesterday's to find the grower
               - Check which in-cluster workload writes to that bucket and bound it
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#disk-capacity"
+        - alert: GarageOffsiteDiskFullIn14Days
+          expr: |
+            min by (job) (
+              predict_linear(garage_local_disk_avail{job="garage-offsite", volume="data"}[7d], 14 * 86400)
+            ) < 0
+          for: 6h
+          labels:
+            severity: warning
+            owner: platform
+            service: garage
+          annotations:
+            summary: "Off-site Garage disk predicted full within 14 days (garage-offsite)"
+            description: |
+              What's happening:
+              - At the growth rate of the last 7 days, the garage-fsn1 data volume runs out of space
+                within 14 days.
+
+              Impact/risk:
+              - Every backup stream fails at once when it fills, and a full Garage disk acknowledges
+                writes it stores as empty blocks. Fourteen days is the time to change retention, set a
+                quota or order capacity before GarageOffsiteDiskFillingUp (4 days) leaves no room.
+
+              Likely causes:
+              - A bucket growing faster than its retention deletes
+              - A new volume or database enrolled in backups
+              - High-churn volumes in a long-retention backup group
+
+              First actions:
+              - Open the Backups dashboard and compare per-dataset growth
+              - On garage-fsn1, compare garage bucket info sizes with last week
+              - Check the per-bucket quotas in the backup RFC and lower retention or tier before buying space
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/garage-offsite/#quotas"
         - alert: GarageOffsiteUnhealthy
           expr: cluster_healthy{job="garage-offsite"} == 0
           for: 10m

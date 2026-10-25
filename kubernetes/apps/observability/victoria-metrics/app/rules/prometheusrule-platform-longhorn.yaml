@@ -272,22 +272,38 @@ spec:
         - alert: LonghornVolumeBackupStale
           expr: |
             (
-              (time() - longhorn_volume_last_backup_at) > 36 * 3600
-              and longhorn_volume_last_backup_at > 0
+              (
+                (time() - longhorn_volume_last_backup_at) > 36 * 3600
+                and longhorn_volume_last_backup_at > 0
+              )
+              and on (volume)
+              (max by (volume) (longhorn_volume_state{state="attached"}) == 1)
             )
-            and on (volume)
-            (max by (volume) (longhorn_volume_state{state="attached"}) == 1)
+            or
+            (
+              longhorn_volume_last_backup_at == 0
+              and on (pvc_namespace, pvc)
+              label_replace(
+                label_replace(
+                  max by (dataset_namespace, dataset_name) (backup:dataset_copies{kind="longhorn"}),
+                  "pvc_namespace", "$$1", "dataset_namespace", "(.+)"
+                ),
+                "pvc", "$$1", "dataset_name", "(.+)"
+              )
+            )
           for: 1h
           labels:
             severity: warning
             owner: platform
             service: longhorn
           annotations:
-            summary: "Longhorn volume without a backup for 36h ({{$labels.pvc_namespace}}/{{$labels.pvc}})"
+            summary: "Longhorn volume without a recent or any backup ({{$labels.pvc_namespace}}/{{$labels.pvc}})"
             description: |
               What's happening:
               - Attached volume {{$labels.volume}} ({{$labels.pvc_namespace}}/{{$labels.pvc}}) last
                 completed a backup more than 36h ago; every backup recurring job runs daily.
+              - Or a volume registered in the backup inventory (prometheusrule-platform-backups.yaml)
+                has never completed a backup, attached or not.
 
               Impact/risk:
               - Data written since the last good backup exists only on the cluster.

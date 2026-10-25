@@ -1,0 +1,74 @@
+---
+rule_files:
+  - rules/platform-longhorn.yaml
+evaluation_interval: 1m
+tests:
+  - name: a stale attached volume and a never-backed-up inventory volume fire; a fresh volume, a detached stale volume and a never-backed-up volume outside the inventory do not
+    interval: 1m
+    input_series:
+      - series: 'backup:dataset_copies{dataset="forgejo/forgejo-data", dataset_namespace="forgejo", dataset_name="forgejo-data", kind="longhorn", tier="T1", drill="weekly", targets="garage-fsn1"}'
+        values: "1x200"
+      - series: 'backup:dataset_copies{dataset="invoiceninja/invoiceninja-mariadb", dataset_namespace="invoiceninja", dataset_name="invoiceninja-mariadb", kind="longhorn", tier="T1", drill="none", targets="garage-fsn1"}'
+        values: "1x200"
+      - series: 'backup:dataset_copies{dataset="forgejo/forgejo-db", dataset_namespace="forgejo", dataset_name="forgejo-db", kind="cnpg", tier="T1", drill="weekly", targets="garage-fsn1"}'
+        values: "1x200"
+      - series: 'longhorn_volume_last_backup_at{volume="pvc-forgejo-data", pvc_namespace="forgejo", pvc="forgejo-data"}'
+        values: "0x200"
+      - series: 'longhorn_volume_last_backup_at{volume="pvc-tei", pvc_namespace="ai", pvc="tei-embeddings-models"}'
+        values: "0x200"
+      - series: 'longhorn_volume_last_backup_at{volume="pvc-vikunja", pvc_namespace="vikunja", pvc="vikunja"}'
+        values: "1x200"
+      - series: 'longhorn_volume_state{volume="pvc-vikunja", state="attached"}'
+        values: "1x200"
+      - series: 'longhorn_volume_last_backup_at{volume="pvc-mariadb", pvc_namespace="invoiceninja", pvc="invoiceninja-mariadb"}'
+        values: "1x200"
+      - series: 'longhorn_volume_state{volume="pvc-mariadb", state="attached"}'
+        values: "0x200"
+      - series: 'longhorn_volume_last_backup_at{volume="pvc-fresh", pvc_namespace="freshrss", pvc="freshrss"}'
+        values: "1x200"
+      - series: 'longhorn_volume_state{volume="pvc-fresh", state="attached"}'
+        values: "1x200"
+    alert_rule_test:
+      - eval_time: 30m
+        groupname: platform.longhorn
+        alertname: LonghornVolumeBackupStale
+        exp_alerts: []
+      - eval_time: 90m
+        groupname: platform.longhorn
+        alertname: LonghornVolumeBackupStale
+        exp_alerts:
+          - exp_labels:
+              volume: pvc-forgejo-data
+              pvc_namespace: forgejo
+              pvc: forgejo-data
+              severity: warning
+              owner: platform
+              service: longhorn
+            exp_annotations:
+              summary: "Longhorn volume without a recent or any backup (forgejo/forgejo-data)"
+
+  - name: an attached volume whose last backup is older than 36 hours fires
+    interval: 1m
+    input_series:
+      - series: 'longhorn_volume_last_backup_at{volume="pvc-vikunja", pvc_namespace="vikunja", pvc="vikunja"}'
+        values: "3600x2500"
+      - series: 'longhorn_volume_state{volume="pvc-vikunja", state="attached"}'
+        values: "1x2500"
+    alert_rule_test:
+      - eval_time: 30h
+        groupname: platform.longhorn
+        alertname: LonghornVolumeBackupStale
+        exp_alerts: []
+      - eval_time: 40h
+        groupname: platform.longhorn
+        alertname: LonghornVolumeBackupStale
+        exp_alerts:
+          - exp_labels:
+              volume: pvc-vikunja
+              pvc_namespace: vikunja
+              pvc: vikunja
+              severity: warning
+              owner: platform
+              service: longhorn
+            exp_annotations:
+              summary: "Longhorn volume without a recent or any backup (vikunja/vikunja)"

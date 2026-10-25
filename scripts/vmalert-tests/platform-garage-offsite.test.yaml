@@ -1,0 +1,35 @@
+---
+rule_files:
+  - rules/platform-garage-offsite.yaml
+evaluation_interval: 1h
+tests:
+  - name: a disk losing 5 GB a day with 60 GB free warns 14 days ahead
+    interval: 1h
+    input_series:
+      - series: 'garage_local_disk_avail{job="garage-offsite", garage_node="garage-fsn1", volume="data"}'
+        values: "60000000000-208333333x200"
+      - series: 'garage_local_disk_avail{job="garage-offsite", garage_node="garage-fsn1", volume="metadata"}'
+        values: "60000000000-208333333x200"
+    alert_rule_test:
+      - eval_time: 190h
+        groupname: platform.garage-offsite
+        alertname: GarageOffsiteDiskFullIn14Days
+        exp_alerts:
+          - exp_labels:
+              job: garage-offsite
+              severity: warning
+              owner: platform
+              service: garage
+            exp_annotations:
+              summary: "Off-site Garage disk predicted full within 14 days (garage-offsite)"
+
+  - name: a disk losing 1 GB a day with 60 GB free does not warn
+    interval: 1h
+    input_series:
+      - series: 'garage_local_disk_avail{job="garage-offsite", garage_node="garage-fsn1", volume="data"}'
+        values: "60000000000-41666666x200"
+    alert_rule_test:
+      - eval_time: 190h
+        groupname: platform.garage-offsite
+        alertname: GarageOffsiteDiskFullIn14Days
+        exp_alerts: []

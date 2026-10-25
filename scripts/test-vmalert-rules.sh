@@ -50,18 +50,36 @@ if ((${#test_files[@]} == 0)); then
   exit 1
 fi
 
-for test_file in "${test_files[@]}"; do
-  name="$(basename "$test_file" .test.yaml)"
-  rule_source="${RULES_DIR}/prometheusrule-${name}.yaml"
-  if [[ ! -f "$rule_source" ]]; then
-    rule_source="$(find "${ROOT_DIR}/kubernetes/apps" -path '*/app/rules/vmrule-'"${name}"'.yaml' -print -quit)"
-  fi
+resolve_rule_source() {
+  local name="$1" candidate
+  for candidate in \
+    "${RULES_DIR}/prometheusrule-${name}.yaml" \
+    "${ROOT_DIR}/kubernetes/components/${name}/prometheus-rules.yaml"; do
+    if [[ -f "$candidate" ]]; then
+      echo "$candidate"
+      return
+    fi
+  done
+  find "${ROOT_DIR}/kubernetes/apps" -path '*/app/rules/vmrule-'"${name}"'.yaml' -print -quit
+}
+
+render_rule_file() {
+  local name="$1" test_file="$2" rule_source
+  [[ -f "${workspace}/rules/${name}.yaml" ]] && return
+  rule_source="$(resolve_rule_source "$name")"
   if [[ -z "$rule_source" || ! -f "$rule_source" ]]; then
-    echo "${test_file}: expected rule source ${RULES_DIR}/prometheusrule-${name}.yaml or kubernetes/apps/*/*/app/rules/vmrule-${name}.yaml" >&2
+    echo "${test_file}: expected rule source ${RULES_DIR}/prometheusrule-${name}.yaml, kubernetes/components/${name}/prometheus-rules.yaml or kubernetes/apps/*/*/app/rules/vmrule-${name}.yaml" >&2
     exit 1
   fi
   yq_cmd '.spec | del(.groups[].rules[].annotations.description) | del(.groups[].rules[].annotations.runbook_url) | del(.groups[].rules[].annotations.dashboard_url)' "$rule_source" | sed 's/\$\$/$/g' >"${workspace}/rules/${name}.yaml"
-  cp "$test_file" "${workspace}/${name}.test.yaml"
+}
+
+for test_file in "${test_files[@]}"; do
+  render_rule_file "$(basename "$test_file" .test.yaml)" "$test_file"
+  while IFS= read -r referenced; do
+    [[ -n "$referenced" ]] && render_rule_file "$(basename "$referenced" .yaml)" "$test_file"
+  done < <(yq_cmd '.rule_files[]' "$test_file")
+  cp "$test_file" "${workspace}/$(basename "$test_file")"
 done
 
 cd "$workspace"
