@@ -118,9 +118,11 @@ refusing pull requests.
 | `secret/unfold-cluster/etcd-backup` | `ETCD_BACKUP_*`, `ETCD_BACKUP_AGE_IDENTITY` | OIDC read |
 | `secret/unfold-cluster/vars` | repository variables | stays on this bridge |
 
-The bridge keeps publishing the secrets until `webgrip/unfold-cluster`'s workflows read from
-OpenBao; the change after that stops it and adds the names to `RETIRED_REPO_SECRETS`, which
-deletes them from the repository on the next tick.
+The bridge no longer publishes them. The five ExternalSecrets that fed them are gone, and
+`RETIRED_REPO_SECRETS` lists the thirteen names, so every tick deletes them from the repository
+and logs `already gone` once they are. The Hetzner token check that ran here
+(`GET /v1/locations`) went with them: a revoked token now fails the workflow that reads it, not
+the bridge.
 
 ## Naming
 

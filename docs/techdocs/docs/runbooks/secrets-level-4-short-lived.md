@@ -57,7 +57,7 @@ are the first roles of this shape.
 | `ci-unfold` | `webgrip/unfold` | `cloudflare/dns/unfoldhq-dev-ro` | `repository`, `event_name` incl. `pull_request` | a read-only DNS token; a preview runs on pull requests |
 | `ci-twente-dev` | `webgrip/twente.dev` | `cloudflare/dns/twente-dev-ro` | same | same |
 | `ci-cloudflare` | `webgrip/cloudflare` | `cloudflare/dns/{unfoldhq-dev,webgrip-nl}-ro` | same | same |
-| `ci-unfold-cluster` | `webgrip/unfold-cluster` | `hetzner/unfold-{tofu,cluster,vip}`, `unfold-cluster/{tofu-state,etcd-backup}` | `repository`, `ref` = `main`, `event_name` in `push`, `schedule`, `workflow_dispatch` | production credentials: no `pull_request`, so a branch that adds a workflow gets no token |
+| `ci-unfold-cluster` | `webgrip/unfold-cluster` | `hetzner/unfold-{tofu,cluster,vip}`, `unfold-cluster/{tofu-state,etcd-backup}` | `repository`, `ref` = `main`, `event_name` in `push`, `schedule`, `workflow_dispatch`, `actor` in `ryangr0`, `yon`, `forgejo-actions` | production credentials: no `pull_request`, so a branch that adds a workflow gets no token, and a Developers member who dispatches `main` gets none either |
 
 The first three come from the shared `write_ci_read_role` helper in `config.sh`.
 `ci-unfold-cluster` is its own JSON block because the helper binds no `ref` and admits
@@ -67,10 +67,9 @@ state passphrase and the etcd backup identity. Only runs on `main`, where branch
 the owner alone push or merge, can mint it.
 
 These five paths were Forgejo Actions secrets delivered by the bridge
-([level 3](secrets-level-3-bridge.md#production-cluster-webgripunfold-cluster)); they move to
-this role, and the bridge deletes the repository secrets once `webgrip/unfold-cluster`'s
-workflows read from OpenBao. The `unfold-cluster/vars` path (non-secret configuration) stays on
-the bridge as Forgejo variables.
+([level 3](secrets-level-3-bridge.md#production-cluster-webgripunfold-cluster)); they moved to
+this role, and the bridge now deletes the repository secrets it used to publish. The
+`unfold-cluster/vars` path (non-secret configuration) stays on the bridge as Forgejo variables.
 
 The jobs that read run on the `unfold-infra` runner pool (`forgejo-runner/app/infra`). Its pods
 carry `app.kubernetes.io/name: forgejo-runner` in the `forgejo` namespace, like every runner

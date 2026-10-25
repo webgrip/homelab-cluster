@@ -223,3 +223,6 @@ picks up the rest.
   `workflow_dispatch`; see the [L4 roles](../runbooks/secrets-level-4-short-lived.md#roles).
   The bridge stops publishing those secrets and deletes them once the repository's workflows
   read over OIDC; its non-secret `vars` stay bridged as Forgejo variables.
+* 2026-10-25 — `webgrip/unfold-cluster` reads over OIDC. The bridge stopped publishing its
+  thirteen repository secrets, dropped the five ExternalSecrets behind them and the Hetzner token
+  check, and lists the names in `RETIRED_REPO_SECRETS` so they are deleted from the repository.
