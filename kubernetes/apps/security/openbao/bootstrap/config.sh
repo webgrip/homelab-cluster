@@ -31,6 +31,7 @@ bao policy write access-plane /scripts/access-plane.hcl
 bao policy write ci-unfold /scripts/ci-unfold.hcl
 bao policy write ci-twente-dev /scripts/ci-twente-dev.hcl
 bao policy write ci-cloudflare /scripts/ci-cloudflare.hcl
+bao policy write ci-unfold-cluster /scripts/ci-unfold-cluster.hcl
 bao policy write forgejo-repo-config /scripts/forgejo-repo-config.hcl
 bao policy write github-config-ploeg-hq /scripts/github-config-ploeg-hq.hcl
 bao policy write github-config-webgrip /scripts/github-config-webgrip.hcl
@@ -129,6 +130,23 @@ JSON
     write_ci_read_role ci-unfold webgrip/unfold
     write_ci_read_role ci-twente-dev webgrip/twente.dev
     write_ci_read_role ci-cloudflare webgrip/cloudflare
+    if bao write auth/forgejo/role/ci-unfold-cluster - >/dev/null <<JSON
+{
+  "role_type": "jwt",
+  "user_claim": "sub",
+  "bound_audiences": ["openbao-ci"],
+  "bound_claims_type": "string",
+  "bound_claims": {"repository": ["webgrip/unfold-cluster"], "ref": ["refs/heads/main"], "event_name": ["push", "schedule", "workflow_dispatch"]},
+  "token_policies": ["ci-unfold-cluster"],
+  "token_ttl": "10m",
+  "token_max_ttl": "10m"
+}
+JSON
+    then
+      echo "   forgejo jwt role ci-unfold-cluster configured for webgrip/unfold-cluster main"
+    else
+      echo "   WARN: forgejo jwt role ci-unfold-cluster write FAILED"
+    fi
   else
     echo "   forgejo jwt auth mount not present yet (break-glass: bao auth enable -path=forgejo jwt)"
   fi
