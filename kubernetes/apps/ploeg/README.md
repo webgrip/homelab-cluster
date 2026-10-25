@@ -91,6 +91,28 @@ with the `mcp-reader` operator consumer's token from `ploeg/mcp-reader`, never t
 Its image is the ploegd image of the Ploeg release the Unfold chart carries. Client setup:
 [Serve Ploeg's MCP tools over HTTPS](https://github.com/ploeg-hq/ploeg/blob/development/docs/how-to/serve-ploeg-mcp-over-https.md).
 
+### Confirming an action (login mode, 2026-10-25)
+
+Members of `ploeg-operators` (capability `ploeg-operate`) may also act: add a note, approve, retry,
+stop. ploeg-mcp runs with `PLOEG_MCP_CONFIRMATION_MODE=login` (Ploeg ADR-0153). An action answers
+the client with a link to `https://mcp-ploeg.<domain>/confirmations/<token>`; the page shows the
+action, its arguments and the person, and the action runs only after **Sign in to confirm** completes
+in the same browser, through the confidential Authentik client `ploeg-mcp-confirm` (secret generated
+in `authentik/app/ploeg-mcp-confirm-oidc-client.*`, read from `authentik/ploeg-mcp-confirm-oidc` by
+`unfold/app/ploeg-mcp-confirmation-client.externalsecret.yaml`).
+
+What it proves: the person approved in their own browser and Authentik session, so an MCP client
+can no longer approve its own action. What it does not prove: a fresh security-key touch. Login is
+Google-only (ADR-0057); Authentik's Google source forwards neither `prompt` nor `max_age`, and Google
+reports neither `auth_time` nor `amr`, so `PLOEG_MCP_CONFIRMATION_AMR` stays unset. A real
+presence check needs an Authentik WebAuthn stage for this one client and an ADR amending ADR-0057.
+
+Client support: on 2026-10-25 Claude Code declined the link (MCP URL elicitation) without showing
+it, so every action returned "Not done: you did not confirm" and nothing changed. Reading works.
+The owner chose to keep login mode on until clients show the link rather than fall back to the
+in-client yes/no form, which a client can answer by itself (F-08). To fall back anyway, set
+`PLOEG_MCP_CONFIRMATION_MODE: elicitation` in `unfold/app/helmrelease.yaml`.
+
 ## Why the Ploeg values are set this way
 
 Ploeg's values sit under `ploeg:` in [`unfold/app/helmrelease.yaml`](unfold/app/helmrelease.yaml),
