@@ -39,6 +39,18 @@ locals {
         }
       EOT
     }
+    unfold-kubernetes = {
+      scope_name  = "unfold_kubernetes"
+      description = "Emits unfold_groups, the Unfold production cluster groups its API server maps to RBAC; no other group reaches that cluster."
+      expression  = <<-EOT
+        return {
+            "unfold_groups": [
+                group.name
+                for group in request.user.ak_groups.filter(name__in=["unfold-admins", "unfold-viewers"])
+            ],
+        }
+      EOT
+    }
     unfold-mcp = {
       scope_name  = "unfold:mcp"
       description = "Use Unfold's MCP tools as yourself; carries the groups Unfold maps to a role."
@@ -231,6 +243,25 @@ locals {
         { matching_mode = "strict", url = "http://localhost:8787/callback" },
       ]
       extra_scopes = ["unfold-mcp", "groups"]
+      adopt        = false
+    }
+    unfold-kubernetes = {
+      provider_name          = "unfold-kubernetes-oidc"
+      app_name               = "Unfold Kubernetes API"
+      description            = "kubectl and k9s sign-in to the Unfold production cluster through kubelogin, as yourself."
+      launch_url             = null
+      client_id              = "unfold-kubernetes"
+      client_secret          = null
+      client_type            = "public"
+      signing_key            = true
+      grant_types            = ["authorization_code", "refresh_token"]
+      access_token_validity  = "minutes=15"
+      refresh_token_validity = "hours=12"
+      redirects = [
+        { matching_mode = "strict", url = "http://localhost:8000" },
+        { matching_mode = "strict", url = "http://localhost:18000" },
+      ]
+      extra_scopes = ["unfold-kubernetes"]
       adopt        = false
     }
     longhorn = {
