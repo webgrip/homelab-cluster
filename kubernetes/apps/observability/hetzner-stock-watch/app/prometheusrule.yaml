@@ -1,0 +1,63 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hetzner-stock-watch
+  labels:
+    app.kubernetes.io/name: hetzner-stock-watch
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: hetzner-stock-watch.rules
+      rules:
+        - alert: HetznerMetalServerOrderable
+          expr: |
+            (last_over_time(hetzner_dedicated_orderable[90m]) == 1)
+            unless on (product, datacenter)
+            (last_over_time(hetzner_dedicated_orderable[90m] offset 2h) == 1)
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: unfold-cluster
+          annotations:
+            summary: "Hetzner sells the {{ $labels.product }} in {{ $labels.datacenter }} again: unfold-cluster's metal node can be ordered (observability/hetzner-stock-watch)"
+            description: |
+              What's happening:
+              - Hetzner's own configurator data lists the {{ $labels.product }} as orderable in {{ $labels.datacenter }}; it was not two hours ago.
+              - The alert fires once, for the first two hours of availability, and then stays quiet while the offer lasts.
+
+              Impact/risk:
+              - None. Kata for unfold-cluster waits for this server; offers sell out again, sometimes within hours.
+
+              Likely causes:
+              - Hetzner restocked the model, or released a limited batch.
+
+              First actions:
+              - Order it on hetzner.com (location {{ $labels.datacenter }}), then declare it in unfold-cluster's metal_servers in adopt mode with its server number (unfold-cluster docs/runbooks/metal-node.md).
+        - alert: HetznerStockWatchBroken
+          expr: |
+            (time() - max(hetzner_stock_watch_last_success_timestamp_seconds) > 3 * 3600)
+            or
+            absent(hetzner_stock_watch_last_success_timestamp_seconds)
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: unfold-cluster
+          annotations:
+            summary: "The Hetzner stock watcher has not read Hetzner's availability data for three hours (observability/hetzner-stock-watch)"
+            description: |-
+              What's happening:
+              - The hourly CronJob observability/hetzner-stock-watch has not read both configurators and live_data_upfront.json for over three hours.
+
+              Impact/risk:
+              - An EX44 or AX41 coming back in stock goes unnoticed.
+
+              Likely causes:
+              - Hetzner changed its website: the configurator's getServerConfig/ path or live_data_upfront.json moved or changed shape. The data is undocumented.
+              - www.hetzner.com is unreachable from the cluster (DNS, egress policy).
+
+              First actions:
+              - kubectl -n observability logs job/<latest hetzner-stock-watch job>
