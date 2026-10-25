@@ -265,6 +265,22 @@ locals {
       extra_scopes = ["unfold-kubernetes"]
       adopt        = false
     }
+    unfold-headscale = {
+      provider_name         = "unfold-headscale-oidc"
+      app_name              = "Unfold tailnet"
+      description           = "Join a device to the Unfold tailnet: Headscale's browser login, confirmed with a passkey."
+      launch_url            = null
+      client_id             = "unfold-headscale"
+      client_secret         = data.vault_kv_secret_v2.oidc_client["unfold-headscale"].data["client_secret"]
+      client_type           = "confidential"
+      signing_key           = true
+      grant_types           = ["authorization_code"]
+      access_token_validity = "minutes=5"
+      redirects             = [{ matching_mode = "strict", url = "https://headscale.${var.SECRET_DOMAIN}/oidc/callback" }]
+      extra_scopes          = ["groups"]
+      passkey_required      = true
+      adopt                 = false
+    }
     longhorn = {
       provider_name          = "longhorn-oidc"
       app_name               = "Longhorn"
@@ -378,7 +394,7 @@ resource "authentik_provider_oauth2" "app" {
   access_token_validity  = lookup(each.value, "access_token_validity", "hours=1")
   refresh_token_validity = lookup(each.value, "refresh_token_validity", "days=30")
   authentication_flow    = var.google_login ? authentik_flow.webgrip_authentication[0].uuid : data.authentik_flow.authentication.id
-  authorization_flow     = data.authentik_flow.authorization_implicit_consent.id
+  authorization_flow     = lookup(each.value, "passkey_required", false) ? authentik_flow.passkey_authorization.uuid : data.authentik_flow.authorization_implicit_consent.id
   invalidation_flow      = data.authentik_flow.invalidation.id
   signing_key            = each.value.signing_key ? data.authentik_certificate_key_pair.self_signed.id : null
 

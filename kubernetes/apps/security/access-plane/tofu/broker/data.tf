@@ -20,6 +20,7 @@ data "vault_kv_secret_v2" "oidc_client" {
     unfold-exchange    = "authentik/unfold-exchange-oidc"
     ploeg-mcp-exchange = "authentik/ploeg-mcp-exchange-oidc"
     ploeg-mcp-confirm  = "authentik/ploeg-mcp-confirm-oidc"
+    unfold-headscale   = "authentik/unfold-headscale-oidc"
   }
   mount = "secret"
   name  = each.value

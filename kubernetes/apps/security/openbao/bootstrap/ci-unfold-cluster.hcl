@@ -49,3 +49,7 @@ path "secret/data/unfold-cluster/metal-image-pull" {
 path "secret/data/unfold-cluster/disk-kms" {
   capabilities = ["create", "read"]
 }
+
+path "secret/data/authentik/unfold-headscale-oidc" {
+  capabilities = ["read"]
+}
