@@ -140,14 +140,14 @@ it was checked:
 A line whose source stops reporting drops out of the sum instead of reading 0, and the missing
 count rises.
 
-**Home Assistant.** VMAgent scrapes Home Assistant's Prometheus endpoint
-(`victoria-metrics/app/scrapes/vmstaticscrape-home-assistant.yaml`, job `home-assistant`) once
-Home Assistant enables its `prometheus:` integration and a token sits in OpenBao at
-`secret/home-assistant/prometheus`, key `token`. TLS is verified against the Cloudflare Origin CA
-root for `ha.home.webgrip.nl`, so the bearer token is never sent to whatever device takes over the
-address. Home Assistant has no scoped tokens: create the long-lived token as a dedicated non-admin
-user. Once whole-house (P1) or per-socket power is in, it replaces the Kepler floor as the
-`electricity` line.
+**Home Assistant (parked 2026-10-25).** Wall power was meant to come from Home Assistant's
+Prometheus endpoint, but nobody can log in to it: the Home Assistant OS install on the Raspberry Pi
+at `10.0.0.133` (a DHCP address) has no known user or SSH key. The scrape, its OpenBao-backed
+token secret and the pinned Cloudflare Origin CA were removed again so the unseeded secret stops
+alerting; commit `f17f0c4f` holds them. To resume, regain access (a logged-in device, a password
+reset from the Pi's console, or the SD card), enable `prometheus:`, store a non-admin user's
+long-lived token at `secret/home-assistant/prometheus` (key `token`), reserve the address, and
+restore those files. Until then `electricity` stays the Kepler floor.
 
 ## VictoriaLogs
 
