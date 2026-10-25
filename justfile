@@ -385,6 +385,48 @@ secret-env path:
 
 # One-time entry of Harbor's Garage S3 registry key into OpenBao (secret/harbor/s3).
 # Prompts via gum so the secret never lands in shell history; logs in if needed.
+[doc('Write one value to OpenBao at secret/<path> under <key>, typed hidden; other keys at the path stay')]
+[group('secrets')]
+secret-set path key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need bao gum jq
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    value="$(gum input --password --placeholder '{{ key }} for secret/{{ path }}')"
+    [ -n "${value}" ] || { echo "empty value; nothing written" >&2; exit 1; }
+    if bao kv get "secret/{{ path }}" >/dev/null 2>&1; then
+        printf '%s' "${value}" | bao kv patch "secret/{{ path }}" "{{ key }}=-" >/dev/null
+    else
+        printf '%s' "${value}" | bao kv put "secret/{{ path }}" "{{ key }}=-" >/dev/null
+    fi
+    unset value
+    version="$(bao kv metadata get -format=json "secret/{{ path }}" | jq -r '.data.current_version')"
+    echo "wrote {{ key }} to secret/{{ path }} (version ${version})"
+
+[doc('Check a Hetzner Cloud token against the Hetzner API, then write it to OpenBao at secret/<path> under <key>')]
+[group('secrets')]
+hetzner-token path key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _need bao gum curl
+    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
+    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    value="$(gum input --password --placeholder 'Hetzner Cloud API token for secret/{{ path }} {{ key }}')"
+    code="$(printf 'header = "Authorization: Bearer %s"\n' "${value}" | curl -sS -o /dev/null -w '%{http_code}' --config - 'https://api.hetzner.cloud/v1/locations?per_page=1')" || code=000
+    case "${code}" in
+        200) ;;
+        429) echo "Hetzner rate-limits the project right now (429); the token may be fine, try again later" >&2; exit 1 ;;
+        *) echo "Hetzner rejects that token (HTTP ${code}); nothing written" >&2; exit 1 ;;
+    esac
+    if bao kv get "secret/{{ path }}" >/dev/null 2>&1; then
+        printf '%s' "${value}" | bao kv patch "secret/{{ path }}" "{{ key }}=-" >/dev/null
+    else
+        printf '%s' "${value}" | bao kv put "secret/{{ path }}" "{{ key }}=-" >/dev/null
+    fi
+    unset value
+    echo "Hetzner accepted the token; wrote {{ key }} to secret/{{ path }}"
+
 [doc('Seed Harbor’s Garage S3 registry key into OpenBao (secret/harbor/s3)')]
 [group('secrets')]
 harbor-s3-cred:
