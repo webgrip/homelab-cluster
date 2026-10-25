@@ -1,0 +1,23 @@
+---
+unauthorized_user:
+  url_map:
+    - src_paths:
+        - /api/v1/write
+      url_prefix: http://vmsingle-unfold.observability.svc.cluster.local:8429
+    - src_paths:
+        - /insert/jsonline
+      url_prefix: http://vlsingle-victorialogs.observability.svc.cluster.local:9428
+      headers:
+        - "VL-Extra-Fields: cluster=unfold"
+        - "VL-Stream-Fields: cluster,source,node,namespace,pod,container,talos_service"
+        - "VL-Msg-Field: message"
+        - "VL-Time-Field: timestamp"
+    - src_paths:
+        - /audit/insert/jsonline
+      url_prefix: http://vlsingle-victorialogs-audit.observability.svc.cluster.local:9428
+      drop_src_path_prefix_parts: 1
+      headers:
+        - "VL-Extra-Fields: cluster=unfold"
+        - "VL-Stream-Fields: cluster,job,node"
+        - "VL-Msg-Field: requestURI"
+        - "VL-Time-Field: requestReceivedTimestamp"

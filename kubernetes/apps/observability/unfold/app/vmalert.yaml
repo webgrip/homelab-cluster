@@ -1,0 +1,32 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMAlert
+metadata:
+  name: unfold
+spec:
+  replicaCount: 1
+  selectAllByDefault: false
+  ruleSelector:
+    matchLabels:
+      rules: unfold
+  ruleNamespaceSelector: {}
+  evaluationInterval: 1m
+  datasource:
+    url: http://vmsingle-unfold.observability.svc.cluster.local:8429
+  remoteRead:
+    url: http://vmsingle-unfold.observability.svc.cluster.local:8429
+  remoteWrite:
+    url: http://vmsingle-unfold.observability.svc.cluster.local:8429
+  notifiers:
+    - url: http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093
+  externalLabels:
+    cluster: unfold
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

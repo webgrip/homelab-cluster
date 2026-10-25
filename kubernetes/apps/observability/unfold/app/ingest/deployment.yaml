@@ -1,0 +1,127 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: unfold-ingest
+  labels:
+    app.kubernetes.io/name: unfold-ingest
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: unfold-ingest
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: unfold-ingest
+      annotations:
+        reloader.stakater.com/auto: "true"
+    spec:
+      serviceAccountName: unfold-ingest
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: vmauth
+          image: harbor.webgrip.dev/dockerhub/victoriametrics/vmauth:v1.147.0@sha256:93ff53c9ce2b1a9e54064b5158657de141588337e95a6bce7928dd205c73ce8d
+          args:
+            - -httpListenAddr=:8427
+            - -auth.config=/config/vmauth.yaml
+            - -maxRequestBodySizeToRetry=0
+            - -loggerFormat=json
+          ports:
+            - name: http
+              containerPort: 8427
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests:
+              cpu: 20m
+              memory: 48Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+        - name: tailscale
+          image: harbor.webgrip.dev/ghcr/tailscale/tailscale:v1.104.2@sha256:b11583ad2e93e4671128538c88cf11f460444a5d7e449311dd1933a400ab849d
+          env:
+            - name: TS_USERSPACE
+              value: "true"
+            - name: TS_KUBE_SECRET
+              value: unfold-ingest-tailscale-state
+            - name: TS_AUTH_ONCE
+              value: "true"
+            - name: TS_HOSTNAME
+              value: homelab-ingest
+            - name: TS_EXTRA_ARGS
+              value: --login-server=https://headscale.${SECRET_DOMAIN} --accept-dns=false
+            - name: TS_SERVE_CONFIG
+              value: /config/serve.json
+            - name: TS_ENABLE_METRICS
+              value: "true"
+            - name: TS_LOCAL_ADDR_PORT
+              value: "[::]:9002"
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: unfold-ingest-tailnet-key
+                  key: authkey
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+          ports:
+            - name: ts-metrics
+              containerPort: 9002
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: unfold-ingest
+        - name: tmp
+          emptyDir: {}

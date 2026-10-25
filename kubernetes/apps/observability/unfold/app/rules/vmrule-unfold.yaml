@@ -1,0 +1,185 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: unfold-cluster
+  labels:
+    rules: unfold
+spec:
+  groups:
+    - name: unfold-delivery
+      interval: 1m
+      rules:
+        - alert: UnfoldMetricsAbsent
+          expr: absent(up{cluster="unfold"})
+          for: 15m
+          labels:
+            severity: critical
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "No metrics from the Unfold cluster for 15 minutes"
+            description: "The homelab has received no samples with cluster=unfold. vmagent on Unfold buffers about two hours on disk, so the cause is the path: the vmagent pod, the tailnet between the clusters, the unfold-ingest pod in observability, or vmsingle-unfold. Runbook: unfold-cluster docs/observability.md."
+        - alert: UnfoldEtcdMetricsAbsent
+          expr: absent(etcd_server_has_leader{cluster="unfold"}) and on() count(up{cluster="unfold"}) > 0
+          for: 30m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "Unfold sends metrics but none from etcd"
+            description: "etcd serves metrics on port 2381 of each control plane once the Talos patch that sets listen-metrics-urls is applied. Without them the etcd alerts below cannot fire."
+        - alert: UnfoldLogShipperBacklog
+          expr: sum by (node) (vector_buffer_byte_size{cluster="unfold"}) > 268435456
+          for: 15m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "Vector on {{ $labels.node }} holds {{ $value | humanize1024 }}B of unsent logs"
+            description: "Logs are not leaving the node. The disk buffer holds 2 GiB per node; when it fills, Vector stops reading and pod logs rotate away unread."
+        - alert: UnfoldRemoteWriteBacklog
+          expr: sum(vmagent_remotewrite_pending_data_bytes{cluster="unfold"}) > 268435456
+          for: 15m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "vmagent on Unfold holds {{ $value | humanize1024 }}B of unsent samples"
+            description: "Samples are arriving late or not at all. The buffer is an emptyDir capped at about 1.8 GB; past that vmagent drops the oldest data."
+    - name: unfold-platform
+      interval: 1m
+      rules:
+        - alert: UnfoldNodeNotReady
+          expr: max by (node) (kube_node_status_condition{cluster="unfold",condition="Ready",status="true"}) == 0
+          for: 10m
+          labels:
+            severity: critical
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "Unfold node {{ $labels.node }} is not Ready"
+            description: "The kubelet on {{ $labels.node }} has not reported Ready for 10 minutes."
+        - alert: UnfoldAPIServerDown
+          expr: (sum(up{cluster="unfold",job="apiserver"}) or vector(0)) == 0 and on() count(up{cluster="unfold"}) > 0
+          for: 5m
+          labels:
+            severity: critical
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "No Unfold API server answers its metrics scrape"
+            description: "vmagent on Unfold still sends data, but none of the API servers behind the kubernetes Service answers."
+        - alert: UnfoldAPIServerReplicaDown
+          expr: count(up{cluster="unfold",job="apiserver"} == 0) > 0
+          for: 15m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "{{ $value }} Unfold API server(s) do not answer"
+            description: "At least one control plane's API server has failed its scrape for 15 minutes."
+        - alert: UnfoldEtcdNoLeader
+          expr: etcd_server_has_leader{cluster="unfold"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "etcd member on {{ $labels.node }} has no leader"
+            description: "An etcd member without a leader cannot serve writes."
+        - alert: UnfoldEtcdDatabaseNearQuota
+          expr: max by (node) (etcd_mvcc_db_total_size_in_bytes{cluster="unfold"} / etcd_server_quota_backend_bytes{cluster="unfold"}) > 0.8
+          for: 10m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "etcd on {{ $labels.node }} uses {{ $value | humanizePercentage }} of its quota"
+            description: "At the quota etcd raises a NOSPACE alarm and the cluster goes read-only. Defragment, or find what writes so much."
+        - alert: UnfoldEtcdDatabaseFragmented
+          expr: max by (node) (1 - etcd_mvcc_db_total_size_in_use_in_bytes{cluster="unfold"} / etcd_mvcc_db_total_size_in_bytes{cluster="unfold"}) > 0.5 and max by (node) (etcd_mvcc_db_total_size_in_bytes{cluster="unfold"}) > 104857600
+          for: 1h
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "etcd on {{ $labels.node }} is {{ $value | humanizePercentage }} free space"
+            description: "More than half of the etcd database file is free pages. A defragment returns them."
+        - alert: UnfoldFluxReconcileFailing
+          expr: max by (kind, namespace, name, reason) (flux_resource_info{cluster="unfold",ready="False",suspended="False"}) == 1
+          for: 15m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "Flux {{ $labels.kind }} {{ $labels.namespace }}/{{ $labels.name }} is not Ready ({{ $labels.reason }})"
+            description: "The resource has failed to reconcile for 15 minutes; the cluster no longer matches Git for it."
+        - alert: UnfoldFluxMetricsAbsent
+          expr: absent(flux_resource_info{cluster="unfold"}) and on() count(up{cluster="unfold"}) > 0
+          for: 30m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "Unfold sends metrics but none from the Flux operator"
+            description: "Without flux_resource_info the Flux alert above cannot fire."
+        - alert: UnfoldKubeletCertificateExpiring
+          expr: min by (node) (kubelet_certificate_manager_client_ttl_seconds{cluster="unfold"}) < 604800
+          for: 1h
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "Kubelet client certificate on {{ $labels.node }} expires in {{ $value | humanizeDuration }}"
+            description: "The kubelet rotates its client certificate itself; one this close to expiry did not rotate."
+        - alert: UnfoldAPIServerClientCertificateExpiring
+          expr: histogram_quantile(0.01, sum by (instance, le) (rate(apiserver_client_certificate_expiration_seconds_bucket{cluster="unfold"}[10m]))) < 604800
+          for: 1h
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "A client presents a certificate to the Unfold API server that expires within 7 days"
+            description: "Some client of {{ $labels.instance }} authenticates with a certificate that is about to expire. Talos-issued admin and kubelet certificates rotate; anything else must be renewed."
+        - alert: UnfoldCertificateExpiring
+          expr: min by (namespace, name) (certmanager_certificate_expiration_timestamp_seconds{cluster="unfold"}) - time() < 1209600
+          for: 1h
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "Certificate {{ $labels.namespace }}/{{ $labels.name }} on Unfold expires in {{ $value | humanizeDuration }}"
+            description: "cert-manager renews 30 days ahead by default, so 14 days left means renewal has failed."
+        - alert: UnfoldEtcdBackupStale
+          expr: time() - max(kube_cronjob_status_last_successful_time{cluster="unfold",namespace="etcd-backup",cronjob="etcd-backup"}) > 25200
+          for: 5m
+          labels:
+            severity: critical
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "No successful Unfold etcd backup for {{ $value | humanizeDuration }}"
+            description: "The etcd-backup CronJob runs every 6 hours; 7 hours without a success means at least one run failed or did not start."
+        - alert: UnfoldEtcdBackupNeverSucceeded
+          expr: absent(kube_cronjob_status_last_successful_time{cluster="unfold",namespace="etcd-backup",cronjob="etcd-backup"}) and on() count(kube_cronjob_info{cluster="unfold",namespace="etcd-backup",cronjob="etcd-backup"}) > 0
+          for: 7h
+          labels:
+            severity: critical
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "The Unfold etcd-backup CronJob has no successful run on record"
+            description: "kube-state-metrics sees the CronJob but no last successful time for 7 hours."

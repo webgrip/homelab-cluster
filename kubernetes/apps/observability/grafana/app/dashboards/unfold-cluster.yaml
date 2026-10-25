@@ -1,0 +1,2731 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: unfold-cluster
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: unfold
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "Unfold cluster",
+      "uid": "unfold-cluster",
+      "timezone": "browser",
+      "tags": [
+        "unfold",
+        "kubernetes",
+        "talos"
+      ],
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "links": [
+        {
+          "title": "Unfold cloud costs",
+          "type": "link",
+          "url": "/d/unfold-cloud-costs"
+        }
+      ],
+      "panels": [
+        {
+          "id": 2,
+          "type": "row",
+          "title": "Cluster",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "panels": []
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Nodes Ready",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 1
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(kube_node_status_condition{cluster=\"unfold\",condition=\"Ready\",status=\"true\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Nodes",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 1
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "count(kube_node_info{cluster=\"unfold\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "API servers answering",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 1
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(up{cluster=\"unfold\",job=\"apiserver\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "etcd has a leader",
+          "description": "Needs the Talos patch that serves etcd metrics on port 2381.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 1
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "min(etcd_server_has_leader{cluster=\"unfold\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "No",
+                      "color": "red"
+                    },
+                    "1": {
+                      "text": "Yes",
+                      "color": "green"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 7,
+          "type": "stat",
+          "title": "Flux resources not Ready",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 1
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "count(flux_resource_info{cluster=\"unfold\",ready=\"False\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 8,
+          "type": "stat",
+          "title": "Newest sample age",
+          "description": "How old the most recent sample from Unfold is. Above a few minutes the remote write over the tailnet is failing or lagging.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 1
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "time() - max(timestamp(up{cluster=\"unfold\"}))",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 120
+                  },
+                  {
+                    "color": "red",
+                    "value": 600
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 9,
+          "type": "stat",
+          "title": "Pods not running",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 5
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(kube_pod_status_phase{cluster=\"unfold\",phase=~\"Pending|Failed|Unknown\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 10,
+          "type": "stat",
+          "title": "Container restarts, 1h",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 5
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(increase(kube_pod_container_status_restarts_total{cluster=\"unfold\"}[1h])) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 3
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 11,
+          "type": "stat",
+          "title": "Scrape targets down",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 5
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "count(up{cluster=\"unfold\"} == 0) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 12,
+          "type": "stat",
+          "title": "Last etcd backup",
+          "description": "Time since the etcd-backup CronJob last succeeded. It runs every 6 hours; the alert fires at 7.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 5
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "time() - max(kube_cronjob_status_last_successful_time{cluster=\"unfold\",namespace=\"etcd-backup\",cronjob=\"etcd-backup\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 25200
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 13,
+          "type": "stat",
+          "title": "Spend this month",
+          "description": "Hetzner project unfold, net, from the homelab's hcloud-cost-exporter.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 5
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(hcloud_cost_resource_month_to_date_eur{project=\"unfold\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyEUR",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 2,
+              "links": [
+                {
+                  "title": "Unfold cloud costs",
+                  "url": "/d/unfold-cloud-costs"
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 14,
+          "type": "stat",
+          "title": "Projected month",
+          "description": "If every resource lives to the end of the month. The cap in RFC 0001 is 185 EUR.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 5
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(hcloud_cost_resource_projected_month_eur{project=\"unfold\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "currencyEUR",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 150
+                  },
+                  {
+                    "color": "red",
+                    "value": 185
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 2,
+              "links": [
+                {
+                  "title": "Unfold cloud costs",
+                  "url": "/d/unfold-cloud-costs"
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 15,
+          "type": "row",
+          "title": "Nodes",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 9
+          },
+          "panels": []
+        },
+        {
+          "id": 16,
+          "type": "table",
+          "title": "Nodes",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 10
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "max by (node) (kube_node_status_condition{cluster=\"unfold\",condition=\"Ready\",status=\"true\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "1 - avg by (node) (rate(node_cpu_seconds_total{cluster=\"unfold\",mode=\"idle\"}[5m]))",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "1 - sum by (node) (node_memory_MemAvailable_bytes{cluster=\"unfold\"}) / sum by (node) (node_memory_MemTotal_bytes{cluster=\"unfold\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "1 - max by (node) (node_filesystem_avail_bytes{cluster=\"unfold\",mountpoint=\"/var\"}) / max by (node) (node_filesystem_size_bytes{cluster=\"unfold\",mountpoint=\"/var\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum by (node) (kube_pod_container_resource_requests{cluster=\"unfold\",resource=\"cpu\"}) / sum by (node) (kube_node_status_allocatable{cluster=\"unfold\",resource=\"cpu\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "F",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum by (node) (kube_pod_container_resource_requests{cluster=\"unfold\",resource=\"memory\"}) / sum by (node) (kube_node_status_allocatable{cluster=\"unfold\",resource=\"memory\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "G",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "count by (node) (kube_pod_info{cluster=\"unfold\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "Ready",
+                  "Value #B": "CPU used",
+                  "Value #C": "Memory used",
+                  "Value #D": "/var used",
+                  "Value #E": "CPU requested",
+                  "Value #F": "Memory requested",
+                  "Value #G": "Pods"
+                },
+                "indexByName": {
+                  "node": 0,
+                  "Ready": 1,
+                  "CPU used": 2,
+                  "Memory used": 3,
+                  "/var used": 4,
+                  "CPU requested": 5,
+                  "Memory requested": 6,
+                  "Pods": 7
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Memory used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "/var used"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CPU requested"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Memory requested"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "percentunit"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "CPU used by node",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 17
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "1 - avg by (node) (rate(node_cpu_seconds_total{cluster=\"unfold\",mode=\"idle\"}[5m]))",
+              "legendFormat": "{{node}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "custom": {
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 18,
+          "type": "timeseries",
+          "title": "Memory used by node",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 17
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "1 - sum by (node) (node_memory_MemAvailable_bytes{cluster=\"unfold\"}) / sum by (node) (node_memory_MemTotal_bytes{cluster=\"unfold\"})",
+              "legendFormat": "{{node}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "custom": {
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 19,
+          "type": "row",
+          "title": "Flux",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 24
+          },
+          "panels": []
+        },
+        {
+          "id": 20,
+          "type": "stat",
+          "title": "Flux resources",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 25
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "count(flux_resource_info{cluster=\"unfold\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 21,
+          "type": "stat",
+          "title": "Suspended",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 25
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "count(flux_resource_info{cluster=\"unfold\",suspended=\"True\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 22,
+          "type": "stat",
+          "title": "Not Ready",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 25
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "count(flux_resource_info{cluster=\"unfold\",ready=\"False\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 23,
+          "type": "table",
+          "title": "Flux resources not Ready",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 25
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "max by (kind, namespace, name, reason) (flux_resource_info{cluster=\"unfold\",ready=\"False\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "Not Ready"
+                },
+                "indexByName": {
+                  "kind": 0,
+                  "namespace": 1,
+                  "name": 2,
+                  "reason": 3,
+                  "Not Ready": 4
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        },
+        {
+          "id": 24,
+          "type": "table",
+          "title": "Reconcile duration p95 by kind",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 12,
+            "x": 0,
+            "y": 29
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "histogram_quantile(0.95, sum by (kind, le) (rate(gotk_reconcile_duration_seconds_bucket{cluster=\"unfold\"}[30m])))",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "p95"
+                },
+                "indexByName": {
+                  "kind": 0,
+                  "p95": 1
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "p95"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        },
+        {
+          "id": 25,
+          "type": "row",
+          "title": "Cilium and Hubble",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 33
+          },
+          "panels": []
+        },
+        {
+          "id": 26,
+          "type": "stat",
+          "title": "Cilium agents answering",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 34
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(up{cluster=\"unfold\",job=\"cilium\",component=\"agent\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 27,
+          "type": "stat",
+          "title": "Endpoints",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 34
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(cilium_endpoint_state{cluster=\"unfold\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 28,
+          "type": "stat",
+          "title": "Dropped flows /s",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 34
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(rate(hubble_drop_total{cluster=\"unfold\"}[5m])) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "pps",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 2
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 29,
+          "type": "stat",
+          "title": "DNS errors /s",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 34
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(rate(hubble_dns_responses_total{cluster=\"unfold\",rcode!=\"No Error\"}[5m])) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.5
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 2
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 30,
+          "type": "stat",
+          "title": "Policy denials, 1h",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 34
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(increase(hubble_policy_verdicts_total{cluster=\"unfold\",action=\"dropped\"}[1h])) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 31,
+          "type": "stat",
+          "title": "Cilium operator answering",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 34
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(up{cluster=\"unfold\",job=\"cilium-operator\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 32,
+          "type": "table",
+          "title": "Drops by reason, 1h",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 0,
+            "y": 38
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum by (reason) (increase(hubble_drop_total{cluster=\"unfold\"}[1h])) > 0",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "Drops"
+                },
+                "indexByName": {
+                  "reason": 0,
+                  "Drops": 1
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        },
+        {
+          "id": 33,
+          "type": "table",
+          "title": "Policy denials by namespace, 1h",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 12,
+            "x": 12,
+            "y": 38
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum by (source_namespace, destination_namespace) (increase(hubble_policy_verdicts_total{cluster=\"unfold\",action=\"dropped\"}[1h])) > 0",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "Denials"
+                },
+                "indexByName": {
+                  "source_namespace": 0,
+                  "destination_namespace": 1,
+                  "Denials": 2
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        },
+        {
+          "id": 34,
+          "type": "timeseries",
+          "title": "Flows by verdict",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 24,
+            "x": 0,
+            "y": 45
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum by (verdict) (rate(hubble_flows_processed_total{cluster=\"unfold\"}[5m]))",
+              "legendFormat": "{{verdict}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "pps",
+              "custom": {
+                "fillOpacity": 10,
+                "showPoints": "never"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 35,
+          "type": "row",
+          "title": "etcd",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 52
+          },
+          "panels": []
+        },
+        {
+          "id": 36,
+          "type": "stat",
+          "title": "Members with a leader",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 53
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(etcd_server_has_leader{cluster=\"unfold\"}) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 3
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 37,
+          "type": "stat",
+          "title": "Leader changes, 24h",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 53
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "max(increase(etcd_server_leader_changes_seen_total{cluster=\"unfold\"}[24h])) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 3
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 38,
+          "type": "stat",
+          "title": "Largest database",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 53
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "max(etcd_mvcc_db_total_size_in_bytes{cluster=\"unfold\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 39,
+          "type": "stat",
+          "title": "Of quota",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 53
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "max(etcd_mvcc_db_total_size_in_bytes{cluster=\"unfold\"} / etcd_server_quota_backend_bytes{cluster=\"unfold\"})",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.6
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.8
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 1
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 40,
+          "type": "stat",
+          "title": "WAL fsync p99",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 53
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "max(histogram_quantile(0.99, sum by (node, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket{cluster=\"unfold\"}[5m]))))",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 0.01
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.05
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 3
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 41,
+          "type": "stat",
+          "title": "Failed proposals, 1h",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 53
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "sum(increase(etcd_server_proposals_failed_total{cluster=\"unfold\"}[1h])) or vector(0)",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "textMode": "value"
+          }
+        },
+        {
+          "id": 42,
+          "type": "table",
+          "title": "Members",
+          "description": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "unfold-prometheus"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 24,
+            "x": 0,
+            "y": 57
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "max by (node) (etcd_server_has_leader{cluster=\"unfold\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "max by (node) (etcd_mvcc_db_total_size_in_bytes{cluster=\"unfold\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "max by (node) (etcd_mvcc_db_total_size_in_use_in_bytes{cluster=\"unfold\"})",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "histogram_quantile(0.99, sum by (node, le) (rate(etcd_disk_wal_fsync_duration_seconds_bucket{cluster=\"unfold\"}[5m])))",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "unfold-prometheus"
+              },
+              "expr": "histogram_quantile(0.99, sum by (node, le) (rate(etcd_disk_backend_commit_duration_seconds_bucket{cluster=\"unfold\"}[5m])))",
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "Value #A": "Has leader",
+                  "Value #B": "Database",
+                  "Value #C": "In use",
+                  "Value #D": "WAL fsync p99",
+                  "Value #E": "Commit p99"
+                },
+                "indexByName": {
+                  "node": 0,
+                  "Has leader": 1,
+                  "Database": 2,
+                  "In use": 3,
+                  "WAL fsync p99": 4,
+                  "Commit p99": 5
+                }
+              }
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Database"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "In use"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "bytes"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "WAL fsync p99"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Commit p99"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm"
+          }
+        },
+        {
+          "id": 43,
+          "type": "row",
+          "title": "Logs",
+          "collapsed": false,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 63
+          },
+          "panels": []
+        },
+        {
+          "id": 44,
+          "type": "logs",
+          "title": "Talos services and kernel",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 12,
+            "w": 12,
+            "x": 0,
+            "y": 64
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "expr": "cluster:=unfold source:=talos",
+              "queryType": "instant",
+              "direction": "backward",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "prettifyLogMessage": false
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        },
+        {
+          "id": 45,
+          "type": "logs",
+          "title": "Pod lines mentioning an error",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 12,
+            "w": 12,
+            "x": 12,
+            "y": 64
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "expr": "cluster:=unfold source:=pod _msg:~\"(?i)(error|fatal|panic)\"",
+              "queryType": "instant",
+              "direction": "backward",
+              "maxLines": 200
+            }
+          ],
+          "options": {
+            "dedupStrategy": "none",
+            "enableLogDetails": true,
+            "showTime": true,
+            "sortOrder": "Descending",
+            "wrapLogMessage": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "prettifyLogMessage": false
+          },
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": []
+          }
+        }
+      ]
+    }

@@ -1,0 +1,30 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMSingle
+metadata:
+  name: unfold
+spec:
+  retentionPeriod: "30d"
+  replicaCount: 1
+  removePvcAfterDelete: false
+  storage:
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: longhorn
+    resources:
+      requests:
+        storage: 20Gi
+  extraArgs:
+    search.maxUniqueTimeseries: "300000"
+  podMetadata:
+    annotations:
+      reloader.stakater.com/auto: "true"
+  nodeSelector:
+    node.webgrip.io/pool: worker
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
