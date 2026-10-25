@@ -1,0 +1,61 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: unfold-headscale-address
+spec:
+  schedule: "*/2 * * * *"
+  startingDeadlineSeconds: 100
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: unfold-headscale-address
+        spec:
+          serviceAccountName: unfold-headscale-address
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: publish
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4
+              imagePullPolicy: IfNotPresent
+              command:
+                - "bash"
+                - "/scripts/publish.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PRODUCTION_HOSTNAME, value: "headscale.${SECRET_DOMAIN}"}
+                - {name: DRILL_HOSTNAME, value: "headscale-drill.${SECRET_DOMAIN}"}
+                - {name: RECORD_TTL, value: "300"}
+                - {name: ENDPOINT_NAME, value: unfold-headscale}
+                - {name: ADDRESS_SECRET, value: unfold-headscale-address}
+                - name: NAMESPACE
+                  valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: scripts
+              configMap: {name: unfold-headscale-address}

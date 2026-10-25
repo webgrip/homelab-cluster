@@ -1,0 +1,19 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ./externalsecret.yaml
+  - ./rbac.yaml
+  - ./cronjob.yaml
+configMapGenerator:
+  - name: unfold-headscale-address
+    files:
+      - publish.sh
+    options:
+      labels:
+        app.kubernetes.io/name: unfold-headscale-address
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+generatorOptions:
+  disableNameSuffixHash: true
