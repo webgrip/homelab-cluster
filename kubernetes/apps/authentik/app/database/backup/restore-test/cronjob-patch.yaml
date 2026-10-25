@@ -1,0 +1,25 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cnpg-restore-test
+spec:
+  suspend: false
+  schedule: "0 13 * * 1"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: restore-test
+              env:
+                - name: SOURCE_CLUSTER
+                  value: authentik-db
+                - name: RESTORE_CLUSTER
+                  value: authentik-db-restore
+                - name: EXPECTED_DATABASE
+                  value: authentik
+                - name: EXPECTED_ROLE
+                  value: authentik
+                - name: BARMAN_OBJECT_NAME
+                  value: authentik-db-store
