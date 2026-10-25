@@ -33,3 +33,11 @@ path "secret/data/unfold/headscale-address" {
 path "secret/data/hetzner/unfold-drill" {
   capabilities = ["read"]
 }
+
+path "secret/data/hetzner/unfold-robot" {
+  capabilities = ["read"]
+}
+
+path "secret/data/unfold-cluster/metal/*" {
+  capabilities = ["create", "read", "update"]
+}
