@@ -90,7 +90,7 @@ applied_digest="$(kubectl get configmap "$PEER_CONFIGMAP" -n "$NAMESPACE" \
 
 if [[ "$changed" == 1 || "$peers_digest" != "$applied_digest" ]]; then
   answer="$(opnsense POST service/reconfigure '{}' 2>&1 || true)"
-  jq -e '(.status // "" | ascii_downcase) == "ok"' >/dev/null 2>&1 <<<"$answer" \
+  jq -e '(.result // .status // "" | ascii_downcase) == "ok"' >/dev/null 2>&1 <<<"$answer" \
     || { echo "OPNsense did not apply the WireGuard change; it answered: ${answer}" >&2; exit 1; }
   echo "applied on ${server_name}"
 fi
