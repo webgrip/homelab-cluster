@@ -1,21 +1,21 @@
 ---
 rule_files:
   - rules/finops.yaml
-evaluation_interval: 5m
+evaluation_interval: 1m
 tests:
   - name: measured lines add up, a line without its input stays out, and the missing count says so
-    interval: 5m
+    interval: 1m
     input_series:
       - series: 'kepler_node_cpu_watts{zone="package", node_name="worker-1"}'
-        values: "100x20"
+        values: "100x40"
       - series: 'kepler_node_cpu_watts{zone="dram", node_name="worker-1"}'
-        values: "50x20"
+        values: "50x40"
       - series: 'kepler_node_cpu_watts{zone="uncore", node_name="worker-1"}'
-        values: "999x20"
+        values: "999x40"
       - series: 'hcloud:projected_month_eur:sum{project="unfold"}'
-        values: "10x20"
+        values: "10x40"
       - series: 'litellm_spend_metric_total{model="m"}'
-        values: "0+1x20"
+        values: "0+1x40"
     metricsql_expr_test:
       - expr: finops:monthly_cost_eur
         eval_time: 30m
@@ -36,10 +36,10 @@ tests:
             value: 5
 
   - name: a stopped exporter drops its line instead of reading zero
-    interval: 5m
+    interval: 1m
     input_series:
       - series: 'kepler_node_cpu_watts{zone="package", node_name="worker-1"}'
-        values: "100x20"
+        values: "100x40"
     metricsql_expr_test:
       - expr: finops:monthly_cost_eur{line="hetzner-cloud"}
         eval_time: 30m
