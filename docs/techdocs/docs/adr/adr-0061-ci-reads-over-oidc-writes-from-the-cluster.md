@@ -226,3 +226,8 @@ picks up the rest.
 * 2026-10-25 — `webgrip/unfold-cluster` reads over OIDC. The bridge stopped publishing its
   thirteen repository secrets, dropped the five ExternalSecrets behind them and the Hetzner token
   check, and lists the names in `RETIRED_REPO_SECRETS` so they are deleted from the repository.
+* 2026-10-25 — a third operation, `dns-acme-<zone>`, carries Zone Read and DNS Write and nothing
+  else, the least cert-manager's DNS-01 solver needs. It is minted for `unfoldhq.dev` only
+  (`ACME_DNS_ZONES`) and pushed by a PushSecret of its own to
+  `secret/unfold-main/cert-manager/cloudflare-dns01`, which the Unfold cluster's External Secrets
+  reads for its Let's Encrypt issuers. It renews on the same 90-day, 30-day-early cycle.
