@@ -10,6 +10,10 @@ path "secret/data/hetzner/unfold-vip" {
   capabilities = ["read"]
 }
 
+path "secret/data/hetzner/unfold-autoscaler" {
+  capabilities = ["read"]
+}
+
 path "secret/data/unfold-cluster/tofu-state" {
   capabilities = ["read"]
 }
