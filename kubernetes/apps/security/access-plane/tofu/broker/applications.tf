@@ -198,6 +198,20 @@ locals {
       extra_scopes = ["ploeg-read", "groups"]
       adopt        = false
     }
+    ploeg-mcp-confirm = {
+      provider_name = "ploeg-mcp-confirm-oidc"
+      app_name      = "Ploeg MCP action confirmation"
+      description   = "Fresh sign-in on ploeg-mcp's confirmation page before an agent's Ploeg action runs (ploeg ADR-0153)."
+      launch_url    = null
+      client_id     = "ploeg-mcp-confirm"
+      client_secret = data.vault_kv_secret_v2.oidc_client["ploeg-mcp-confirm"].data["client_secret"]
+      client_type   = "confidential"
+      signing_key   = true
+      grant_types   = ["authorization_code"]
+      redirects     = [{ matching_mode = "strict", url = "https://mcp-ploeg.${var.SECRET_DOMAIN}/confirmations/callback" }]
+      extra_scopes  = []
+      adopt         = false
+    }
     unfold-mcp = {
       provider_name         = "unfold-mcp-oauth"
       app_name              = "Unfold MCP"
