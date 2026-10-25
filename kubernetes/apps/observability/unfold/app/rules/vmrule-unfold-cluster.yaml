@@ -11,15 +11,15 @@ spec:
       interval: 1m
       rules:
         - alert: UnfoldMetricsAbsent
-          expr: absent(up{cluster="unfold"})
-          for: 15m
+          expr: absent_over_time(up{cluster="unfold"}[10m]) and on() count(last_over_time(up{cluster="unfold"}[7d])) > 0
+          for: 5m
           labels:
             severity: critical
             cluster: unfold
             team: platform
           annotations:
             summary: "No metrics from the Unfold cluster for 15 minutes"
-            description: "The homelab has received no samples with cluster=unfold. vmagent on Unfold buffers about two hours on disk, so the cause is the path: the vmagent pod, the tailnet between the clusters, the unfold-ingest pod in observability, or vmsingle-unfold. Runbook: unfold-cluster docs/observability.md."
+            description: "The homelab has received no samples with cluster=unfold for 15 minutes after receiving some in the last 7 days; before the first sample, or 7 days after the last, this stays quiet. vmagent on Unfold buffers about two hours on disk, so the cause is the path: the vmagent pod, the tailnet between the clusters, the unfold-gateway pod in observability, or vmsingle-unfold. Runbook: unfold-cluster docs/observability.md."
         - alert: UnfoldEtcdMetricsAbsent
           expr: absent(etcd_server_has_leader{cluster="unfold"}) and on() count(up{cluster="unfold"}) > 0
           for: 30m

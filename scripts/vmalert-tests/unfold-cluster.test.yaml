@@ -1,0 +1,52 @@
+---
+rule_files:
+  - rules/unfold-cluster.yaml
+evaluation_interval: 1m
+tests:
+  - name: a cluster that never sent anything does not page
+    interval: 1m
+    input_series:
+      - series: 'up{cluster="homelab-cluster", job="vmagent"}'
+        values: "1x120"
+    alert_rule_test:
+      - eval_time: 100m
+        groupname: unfold-delivery
+        alertname: UnfoldMetricsAbsent
+        exp_alerts: []
+
+  - name: a cluster that stops sending pages after 15 minutes
+    interval: 1m
+    input_series:
+      - series: 'up{cluster="unfold", job="vmagent"}'
+        values: "1x30 _x90"
+    alert_rule_test:
+      - eval_time: 30m
+        groupname: unfold-delivery
+        alertname: UnfoldMetricsAbsent
+        exp_alerts: []
+      - eval_time: 42m
+        groupname: unfold-delivery
+        alertname: UnfoldMetricsAbsent
+        exp_alerts: []
+      - eval_time: 50m
+        groupname: unfold-delivery
+        alertname: UnfoldMetricsAbsent
+        exp_alerts:
+          - exp_labels:
+              alertname: UnfoldMetricsAbsent
+              cluster: unfold
+              severity: critical
+              team: platform
+            exp_annotations:
+              summary: "No metrics from the Unfold cluster for 15 minutes"
+
+  - name: a cluster that keeps sending does not page
+    interval: 1m
+    input_series:
+      - series: 'up{cluster="unfold", job="vmagent"}'
+        values: "1x120"
+    alert_rule_test:
+      - eval_time: 100m
+        groupname: unfold-delivery
+        alertname: UnfoldMetricsAbsent
+        exp_alerts: []

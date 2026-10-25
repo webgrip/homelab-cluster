@@ -54,7 +54,10 @@ for test_file in "${test_files[@]}"; do
   name="$(basename "$test_file" .test.yaml)"
   rule_source="${RULES_DIR}/prometheusrule-${name}.yaml"
   if [[ ! -f "$rule_source" ]]; then
-    echo "${test_file}: expected rule source ${rule_source}" >&2
+    rule_source="$(find "${ROOT_DIR}/kubernetes/apps" -path '*/app/rules/vmrule-'"${name}"'.yaml' -print -quit)"
+  fi
+  if [[ -z "$rule_source" || ! -f "$rule_source" ]]; then
+    echo "${test_file}: expected rule source ${RULES_DIR}/prometheusrule-${name}.yaml or kubernetes/apps/*/*/app/rules/vmrule-${name}.yaml" >&2
     exit 1
   fi
   yq_cmd '.spec | del(.groups[].rules[].annotations.description) | del(.groups[].rules[].annotations.runbook_url) | del(.groups[].rules[].annotations.dashboard_url)' "$rule_source" | sed 's/\$\$/$/g' >"${workspace}/rules/${name}.yaml"
