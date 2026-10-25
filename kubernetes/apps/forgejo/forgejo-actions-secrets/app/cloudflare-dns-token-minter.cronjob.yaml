@@ -38,6 +38,8 @@ spec:
                   value: /tmp
                 - name: DNS_ZONES
                   value: "unfoldhq.dev=730f65dd5d92e4e063ea7c5ac9b61f26 twente.dev=3abdfa38d565cec8f954e278cc60e968 webgrip.nl=0c372e0f74e791cdf3099a298ed03988"
+                - name: ACME_DNS_ZONES
+                  value: "unfoldhq.dev=730f65dd5d92e4e063ea7c5ac9b61f26"
                 - name: TOKEN_SECRET
                   value: cloudflare-dns-tokens
                 - name: LIFETIME_DAYS
@@ -63,7 +65,8 @@ spec:
                   }
                   ro_groups="$(group_ids "Zone Read,DNS Read,Dynamic URL Redirects Read")"
                   rw_groups="$(group_ids "Zone Read,DNS Write,Dynamic URL Redirects Write")"
-                  if [ "$(echo "${ro_groups}" | jq length)" != 3 ] || [ "$(echo "${rw_groups}" | jq length)" != 3 ]; then
+                  acme_groups="$(group_ids "Zone Read,DNS Write")"
+                  if [ "$(echo "${ro_groups}" | jq length)" != 3 ] || [ "$(echo "${rw_groups}" | jq length)" != 3 ] || [ "$(echo "${acme_groups}" | jq length)" != 2 ]; then
                     log "ERROR: Cloudflare permission groups not found by name; nothing minted"
                     exit 1
                   fi
@@ -89,37 +92,44 @@ spec:
                   }
 
                   failed=0
+                  mint() {
+                    key="$1"; token_name="$2"; zone_id="$3"; groups="$4"
+                    if ! needs_mint "$(current_token "${key}")"; then
+                      log "${key}: current token is active and not near expiry"
+                      return 0
+                    fi
+                    expires_on="$(date -u -d "@$(( $(date +%s) + LIFETIME_DAYS * 86400 ))" +%Y-%m-%dT%H:%M:%SZ)"
+                    body="$(jq -nc --arg name "${token_name}" --arg zone "com.cloudflare.api.account.zone.${zone_id}" \
+                      --arg exp "${expires_on}" --argjson groups "${groups}" \
+                      '{name: $name, expires_on: $exp, policies: [{effect: "allow", resources: {($zone): "*"}, permission_groups: $groups}]}')"
+                    created="$(curl -sS -X POST -H "Authorization: Bearer ${CLOUDFLARE_MANAGER_TOKEN}" \
+                      -H 'Content-Type: application/json' --data "${body}" "${api}/tokens")" || created='{}'
+                    value="$(echo "${created}" | jq -r 'select(.success == true) | .result.value // empty')"
+                    if [ -z "${value}" ]; then
+                      log "ERROR: minting ${key} failed: $(echo "${created}" | jq -c '.errors // "no response"')"
+                      failed=1
+                      return 0
+                    fi
+                    kubectl -n forgejo patch secret "${TOKEN_SECRET}" --type merge \
+                      -p "$(jq -nc --arg k "${key}" --arg v "${value}" '{stringData: {($k): $v}}')" >/dev/null
+                    log "${key}: minted ${token_name} (id $(echo "${created}" | jq -r '.result.id')), expires ${expires_on}"
+                    if needs_mint "${value}"; then
+                      log "ERROR: ${key} was minted and saved but does not verify as active"
+                      failed=1
+                    fi
+                  }
                   for entry in ${DNS_ZONES}; do
                     zone="${entry%%=*}"
                     zone_id="${entry#*=}"
                     slug="$(echo "${zone}" | tr . -)"
-                    for op in ro rw; do
-                      key="${slug}-${op}"
-                      if ! needs_mint "$(current_token "${key}")"; then
-                        log "${key}: current token is active and not near expiry"
-                        continue
-                      fi
-                      if [ "${op}" = ro ]; then groups="${ro_groups}"; else groups="${rw_groups}"; fi
-                      expires_on="$(date -u -d "@$(( $(date +%s) + LIFETIME_DAYS * 86400 ))" +%Y-%m-%dT%H:%M:%SZ)"
-                      body="$(jq -nc --arg name "dns-${op}-${slug}" --arg zone "com.cloudflare.api.account.zone.${zone_id}" \
-                        --arg exp "${expires_on}" --argjson groups "${groups}" \
-                        '{name: $name, expires_on: $exp, policies: [{effect: "allow", resources: {($zone): "*"}, permission_groups: $groups}]}')"
-                      created="$(curl -sS -X POST -H "Authorization: Bearer ${CLOUDFLARE_MANAGER_TOKEN}" \
-                        -H 'Content-Type: application/json' --data "${body}" "${api}/tokens")" || created='{}'
-                      value="$(echo "${created}" | jq -r 'select(.success == true) | .result.value // empty')"
-                      if [ -z "${value}" ]; then
-                        log "ERROR: minting ${key} failed: $(echo "${created}" | jq -c '.errors // "no response"')"
-                        failed=1
-                        continue
-                      fi
-                      kubectl -n forgejo patch secret "${TOKEN_SECRET}" --type merge \
-                        -p "$(jq -nc --arg k "${key}" --arg v "${value}" '{stringData: {($k): $v}}')" >/dev/null
-                      log "${key}: minted dns-${op}-${slug} (id $(echo "${created}" | jq -r '.result.id')), expires ${expires_on}"
-                      if needs_mint "${value}"; then
-                        log "ERROR: ${key} was minted and saved but does not verify as active"
-                        failed=1
-                      fi
-                    done
+                    mint "${slug}-ro" "dns-ro-${slug}" "${zone_id}" "${ro_groups}"
+                    mint "${slug}-rw" "dns-rw-${slug}" "${zone_id}" "${rw_groups}"
+                  done
+                  for entry in ${ACME_DNS_ZONES}; do
+                    zone="${entry%%=*}"
+                    zone_id="${entry#*=}"
+                    slug="$(echo "${zone}" | tr . -)"
+                    mint "${slug}-acme" "dns-acme-${slug}" "${zone_id}" "${acme_groups}"
                   done
                   exit "${failed}"
               resources:
