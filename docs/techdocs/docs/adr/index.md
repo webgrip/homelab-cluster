@@ -114,7 +114,7 @@ How change reaches the cluster — the forge, the Flux source, and the escape ha
 | [0013](adr-0013-forgejo-leading-application-repos.md) | Forgejo-authoritative application repos (de-mirror) | accepted | 2026-10-04 |
 | [0014](adr-0014-codeberg-offsite-push-mirror.md) | Codeberg as a second off-site push-mirror | rejected | 2026-10-04 |
 | [0069](adr-0069-one-delivery-contract.md) | One delivery contract: forges produce, registries carry, clusters consume | accepted | 2026-10-17 |
-| [0082](adr-0082-a-failed-change-is-a-flux-reported-failure-or-a-declared-revert.md) | A failed change is a Flux-reported failure or a declared revert, counted per deployment | proposed | 2026-10-25 |
+| [0082](adr-0082-a-failed-change-is-a-flux-reported-failure-or-a-declared-revert.md) | A failed change is a Flux-reported failure or a declared revert, counted per deployment | accepted | 2026-10-25 |
 
 ### 5. Secrets
 
