@@ -43,6 +43,10 @@ The first live test on 2026-09-11 reached a real DeepSeek request. Ploeg recorde
 
 The released workbench supports remote agent workspaces, a shared Ploeg execution record, model access limited by Ploeg, ordinary code checks, reviewer runs, durable activity, and downloadable changes. Its separate trusted delivery verifier currently requires Docker and is disabled on this Talos cluster. Automatic publication is disabled. A completed session does not imply that a change was merged or deployed.
 
+## Outside Ploeg's supported profile
+
+This deployment sets `ploeg.supportProfile: unsupported`. Ploeg's chart refuses values that leave threat-model profile P1 unless they say so (Ploeg ADR-0154), and this cluster deliberately runs harnesses P1 has not qualified: the `claudeRunner` with the `claude-environment` harness, and `acp/opencode` on silver. The sandbox teams run under Kata, which P1 accepts. The install notes of every upgrade list the current departures. Remove the value once every team runs a qualified harness and the claude-runner is off; the chart then holds the deployment to P1.
+
 ## Storage and recovery
 
 Unfold stores its database and encryption key under `/data/workbench` on its persistent volume. Retain both together. The subdirectory is deliberate: the application must own its data directory, while Kubernetes owns the volume root. Workspace volumes are separate and retained for recovery.
