@@ -1,0 +1,168 @@
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-hetzner-costs
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: hcloud-cost-exporter
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.hetzner-costs
+      rules:
+        - alert: HetznerProjectedMonthOverBudget
+          expr: sum by (project) (hcloud_cost_resource_projected_month_eur) > 50
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: hetzner-costs
+          annotations:
+            summary: "Hetzner Cloud projected month spend is above EUR 50 (hetzner/{{ $labels.project }})"
+            description: |
+              What's happening:
+              - If every resource in Hetzner project {{ $labels.project }} lives to the end of the month, the bill reaches EUR {{ $value | printf "%.2f" }} (net), above the EUR 50 budget.
+
+              Impact/risk:
+              - The Unfold production cluster costs more than planned; the bill arrives at month end with no undo.
+
+              Likely causes:
+              - A server was added or resized (a larger cx/cpx/ccx type)
+              - Leftover temporary servers, snapshots or volumes from an image upload or a failed bootstrap
+              - Hetzner changed its list prices
+
+              First actions:
+              - Open the Unfold cloud costs dashboard and sort the resource table by projected cost
+              - Delete what is not part of unfold-main, or raise the budget in this rule on purpose
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/hetzner-cloud-costs/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/unfold-cloud-costs"
+
+        - alert: HetznerServerOutsideCluster
+          expr: (time() - hcloud_cost_resource_created_timestamp_seconds{kind="server", cluster!="unfold-main"}) > 7200
+          for: 5m
+          labels:
+            severity: warning
+            owner: platform
+            service: hetzner-costs
+          annotations:
+            summary: "Hetzner server {{ $labels.name }} is not labelled cluster=unfold-main (hetzner/{{ $labels.project }})"
+            description: |
+              What's happening:
+              - Server {{ $labels.name }} ({{ $labels.type }}, id {{ $labels.id }}) has existed for over two hours without the label cluster=unfold-main.
+
+              Impact/risk:
+              - It is billed every hour and nothing in the cluster owns it, so nobody deletes it.
+
+              Likely causes:
+              - A temporary hcloud-upload-image server that survived a failed or interrupted image upload
+              - A server created by hand in the console, or by a tool that does not set labels
+
+              First actions:
+              - Check it in the Hetzner console (project Unfold, Servers) and in the Unfold cloud costs dashboard
+              - Delete it if it is a leftover; label it cluster=unfold-main if it belongs to the cluster
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/hetzner-cloud-costs/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/unfold-cloud-costs"
+
+        - alert: HetznerCostExporterDown
+          expr: absent(up{job="hcloud-cost-exporter"} == 1)
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: hetzner-costs
+          annotations:
+            summary: "Hetzner cost exporter is not being scraped (observability/hcloud-cost-exporter)"
+            description: |
+              What's happening:
+              - VictoriaMetrics has had no successful scrape of hcloud-cost-exporter for 15 minutes.
+
+              Impact/risk:
+              - Hetzner spend and the leftover-server alert are blind; the budget alert cannot fire.
+
+              Likely causes:
+              - The exporter pod is crashing or Pending (worker pool full)
+              - The VMServiceScrape or Service port name no longer matches
+
+              First actions:
+              - kubectl -n observability get pods -l app.kubernetes.io/name=hcloud-cost-exporter
+              - kubectl -n observability logs deploy/hcloud-cost-exporter
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/hetzner-cloud-costs/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/unfold-cloud-costs"
+
+        - alert: HetznerApiTokenRejected
+          expr: hcloud_cost_token_configured == 1 and hcloud_cost_api_authorized == 0
+          for: 10m
+          labels:
+            severity: warning
+            owner: platform
+            service: hetzner-costs
+          annotations:
+            summary: "Hetzner API rejects the read-only token (hetzner/{{ $labels.project }})"
+            description: |
+              What's happening:
+              - The Hetzner Cloud API answers 401 or 403 to the token at secret/hetzner/unfold-readonly.
+
+              Impact/risk:
+              - No cost data; the exporter reports no resources until the token works again.
+
+              Likely causes:
+              - The token was revoked or deleted in the Hetzner console
+              - A token from another project was seeded into OpenBao
+
+              First actions:
+              - Create a new Read token in Hetzner project Unfold and seed it as the runbook shows
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/hetzner-cloud-costs/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/unfold-cloud-costs"
+
+        - alert: HetznerCostRefreshFailing
+          expr: hcloud_cost_token_configured == 1 and hcloud_cost_api_authorized == 1 and hcloud_cost_refresh_success == 0
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: hetzner-costs
+          annotations:
+            summary: "Hetzner cost data is stale (hetzner/{{ $labels.project }})"
+            description: |
+              What's happening:
+              - The exporter has failed to refresh the Hetzner inventory for 30 minutes; it still serves the last good data.
+
+              Impact/risk:
+              - Month-to-date and projected figures stop tracking new or deleted resources.
+
+              Likely causes:
+              - Egress to api.hetzner.cloud blocked (CiliumNetworkPolicy hcloud-cost-exporter-egress, DNS)
+              - Hetzner API outage or rate limiting
+              - An API response shape the exporter does not parse
+
+              First actions:
+              - kubectl -n observability logs deploy/hcloud-cost-exporter
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/hetzner-cloud-costs/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/unfold-cloud-costs"
+
+        - alert: HetznerApiTokenNotSeeded
+          expr: hcloud_cost_token_configured == 0
+          for: 1h
+          labels:
+            severity: info
+            owner: platform
+            service: hetzner-costs
+          annotations:
+            summary: "Hetzner read-only token is not seeded (hetzner/{{ $labels.project }})"
+            description: |
+              What's happening:
+              - The exporter runs but no token is mounted from secret/hetzner/unfold-readonly.
+
+              Impact/risk:
+              - No Hetzner cost data at all.
+
+              Likely causes:
+              - The owner has not yet created and seeded the token
+              - The ExternalSecret hcloud-unfold-readonly fails to sync
+
+              First actions:
+              - Follow the seeding steps in the runbook, then check kubectl -n observability get externalsecret hcloud-unfold-readonly
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/hetzner-cloud-costs/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/unfold-cloud-costs"

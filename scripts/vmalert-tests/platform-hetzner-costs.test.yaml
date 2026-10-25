@@ -1,0 +1,171 @@
+---
+rule_files:
+  - rules/platform-hetzner-costs.yaml
+evaluation_interval: 1m
+tests:
+  - name: a projected month over budget fires and one under budget does not
+    interval: 1m
+    input_series:
+      - series: 'hcloud_cost_resource_projected_month_eur{project="unfold", kind="server", name="unfold-app-1"}'
+        values: "8.49x60"
+      - series: 'hcloud_cost_resource_projected_month_eur{project="unfold", kind="server", name="big"}'
+        values: "_x20 45x40"
+    alert_rule_test:
+      - eval_time: 19m
+        groupname: platform.hetzner-costs
+        alertname: HetznerProjectedMonthOverBudget
+        exp_alerts: []
+      - eval_time: 40m
+        groupname: platform.hetzner-costs
+        alertname: HetznerProjectedMonthOverBudget
+        exp_alerts:
+          - exp_labels:
+              project: unfold
+              severity: warning
+              owner: platform
+              service: hetzner-costs
+            exp_annotations:
+              summary: "Hetzner Cloud projected month spend is above EUR 50 (hetzner/unfold)"
+
+  - name: an unlabelled server older than two hours fires and cluster servers do not
+    interval: 1m
+    input_series:
+      - series: 'hcloud_cost_resource_created_timestamp_seconds{project="unfold", kind="server", id="7", name="hcloud-upload-image-tmp", type="cx23"}'
+        values: "0x200"
+      - series: 'hcloud_cost_resource_created_timestamp_seconds{project="unfold", kind="server", id="1", name="unfold-cp-1", type="cx23", cluster="unfold-main"}'
+        values: "0x200"
+      - series: 'hcloud_cost_resource_created_timestamp_seconds{project="unfold", kind="snapshot", id="99", name="talos", type="snapshot"}'
+        values: "0x200"
+    alert_rule_test:
+      - eval_time: 110m
+        groupname: platform.hetzner-costs
+        alertname: HetznerServerOutsideCluster
+        exp_alerts: []
+      - eval_time: 130m
+        groupname: platform.hetzner-costs
+        alertname: HetznerServerOutsideCluster
+        exp_alerts:
+          - exp_labels:
+              project: unfold
+              kind: server
+              id: "7"
+              name: hcloud-upload-image-tmp
+              type: cx23
+              severity: warning
+              owner: platform
+              service: hetzner-costs
+            exp_annotations:
+              summary: "Hetzner server hcloud-upload-image-tmp is not labelled cluster=unfold-main (hetzner/unfold)"
+
+  - name: a missing scrape target fires exporter down
+    interval: 1m
+    input_series:
+      - series: 'up{job="hcloud-cost-exporter"}'
+        values: "1x10 0x30"
+    alert_rule_test:
+      - eval_time: 10m
+        groupname: platform.hetzner-costs
+        alertname: HetznerCostExporterDown
+        exp_alerts: []
+      - eval_time: 30m
+        groupname: platform.hetzner-costs
+        alertname: HetznerCostExporterDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              owner: platform
+              service: hetzner-costs
+            exp_annotations:
+              summary: "Hetzner cost exporter is not being scraped (observability/hcloud-cost-exporter)"
+
+  - name: a rejected token fires token-rejected, not stale-data or not-seeded
+    interval: 1m
+    input_series:
+      - series: 'hcloud_cost_token_configured{project="unfold"}'
+        values: "1x90"
+      - series: 'hcloud_cost_api_authorized{project="unfold"}'
+        values: "0x90"
+      - series: 'hcloud_cost_refresh_success{project="unfold"}'
+        values: "0x90"
+    alert_rule_test:
+      - eval_time: 80m
+        groupname: platform.hetzner-costs
+        alertname: HetznerApiTokenRejected
+        exp_alerts:
+          - exp_labels:
+              project: unfold
+              severity: warning
+              owner: platform
+              service: hetzner-costs
+            exp_annotations:
+              summary: "Hetzner API rejects the read-only token (hetzner/unfold)"
+      - eval_time: 80m
+        groupname: platform.hetzner-costs
+        alertname: HetznerCostRefreshFailing
+        exp_alerts: []
+      - eval_time: 80m
+        groupname: platform.hetzner-costs
+        alertname: HetznerApiTokenNotSeeded
+        exp_alerts: []
+
+  - name: an unseeded token is info only and a healthy exporter stays silent
+    interval: 1m
+    input_series:
+      - series: 'hcloud_cost_token_configured{project="unfold"}'
+        values: "0x90"
+      - series: 'hcloud_cost_api_authorized{project="unfold"}'
+        values: "0x90"
+      - series: 'hcloud_cost_refresh_success{project="unfold"}'
+        values: "0x90"
+      - series: 'hcloud_cost_token_configured{project="healthy"}'
+        values: "1x90"
+      - series: 'hcloud_cost_api_authorized{project="healthy"}'
+        values: "1x90"
+      - series: 'hcloud_cost_refresh_success{project="healthy"}'
+        values: "1x90"
+    alert_rule_test:
+      - eval_time: 80m
+        groupname: platform.hetzner-costs
+        alertname: HetznerApiTokenNotSeeded
+        exp_alerts:
+          - exp_labels:
+              project: unfold
+              severity: info
+              owner: platform
+              service: hetzner-costs
+            exp_annotations:
+              summary: "Hetzner read-only token is not seeded (hetzner/unfold)"
+      - eval_time: 80m
+        groupname: platform.hetzner-costs
+        alertname: HetznerApiTokenRejected
+        exp_alerts: []
+      - eval_time: 80m
+        groupname: platform.hetzner-costs
+        alertname: HetznerCostRefreshFailing
+        exp_alerts: []
+
+  - name: an authorized token that stops refreshing fires stale-data
+    interval: 1m
+    input_series:
+      - series: 'hcloud_cost_token_configured{project="unfold"}'
+        values: "1x60"
+      - series: 'hcloud_cost_api_authorized{project="unfold"}'
+        values: "1x60"
+      - series: 'hcloud_cost_refresh_success{project="unfold"}'
+        values: "1x10 0x50"
+    alert_rule_test:
+      - eval_time: 30m
+        groupname: platform.hetzner-costs
+        alertname: HetznerCostRefreshFailing
+        exp_alerts: []
+      - eval_time: 50m
+        groupname: platform.hetzner-costs
+        alertname: HetznerCostRefreshFailing
+        exp_alerts:
+          - exp_labels:
+              project: unfold
+              severity: warning
+              owner: platform
+              service: hetzner-costs
+            exp_annotations:
+              summary: "Hetzner cost data is stale (hetzner/unfold)"

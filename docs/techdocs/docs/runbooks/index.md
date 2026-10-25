@@ -52,6 +52,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 
 - [VictoriaMetrics (metrics backend + namespace triage)](victoriametrics.md)
 - [Off-site Garage (garage-fsn1): capacity, emergency relief, bucket deletion, LMDB compaction, lost blocks](garage-offsite.md)
+- [Hetzner Cloud costs (Unfold project): exporter, billing model, budget alerts, read-only token](hetzner-cloud-costs.md)
 - [Synthetic probes (blackbox, incl. Garage S3)](synthetic-probes-blackbox.md)
 - [k6 canaries](k6-canaries.md)
 

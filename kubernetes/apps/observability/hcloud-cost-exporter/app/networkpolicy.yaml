@@ -1,0 +1,29 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: hcloud-cost-exporter-egress
+  labels:
+    app.kubernetes.io/name: hcloud-cost-exporter
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: hcloud-cost-exporter
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchName: api.hetzner.cloud
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
