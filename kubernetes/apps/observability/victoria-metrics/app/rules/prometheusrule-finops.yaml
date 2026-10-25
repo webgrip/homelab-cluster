@@ -27,7 +27,7 @@ spec:
         - record: finops:monthly_cost_eur
           expr: |
             sum(kepler_node_cpu_watts{zone=~"package|dram"}) / 1000 * 730
-            * on () group_left () finops:eur_per_kwh
+            * on () group_left () last_over_time(finops:eur_per_kwh[10m])
           labels:
             line: electricity
             source: kepler-cpu-dram-floor
@@ -41,7 +41,7 @@ spec:
         - record: finops:monthly_cost_eur
           expr: |
             sum(rate(litellm_spend_metric_total[7d])) * 86400 * 30.44
-            * on () group_left () finops:eur_per_usd
+            * on () group_left () last_over_time(finops:eur_per_usd[10m])
           labels:
             line: model-spend
             source: litellm-7d-run-rate
@@ -50,9 +50,9 @@ spec:
       interval: 1m
       rules:
         - record: finops:monthly_total_eur
-          expr: sum(finops:monthly_cost_eur)
+          expr: sum(last_over_time(finops:monthly_cost_eur[10m]))
 
         - record: finops:monthly_cost_lines_missing
           expr: |-
-            scalar(finops:monthly_cost_lines_expected)
-            - count(count by (line) (finops:monthly_cost_eur))
+            scalar(last_over_time(finops:monthly_cost_lines_expected[10m]))
+            - count(count by (line) (last_over_time(finops:monthly_cost_eur[10m])))
