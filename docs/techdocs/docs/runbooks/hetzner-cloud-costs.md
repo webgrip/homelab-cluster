@@ -44,7 +44,7 @@ A full month of the current inventory is about €32.96.
 
 All carry `project="unfold"`. The per-resource series also carry `kind` (`server`,
 `server_backup`, `primary_ip`, `snapshot`, `backup`, `volume`, `load_balancer`, `floating_ip`),
-`id`, `name`, `role`, `cluster`, `location` and `type`.
+`id`, `name`, `role`, `hcloud_cluster` (the Hetzner label `cluster`; a plain `cluster` label would be renamed `exported_cluster` by the scrape, which adds its own `cluster`), `location` and `type`.
 
 | Metric | Meaning |
 | --- | --- |

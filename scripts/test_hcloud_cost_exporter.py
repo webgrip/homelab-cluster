@@ -220,7 +220,7 @@ class ExporterTest(unittest.TestCase):
         for metric, _, _ in exporter.RESOURCE_SERIES:
             self.assertEqual(text.count(metric + "{"), 11, metric)
         self.assertIn('hcloud_cost_resource_monthly_cap_eur{project="unfold",kind="server",id="4",'
-                      'name="unfold-app-1",role="worker",cluster="unfold-main",location="fsn1",type="cx33"} 8.49', text)
+                      'name="unfold-app-1",role="worker",hcloud_cluster="unfold-main",location="fsn1",type="cx33"} 8.49', text)
 
     def test_label_values_are_escaped(self):
         self.assertEqual(exporter.render_labels({"name": 'a"b\\c\nd'}), '{name="a\\"b\\\\c\\nd"}')

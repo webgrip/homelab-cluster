@@ -318,7 +318,7 @@ def resource_labels(project: str, resource: Resource) -> dict:
         "id": resource.resource_id,
         "name": resource.name,
         "role": resource.role,
-        "cluster": resource.cluster,
+        "hcloud_cluster": resource.cluster,
         "location": resource.location,
         "type": resource.resource_type,
     }
