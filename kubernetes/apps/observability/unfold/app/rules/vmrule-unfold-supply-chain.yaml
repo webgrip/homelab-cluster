@@ -1,0 +1,98 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: unfold-supply-chain
+  labels:
+    rules: unfold
+spec:
+  groups:
+    - name: unfold-supply-chain
+      interval: 5m
+      rules:
+        - alert: UnfoldNewCriticalFixableVulnerability
+          expr: |
+            count by (namespace, resource_kind, resource_name, image_repository) (
+              count by (namespace, resource_kind, resource_name, image_repository, vuln_id) (
+                trivy_vulnerability_id{cluster="unfold", severity="Critical", fixed_version!=""}
+              )
+              unless on (namespace, resource_kind, resource_name, image_repository, vuln_id)
+              count by (namespace, resource_kind, resource_name, image_repository, vuln_id) (
+                max_over_time(trivy_vulnerability_id{cluster="unfold", severity="Critical", fixed_version!=""}[7d] offset 1h)
+              )
+            )
+          for: 10m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "{{ $value }} new fixable CRITICAL vulnerabilities in {{ $labels.namespace }}/{{ $labels.resource_name }} ({{ $labels.image_repository }})"
+            description: "Trivy found CRITICAL vulnerabilities with a fixed version in this image that it had not reported in the week before. The alert lasts about an hour, until the finding counts as known; UnfoldCriticalFixableVulnerabilities keeps the backlog visible after that. The CVE ids and fixed versions are in VictoriaLogs (cluster:=unfold source:=trivy kind:=VulnerabilityReport) and in the VulnerabilityReport on the cluster. Fix: move the image to a release with the fix, or rebuild ours on a patched base. Runbook: unfold-cluster docs/runbooks/vulnerability-scanning.md."
+        - alert: UnfoldCriticalFixableVulnerabilities
+          expr: |
+            count(
+              count by (namespace, resource_kind, resource_name) (
+                trivy_vulnerability_id{cluster="unfold", severity="Critical", fixed_version!=""}
+              )
+            ) > 0
+          for: 6h
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "{{ $value }} Unfold workloads run images with fixable CRITICAL vulnerabilities"
+            description: "A backlog, not an incident: one alert for the whole cluster, so it never buries a real page. The per-workload list is the Unfold supply chain dashboard. Runbook: unfold-cluster docs/runbooks/vulnerability-scanning.md."
+        - alert: UnfoldExposedSecretInImage
+          expr: |
+            sum by (namespace, resource_kind, resource_name, image_repository) (
+              trivy_image_exposedsecrets{cluster="unfold", severity=~"Critical|High"}
+            ) > 0
+          for: 15m
+          labels:
+            severity: critical
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "Trivy found a secret baked into the image of {{ $labels.namespace }}/{{ $labels.resource_name }}"
+            description: "A credential in an image layer is published wherever the image is stored. Read the ExposedSecretReport (or VictoriaLogs: cluster:=unfold source:=trivy kind:=ExposedSecretReport), treat the credential as leaked, rotate it in OpenBao and rebuild without it. Runbook: unfold-cluster docs/runbooks/vulnerability-scanning.md."
+        - alert: UnfoldVulnerabilityScannerAbsent
+          expr: |
+            (sum(up{cluster="unfold", job="trivy-operator"}) or vector(0)) == 0
+            and on() count(up{cluster="unfold", job="vmagent"}) > 0
+            and on() count(last_over_time(up{cluster="unfold", job="trivy-operator"}[7d])) > 0
+          for: 30m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "The Trivy operator on Unfold has not answered its metrics scrape for 30 minutes"
+            description: "Without it no image is scanned and the vulnerability alerts above cannot fire. Look at the trivy-operator HelmRelease and pod in trivy-system."
+        - alert: UnfoldUnsignedWebgripImage
+          expr: |
+            sum by (policy_name, resource_namespace) (
+              increase(kyverno_image_validating_policy_results_total{cluster="unfold", policy_name=~"webgrip-image-signatures.*", result=~"fail|error"}[1h])
+            ) > 0
+          for: 0m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "A webgrip image without the estate's cosign signature was admitted in {{ $labels.resource_namespace }} ({{ $labels.policy_name }})"
+            description: "The signature policy runs in Audit: it reports and lets the pod start. Find the pod with kubectl get policyreports -A, or the Warn line in the client that applied it. A webgrip image must be signed by the OpenBao Transit key cosign-webgrip before it runs on Unfold; until every webgrip image here passes, the policy cannot move to Deny. Runbook: unfold-cluster docs/runbooks/image-signatures.md."
+        - alert: UnfoldSignatureWebhookAbsent
+          expr: |
+            (sum(up{cluster="unfold", job="kyverno", component="admission-controller"}) or vector(0)) == 0
+            and on() count(up{cluster="unfold", job="vmagent"}) > 0
+            and on() count(last_over_time(up{cluster="unfold", job="kyverno"}[7d])) > 0
+          for: 15m
+          labels:
+            severity: warning
+            cluster: unfold
+            team: platform
+          annotations:
+            summary: "No Kyverno admission controller on Unfold answers its metrics scrape"
+            description: "While the policy is Audit with failurePolicy Ignore, pods start unchecked; once it denies, pods with webgrip images cannot start without Kyverno. kubectl -n kyverno get pods,events."
