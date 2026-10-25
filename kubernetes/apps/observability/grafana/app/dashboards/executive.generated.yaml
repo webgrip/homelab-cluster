@@ -1,0 +1,1137 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: exec-overview
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: executive
+  json: |-
+    {
+      "uid": "exec-overview",
+      "title": "Executive / Overview",
+      "description": "Everything that matters on one screen: is anything broken now, what it costs, how much risk and room is left, and what needs a person. Click a tile for its dashboard.",
+      "tags": [
+        "wall",
+        "executive"
+      ],
+      "schemaVersion": 39,
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "timepicker": {
+        "hidden": true
+      },
+      "links": [
+        {
+          "title": "Scorecard",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/exec-kpi-scorecard",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "FinOps",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/exec-finops",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Unfold cloud costs",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/unfold-cloud-costs",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Reliability",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/exec-reliability-sre",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Security",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/exec-security-supply-chain",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Platform",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/exec-platform-efficiency",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Delivery",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/exec-value-flow-delivery",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Homelab now",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/wall-now",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Today",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/today",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Information radiators",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/information-radiators.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Critical alerts firing",
+          "description": "Critical alerts firing now in this group, as Alertmanager holds them. Silenced and inhibited alerts are not counted, and neither are the copies OpenCost's scrape of kube-state-metrics series produces. Vermillion from one: a critical alert means someone acts now.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 64
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "none",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "[{ \"n\": $$count($$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\") and labels.severity = \"critical\"]) }]",
+              "columns": [
+                {
+                  "selector": "n",
+                  "text": "n",
+                  "type": "number"
+                }
+              ]
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Endpoints down",
+          "description": "Blackbox probes whose last check failed: an endpoint unreachable end to end, through the gateway and TLS. This is the one tile that means a person using the service sees it broken.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 6,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(probe_success == 0) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Flux not ready",
+          "description": "Flux objects (Kustomizations, HelmReleases, sources) reporting Ready=False. Git is no longer what runs. `flux get all -A --status-selector ready=false` names them and the reason.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(flux_resource_info{ready=\"False\", suspended=\"False\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Backups late",
+          "description": "CloudNativePG clusters whose newest base backup, and backup or snapshot CronJobs whose last success, is older than 26 hours. Everything here runs daily, so late means a night was missed. The Data wall names which.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 18,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 3
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "((count(max by (namespace) (time() - barman_cloud_cloudnative_pg_io_last_available_backup_timestamp) > 93600)) or on() vector(0)) + ((count(time() - max by (exported_namespace, cronjob) (kube_cronjob_status_last_successful_time{job=\"kube-state-metrics\", cronjob=~\".*(backup|snapshot).*\"}) > 93600)) or on() vector(0))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Homelab, modelled per month",
+          "description": "What the six nodes cost per month in OpenCost's model: power plus hardware amortisation at the hourly rates in the OpenCost HelmRelease. Grey at every value: it moves when nodes or rates change, and the FinOps dashboard shows which namespace pays for what.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "currencyEUR",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              },
+              "links": [
+                {
+                  "title": "Open exec-finops",
+                  "url": "/d/exec-finops",
+                  "targetBlank": false
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "opencost:node_hourly_cost:sum * 730",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "stat",
+          "title": "Electricity per month, measured floor",
+          "description": "Kepler's measured CPU and memory power at EUR 0.30 per kWh. The wall socket draws more (power supplies, disks, fans), so this is the least the cluster costs to run. Each continuous watt is about EUR 3 a year.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 6,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "currencyEUR",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              },
+              "links": [
+                {
+                  "title": "Open exec-finops",
+                  "url": "/d/exec-finops",
+                  "targetBlank": false
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(kepler_node_cpu_watts{zone=~\"package|dram\"}) / 1000 * 730 * 0.3",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "stat",
+          "title": "Unfold on Hetzner, projected share of budget",
+          "description": "This month's projected Hetzner Cloud bill for the Unfold project as a share of its monthly budget (recording rule hcloud:budget_month_eur). Amber from 80 %: find what is running on the Unfold cloud costs dashboard before the month ends. Vermillion over budget.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 12,
+            "y": 5
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "percentunit",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.8
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "links": [
+                {
+                  "title": "Open unfold-cloud-costs",
+                  "url": "/d/unfold-cloud-costs",
+                  "targetBlank": false
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(hcloud:projected_month_eur:sum{project=\"unfold\"}) / scalar(max(hcloud:budget_month_eur{project=\"unfold\"}))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "stat",
+          "title": "Model spend this month",
+          "description": "What every agent and tool call through LiteLLM cost this calendar month, in USD as LiteLLM's ledger prices it. Claude Code sessions on the subscription are not in it. The Today wall splits it per project.",
+          "gridPos": {
+            "h": 5,
+            "w": 6,
+            "x": 18,
+            "y": 5
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "litellm-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "currencyUSD",
+              "decimals": 2,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              },
+              "links": [
+                {
+                  "title": "Open today",
+                  "url": "/d/today",
+                  "targetBlank": false
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "litellm-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT coalesce(sum(spend), 0) AS usd FROM \"LiteLLM_SpendLogs\" WHERE \"startTime\" >= date_trunc('month', now() AT TIME ZONE 'Europe/Amsterdam') AT TIME ZONE 'Europe/Amsterdam'"
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "stat",
+          "title": "Worst SLO error budget",
+          "description": "The smallest remaining error budget across every Sloth SLO, this period. Amber under half, vermillion under a tenth; below zero the SLO is broken for the period.",
+          "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 0,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "percent",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": -1e+18
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 10
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 50
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "min(100 * slo:period_error_budget_remaining:ratio)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "stat",
+          "title": "Critical CVEs in running images",
+          "description": "Critical vulnerabilities Trivy found in images running now. Amber from one: pick the image with the most and check whether a newer tag fixes it. No data means Trivy Operator is not being scraped, not that there are none.",
+          "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 8,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "links": [
+                {
+                  "title": "Open exec-security-supply-chain",
+                  "url": "/d/exec-security-supply-chain",
+                  "targetBlank": false
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(trivy_image_vulnerabilities{severity=\"Critical\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 10
+        },
+        {
+          "type": "stat",
+          "title": "Memory left to schedule",
+          "description": "Allocatable memory that running pods have not requested yet. Memory is what runs out first here. Amber under 20 %: lower requests that sit far above use, or plan more RAM. Vermillion under 10 %: new pods will stay Pending.",
+          "gridPos": {
+            "h": 5,
+            "w": 8,
+            "x": 16,
+            "y": 10
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "percentunit",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": -1e+18
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.1
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 0.2
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "links": [
+                {
+                  "title": "Open exec-platform-efficiency",
+                  "url": "/d/exec-platform-efficiency",
+                  "targetBlank": false
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "1 - sum(cluster:kube_pod_running_resource_requests:sum{resource=\"memory\"}) / sum(cluster:kube_node_status_allocatable:sum{resource=\"memory\"})",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 11
+        },
+        {
+          "type": "table",
+          "title": "Needs a person: firing now, not silenced",
+          "description": "Every alert firing now for this wall, read from Alertmanager's API with silenced and inhibited alerts left out, so a silence clears the wall at the next refresh. Critical first, then warning, then the rest, newest first within each. `about` is the service, node, namespace, object and repo the alert names, whichever it carries. Click an alert name to open its runbook.",
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 15
+          },
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "alertmanager-api"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "lg",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "left",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "Nothing is firing for anything."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "runbook"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "severity"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "critical": {
+                            "text": "critical",
+                            "color": "#d55e00",
+                            "index": 0
+                          },
+                          "warning": {
+                            "text": "warning",
+                            "color": "#e69f00",
+                            "index": 1
+                          },
+                          "info": {
+                            "text": "info",
+                            "color": "#898781",
+                            "index": 2
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "alert"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the runbook for this alert",
+                        "url": "$${__data.fields.runbook}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "about"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 320
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "since"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "yesoreyeram-infinity-datasource",
+                "uid": "alertmanager-api"
+              },
+              "type": "json",
+              "source": "url",
+              "format": "table",
+              "parser": "backend",
+              "url": "http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts?active=true&silenced=false&inhibited=false&unprocessed=false",
+              "url_options": {
+                "method": "GET",
+                "data": ""
+              },
+              "root_selector": "( $$rank := function($$a) { $$a.labels.severity = \"critical\" ? 0 : ($$a.labels.severity = \"warning\" ? 1 : 2) }; $$in := $$[labels.alertname != \"Watchdog\" and ($$not($$exists(labels.job)) or labels.job != \"opencost\")]; [$$map($$sort($$in, function($$l, $$r) { $$rank($$l) = $$rank($$r) ? $$l.startsAt > $$r.startsAt : $$rank($$l) > $$rank($$r) }), function($$a) { { \"severity\": $$a.labels.severity, \"alert\": $$a.labels.alertname, \"summary\": $$a.annotations.summary, \"about\": $$join([$$a.labels.service, $$a.labels.node, $$exists($$a.labels.exported_namespace) ? $$a.labels.exported_namespace : $$a.labels.namespace, $$a.labels.name, $$a.labels.repo], \" · \"), \"since\": $$a.startsAt, \"runbook\": $$a.annotations.runbook_url } })] )",
+              "columns": [
+                {
+                  "selector": "severity",
+                  "text": "severity",
+                  "type": "string"
+                },
+                {
+                  "selector": "alert",
+                  "text": "alert",
+                  "type": "string"
+                },
+                {
+                  "selector": "summary",
+                  "text": "summary",
+                  "type": "string"
+                },
+                {
+                  "selector": "about",
+                  "text": "about",
+                  "type": "string"
+                },
+                {
+                  "selector": "since",
+                  "text": "since",
+                  "type": "timestamp"
+                },
+                {
+                  "selector": "runbook",
+                  "text": "runbook",
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "id": 12
+        }
+      ]
+    }

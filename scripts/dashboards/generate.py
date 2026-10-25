@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import alerts
+import executive
 import forgejo_ci
 import glide
 import glide_runs
@@ -21,6 +22,7 @@ SCREEN = 24
 
 MODULES = {
     "alerts.generated.yaml": alerts,
+    "executive.generated.yaml": executive,
     "forgejo-ci.generated.yaml": forgejo_ci,
     "glide.generated.yaml": glide,
     "glide-runs.generated.yaml": glide_runs,
