@@ -53,7 +53,7 @@ Grafana is managed by **grafana-operator** — instance, datasources, folders, d
 alert rules are all CRDs (no ConfigMap sidecar):
 
 - Instance: `kubernetes/apps/observability/grafana/app/grafana-instance.yaml` (+ chart-managed image renderer)
-- Datasources: `grafana/app/datasources/` — prometheus → VMSingle `:8429`, alertmanager → VMAlertmanager `:9093`, victorialogs → VLSingle `:9428`, victoriatraces (type `jaeger`) → VTSingle `:10428/select/jaeger`, loki (read-only history, grace period), plus pyroscope (no-data while suspended) and opencost/github/devex extras
+- Datasources: `grafana/app/datasources/` — prometheus → VMSingle `:8429`, alertmanager → VMAlertmanager `:9093`, victorialogs → VLSingle `:9428`, victoriatraces (type `jaeger`) → VTSingle `:10428/select/jaeger`, loki (read-only history, grace period), plus pyroscope (no-data while suspended) and opencost/github extras
 - Folders / dashboards / alerting: `grafana/app/folders/`, `grafana/app/dashboards/`, `grafana/app/alerting/` — authoring recipe = **`grafana-dashboard` skill**
 - Database: CNPG `grafana-db` in-namespace (dashboards/datasources are CRDs in Git; the DB holds sessions/prefs — Tier 4 in [backup tiers](database-backup-tiers.md))
 

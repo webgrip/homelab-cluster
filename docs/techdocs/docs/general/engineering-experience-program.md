@@ -1,5 +1,9 @@
 # Engineering Experience (DevEx / SPACE / DORA) measurement program
 
+!!! warning "Retired"
+    The DevEx warehouse was removed on 2026-08-13 and its Grafana datasource and three dashboards
+    were deleted on 2026-10-25. This page records the design in case the program returns.
+
 A layered, OSS-only program that measures developer experience and software-delivery health for
 the platform team and the development teams it enables. It blends four lenses — **DORA**
 (delivery throughput + instability), **SRE** (reliability + incident economics), **SPACE**

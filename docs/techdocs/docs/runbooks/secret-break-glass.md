@@ -70,9 +70,7 @@ kubectl -n renovate delete job renovate-forgejo-provisioner
 | Secret | Why excluded | Rotate instead by |
 |---|---|---|
 | `harbor-admin` (harbor) | **contains `secretKey`, Harbor's at-rest encryption key** — regenerating orphans all stored LDAP/OIDC/robot creds | it is **not rotatable**; treat as fixed-and-guarded (§Part 4) |
-| `devex-db-secret` (observability) | it's the **devex DB owner password** — regenerating breaks the database | rotate CNPG-side deliberately, not via the sweep |
 | `freshrss-vault-admin` (security + freshrss) | the **OpenBao→Postgres mint credential** — mid-flight regeneration disrupts minting | rotate via the dynamic-db-credentials runbook |
-| `devex-grafana-ro` (observability) | grafana RO DB password **set by a migration Job** — needs the Job to reset it in Postgres | re-run the devex migration Job |
 | `freshrss-pooler-app-cred` (freshrss) | loopback app↔pooler password — needs a **coordinated** pgbouncer reload + app restart | rotate deliberately with a freshrss restart |
 
 ---

@@ -17,7 +17,7 @@ PLAYLISTS = [
     {"uid": "incident", "title": "Incident · Platform", "interval": "30s",
      "items": ["alerts-all", "wall-now", "wall-nodes", "wall-edge", "wall-data"]},
     {"uid": "weekly-review", "title": "Weekly · Review", "interval": "2m",
-     "items": ["today", "wall-roadmap", "wall-ci", "wall-glide", "wall-gitops", "wall-data", "wall-edge", "wall-nodes",
+     "items": ["exec-overview", "today", "wall-roadmap", "wall-ci", "wall-glide", "wall-gitops", "wall-data", "wall-edge", "wall-nodes",
                "alerts-security"]},
 ]
 SCREEN = 24
