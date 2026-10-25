@@ -12,13 +12,22 @@ metadata:
   name: openbao-restore-drill
   namespace: security
 rules:
-  - apiGroups: [""]
-    resources: ["configmaps"]
-    verbs: ["create"]
-  - apiGroups: [""]
-    resources: ["configmaps"]
-    resourceNames: ["restore-verified-openbao-openbao-raft", "restore-verified-escrow-openbao-unseal-key"]
-    verbs: ["get", "delete"]
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    verbs:
+      - "create"
+  - apiGroups:
+      - ""
+    resources:
+      - "configmaps"
+    resourceNames:
+      - "restore-verified-openbao-openbao-raft"
+      - "restore-verified-escrow-openbao-unseal-key"
+    verbs:
+      - "get"
+      - "delete"
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -49,14 +58,6 @@ spec:
     - {secretKey: S3_REGION, remoteRef: {key: s3/backup-verify-offsite, property: S3_REGION}}
     - {secretKey: S3_ENDPOINT, remoteRef: {key: s3/backup-verify-offsite, property: S3_ENDPOINT}}
     - {secretKey: S3_BUCKET, remoteRef: {key: s3/backup-verify-offsite, property: S3_BUCKET}}
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: openbao-unseal-key-escrow
-  namespace: security
-data:
-  sha256: ""
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -97,7 +98,9 @@ spec:
           initContainers:
             - name: fetch
               image: docker.io/amazon/aws-cli:2.36.50@sha256:c240dd63cdbab17197486d55460675ef2b94c9cc372dedae34dee53ccd30657c
-              command: ["/bin/sh", "/scripts/restore-drill-fetch.sh"]
+              command:
+                - "/bin/sh"
+                - "/scripts/restore-drill-fetch.sh"
               env:
                 - {name: HOME, value: /tmp}
                 - {name: AWS_ACCESS_KEY_ID, valueFrom: {secretKeyRef: {name: backup-verify-s3-offsite, key: S3_ACCESS_KEY_ID}}}
@@ -118,12 +121,14 @@ spec:
                 capabilities: {drop: ["ALL"]}
             - name: restore
               image: docker.io/openbao/openbao:2.7.0@sha256:71156a1c6623a5fa3f5e61b0c6a8ead0faf0df29a778339188443551995d1315
-              command: ["/bin/sh", "/scripts/restore-drill.sh"]
+              command:
+                - "/bin/sh"
+                - "/scripts/restore-drill.sh"
               env:
                 - {name: HOME, value: /tmp}
                 - {name: WORK, value: /shared/work}
                 - {name: OPENBAO_UNSEAL_KEY, valueFrom: {secretKeyRef: {name: openbao-keys, key: unseal-key}}}
-                - {name: ESCROW_FINGERPRINT, valueFrom: {configMapKeyRef: {name: openbao-unseal-key-escrow, key: sha256}}}
+                - {name: ESCROW_FINGERPRINT, valueFrom: {configMapKeyRef: {name: openbao-unseal-key-fingerprint, key: sha256, optional: true}}}
               resources:
                 requests: {cpu: 50m, memory: 256Mi}
                 limits: {memory: 1Gi}
@@ -138,7 +143,9 @@ spec:
           containers:
             - name: record
               image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.0@sha256:b421c2e9419edb98db39b6ab641669f4db7bb2acf354f22450c6b7e7176d1ff4
-              command: ["/bin/sh", "/scripts/restore-drill-record.sh"]
+              command:
+                - "/bin/sh"
+                - "/scripts/restore-drill-record.sh"
               env:
                 - {name: NAMESPACE, valueFrom: {fieldRef: {fieldPath: metadata.namespace}}}
                 - {name: WORK, value: /shared/work}

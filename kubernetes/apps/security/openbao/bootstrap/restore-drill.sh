@@ -108,15 +108,16 @@ check_canary() {
 }
 
 check_escrow_fingerprint() {
-  rm -f "${WORK}/escrow-verified"
+  rm -f "${WORK}/escrow-verified" "${WORK}/fingerprint-seed"
+  actual="$(printf '%s' "${OPENBAO_UNSEAL_KEY}" | sha256sum | cut -d' ' -f1)"
   if [ -z "${ESCROW_FINGERPRINT}" ]; then
-    echo "no escrow fingerprint registered; the escrowed copy of the unseal key stays unverified"
+    printf '%s' "${actual}" > "${WORK}/fingerprint-seed"
+    echo "no unseal-key fingerprint recorded yet; seeding it from the live key, the next drill compares against it"
     return 0
   fi
-  actual="$(printf '%s' "${OPENBAO_UNSEAL_KEY}" | sha256sum | cut -d' ' -f1)"
   [ "${actual}" = "${ESCROW_FINGERPRINT}" ] \
-    || fail "escrow: the live unseal key does not match the escrowed fingerprint"
-  echo "the live unseal key matches the escrowed fingerprint"
+    || fail "escrow: the live unseal key does not match the recorded fingerprint; it was re-keyed without a new escrow"
+  echo "the live unseal key matches the recorded fingerprint"
   touch "${WORK}/escrow-verified"
 }
 

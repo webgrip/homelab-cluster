@@ -76,7 +76,7 @@ expect() {
   local label="$1" want="$2" snapshot="$3" key="$4" escrow="$5" got=pass
   docker run --rm -v "${workspace}:/w" -v "${BOOTSTRAP}/restore-drill.sh:/scripts/restore-drill.sh:ro" \
     -e OPENBAO_UNSEAL_KEY="$key" -e SNAPSHOT="/w/${snapshot}" -e WORK=/tmp/drill -e ESCROW_FINGERPRINT="$escrow" \
-    --entrypoint sh "$OPENBAO_IMAGE" -c 'sh /scripts/restore-drill.sh && ls /tmp/drill/escrow-verified >/dev/null 2>&1 && echo ESCROW-RECORDED; true' \
+    --entrypoint sh "$OPENBAO_IMAGE" -c 'sh /scripts/restore-drill.sh && { ls /tmp/drill/escrow-verified >/dev/null 2>&1 && echo ESCROW-RECORDED; [ -s /tmp/drill/fingerprint-seed ] && echo "SEED=$(cat /tmp/drill/fingerprint-seed)"; }; true' \
     >"${workspace}/${label}.log" 2>&1
   grep -q '^restore verified' "${workspace}/${label}.log" || got=fail
   local reason
@@ -101,6 +101,39 @@ grep -q ESCROW-RECORDED "${workspace}/escrow-match.log" \
 grep -q ESCROW-RECORDED "${workspace}/good.log" \
   && { echo "WRONG good: escrow marker recorded without a fingerprint"; failures=$((failures + 1)); } \
   || echo "ok    good: no escrow marker without a fingerprint"
+grep -qx "SEED=${fingerprint}" "${workspace}/good.log" \
+  && echo "ok    good: seeds the fingerprint of the live key when none is recorded" \
+  || { echo "WRONG good: no seed, or a seed of the wrong key"; failures=$((failures + 1)); }
+grep -q '^SEED=' "${workspace}/escrow-match.log" \
+  && { echo "WRONG escrow-match: re-seeded over a recorded fingerprint"; failures=$((failures + 1)); } \
+  || echo "ok    escrow-match: no re-seed when a fingerprint is recorded"
+grep -q '^SEED=' "${workspace}/escrow-mismatch.log" \
+  && { echo "WRONG escrow-mismatch: seeded a new fingerprint over a mismatch"; failures=$((failures + 1)); } \
+  || echo "ok    escrow-mismatch: a mismatch never re-seeds"
+
+mkdir -p "${workspace}/record/bin" "${workspace}/record/work"
+cat >"${workspace}/record/bin/kubectl" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"${RECORD_CALLS:?}"
+[[ " $* " == *" create -f - "* ]] && cat >>"${RECORD_CALLS}"
+exit 0
+STUB
+chmod +x "${workspace}/record/bin/kubectl"
+expect_record() {
+  local label="$1" seed="$2" want_seed="$3"
+  rm -f "${workspace}/record/work/"* "${workspace}/record/calls"
+  touch "${workspace}/record/work/restore-verified"
+  [[ -n "$seed" ]] && printf '%s' "$seed" >"${workspace}/record/work/fingerprint-seed"
+  PATH="${workspace}/record/bin:${PATH}" RECORD_CALLS="${workspace}/record/calls" NAMESPACE=security WORK="${workspace}/record/work" \
+    sh "${BOOTSTRAP}/restore-drill-record.sh" >/dev/null 2>&1
+  local got=no
+  grep -q 'name: openbao-unseal-key-fingerprint' "${workspace}/record/calls" && grep -q "sha256: \"${seed}\"" "${workspace}/record/calls" \
+    && grep -q 'immutable: true' "${workspace}/record/calls" && got=yes
+  if [[ "$got" == "$want_seed" ]]; then echo "ok    record-${label}: fingerprint ConfigMap created=${got}"; else
+    echo "WRONG record-${label}: fingerprint ConfigMap created=${got}, wanted ${want_seed}"; cat "${workspace}/record/calls"; failures=$((failures + 1)); fi
+}
+expect_record seed "$fingerprint" yes
+expect_record no-seed "" no
 
 mkdir -p "${workspace}/fetch/bin" "${workspace}/fetch/shared"
 cat >"${workspace}/fetch/bin/aws" <<'STUB'

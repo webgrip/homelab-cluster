@@ -25,6 +25,20 @@ YAML
 
 [ -f "${WORK}/restore-verified" ] || { echo "FAIL: the restore step left no verified marker"; exit 1; }
 record restore-verified-openbao-openbao-raft openbao-raft openbao
+if [ -s "${WORK}/fingerprint-seed" ]; then
+  kubectl -n "${NAMESPACE}" create -f - >/dev/null <<YAML
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openbao-unseal-key-fingerprint
+  namespace: ${NAMESPACE}
+immutable: true
+data:
+  sha256: "$(cat "${WORK}/fingerprint-seed")"
+  seeded-at: "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+YAML
+  echo "seeded openbao-unseal-key-fingerprint from the live unseal key"
+fi
 if [ -f "${WORK}/escrow-verified" ]; then
   record restore-verified-escrow-openbao-unseal-key openbao-unseal-key escrow
 fi
