@@ -32,6 +32,7 @@ bao policy write ci-unfold /scripts/ci-unfold.hcl
 bao policy write ci-twente-dev /scripts/ci-twente-dev.hcl
 bao policy write ci-cloudflare /scripts/ci-cloudflare.hcl
 bao policy write ci-unfold-cluster /scripts/ci-unfold-cluster.hcl
+bao policy write unfold-main-reader /scripts/unfold-main-reader.hcl
 bao policy write forgejo-repo-config /scripts/forgejo-repo-config.hcl
 bao policy write github-config-ploeg-hq /scripts/github-config-ploeg-hq.hcl
 bao policy write github-config-webgrip /scripts/github-config-webgrip.hcl
@@ -150,6 +151,35 @@ JSON
   else
     echo "   forgejo jwt auth mount not present yet (break-glass: bao auth enable -path=forgejo jwt)"
   fi
+fi
+
+echo "==> unfold-main cluster (JWT auth on its service-account key)"
+if ! bao auth list -format=json 2>/dev/null | grep -q '"jwt-unfold-main/"'; then
+  bao auth enable -path=jwt-unfold-main jwt >/dev/null 2>&1 \
+    && echo "   jwt-unfold-main mounted" \
+    || echo "   WARN: jwt-unfold-main mount FAILED (check the sys/auth/jwt-unfold-main grant)"
+fi
+if bao write auth/jwt-unfold-main/config \
+     jwt_validation_pubkeys=@/scripts/unfold-main-service-account.pem \
+     bound_issuer="https://10.64.0.10:6443" >/dev/null 2>&1; then
+  if bao write auth/jwt-unfold-main/role/unfold-main-external-secrets - >/dev/null <<'JSON'
+{
+  "role_type": "jwt",
+  "user_claim": "sub",
+  "bound_audiences": ["openbao-homelab"],
+  "bound_subject": "system:serviceaccount:external-secrets:openbao-homelab",
+  "token_policies": ["unfold-main-reader"],
+  "token_ttl": "10m",
+  "token_max_ttl": "10m"
+}
+JSON
+  then
+    echo "   jwt-unfold-main role unfold-main-external-secrets configured"
+  else
+    echo "   WARN: jwt-unfold-main role write FAILED"
+  fi
+else
+  echo "   WARN: jwt-unfold-main config write FAILED"
 fi
 
 echo "==> database engine (dynamic Postgres creds — ADR-0016)"

@@ -50,3 +50,9 @@ path "database/rotate-root/*" {
 path "database/reset/*" {
   capabilities = ["update"]
 }
+path "sys/auth/jwt-unfold-main" {
+  capabilities = ["create", "read", "update", "sudo"]
+}
+path "auth/jwt-unfold-main/config" {
+  capabilities = ["create", "read", "update"]
+}
