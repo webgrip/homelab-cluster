@@ -1,0 +1,103 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tei-reranker-ingress
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: tei-reranker
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tei-reranker
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: litellm
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tei-reranker-litellm-only
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: tei-reranker
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: tei-reranker
+  enableDefaultDeny:
+    ingress: false
+    egress: false
+  ingressDeny:
+    - fromEndpoints:
+        - matchExpressions:
+            - key: k8s:io.kubernetes.pod.namespace
+              operator: Exists
+            - key: k8s:io.kubernetes.pod.namespace
+              operator: NotIn
+              values:
+                - ai
+                - observability
+    - fromEndpoints:
+        - matchExpressions:
+            - key: k8s:io.kubernetes.pod.namespace
+              operator: In
+              values:
+                - ai
+            - key: k8s:app.kubernetes.io/name
+              operator: NotIn
+              values:
+                - litellm
+  egressDeny:
+    - toEndpoints:
+        - matchExpressions:
+            - key: k8s:io.kubernetes.pod.namespace
+              operator: Exists
+            - key: k8s:io.kubernetes.pod.namespace
+              operator: NotIn
+              values:
+                - kube-system
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: tei-reranker-model-fetch
+  namespace: ai
+  labels:
+    app.kubernetes.io/part-of: tei-reranker
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: tei-reranker
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toFQDNs:
+        - matchName: huggingface.co
+        - matchPattern: "*.huggingface.co"
+        - matchPattern: "*.hf.co"
+        - matchPattern: "*.*.hf.co"
+        - matchPattern: "*.*.*.hf.co"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

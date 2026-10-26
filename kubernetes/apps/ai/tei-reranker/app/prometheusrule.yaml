@@ -1,0 +1,43 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: tei-reranker
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: tei-reranker
+spec:
+  groups:
+    - name: tei-reranker.rules
+      rules:
+        - alert: TeiRerankerDown
+          expr: |
+            max(up{namespace="ai", service="tei-reranker"}) == 0
+            or
+            absent(up{namespace="ai", service="tei-reranker"})
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: tei-reranker
+          annotations:
+            summary: "Reranker not answering (service tei-reranker)"
+            description: |
+              What's happening:
+              - The tei-reranker metrics endpoint has been down or missing for 15m. It serves gte-multilingual-reranker-base (int8 ONNX) to LiteLLM as rerank-default, for brain-tools searches that ask for a rerank.
+
+              Impact/risk:
+              - Reranked searches fall back to the fused order after the rerank timeout ("reranked: no"); BrainToolsRerankFallbackHigh follows.
+              - A reranker A/B gate run measures nothing while this fires.
+
+              Likely causes:
+              - The fetch-model init container cannot reach huggingface.co or a pinned sha256 no longer matches.
+              - The pod is Pending: the tei-reranker-models volume cannot attach or no worker has 1Gi of memory to request.
+              - The container is OOMKilled after a max-batch-tokens or candidate-count change.
+
+              First actions:
+              - kubectl -n ai logs deploy/tei-reranker -c fetch-model
+              - kubectl -n ai get pods,pvc -l app.kubernetes.io/name=tei-reranker -o wide
+              - kubectl -n ai describe pod -l app.kubernetes.io/name=tei-reranker
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-tools"
