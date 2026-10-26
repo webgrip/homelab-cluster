@@ -56,6 +56,11 @@ run_case fail github-mirror-of-github-repo "sed -i 's|^    mirror_of: ledgerflow
 run_case fail github-mirror-of-archived-repo-left-active "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"    mirror_of: ledgerflow\n    settings:\n      archived: true\n\", \"    mirror_of: ledgerflow\n    settings:\n      archived: false\n      default_branch: main\n\"))'"
 run_case pass github-mirror-of-active-repo-stays-active "printf '  webgrip/renovate-config:\n    forge: github\n    profile: baseline\n    mirror_of: renovate-config\n    settings:\n      default_branch: main\n' >> repos.yaml"
 run_case pass github-new-archived-mirror "printf '  webgrip/seekframe:\n    forge: github\n    profile: baseline\n    mirror_of: seekframe\n    settings:\n      archived: true\n' >> repos.yaml"
+run_case fail unfold-cluster-merge-by-a-developer "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); s=p.read_text(); i=s.index(\"  unfold-cluster:\"); p.write_text(s[:i] + s[i:].replace(\"        merge:\n          - ryangr0\n\", \"        merge:\n          - ryangr0\n          - yon\n\", 1))'"
+run_case fail unfold-cluster-push-by-a-developer "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); s=p.read_text(); i=s.index(\"  unfold-cluster:\"); p.write_text(s[:i] + s[i:].replace(\"        push:\n          - ryangr0\n\", \"        push:\n          - yon\n\", 1))'"
+run_case fail unfold-cluster-merge-whitelist-dropped "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); s=p.read_text(); i=s.index(\"  unfold-cluster:\"); p.write_text(s[:i] + s[i:].replace(\"        merge:\n          - ryangr0\n\", \"\", 1))'"
+run_case fail unfold-cluster-requires-no-checks "python3 -c 'import re,pathlib; p=pathlib.Path(\"repos.yaml\"); s=p.read_text(); i=s.index(\"  unfold-cluster:\"); p.write_text(s[:i] + re.sub(r\"        status_checks:\\n(          - .*\\n)+\", \"        status_checks: []\\n\", s[i:], count=1))'"
+run_case pass unfold-cluster-fewer-checks-still-gated "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); s=p.read_text(); i=s.index(\"  unfold-cluster:\"); p.write_text(s[:i] + s[i:].replace(\"          - \\\"infra-check / token-mask-proof (pull_request)\\\"\n\", \"\", 1))'"
 
 if [ "$failures" -ne 0 ]; then
   echo "test-validate-repo-config-model: ${failures} case(s) wrong"

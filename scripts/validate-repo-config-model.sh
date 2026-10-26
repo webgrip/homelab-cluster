@@ -97,6 +97,25 @@ if platform_automerge_gate not in homelab_main_checks:
         " when no required check matches, so this check is what holds an untested release pair out of main."
     )
 
+unfold_production_deployers = {"ryangr0"}
+unfold_main = repos.get("unfold-cluster", {}).get("branches", {}).get("main")
+if unfold_main is None:
+    errors.append("unfold-cluster must declare its main rule: a merge to that main deploys to production through Flux")
+else:
+    for field in ("push", "merge"):
+        listed = unfold_main.get(field)
+        if listed is None:
+            errors.append(f"unfold-cluster main must list its {field} whitelist; without one every writer may {field}")
+            continue
+        outsiders = sorted(set(listed) - unfold_production_deployers)
+        if outsiders:
+            errors.append(
+                f"unfold-cluster main {field} lists {', '.join(outsiders)}; only {', '.join(sorted(unfold_production_deployers))}"
+                " may deploy to Unfold production (identity-and-access G-01)"
+            )
+    if not unfold_main.get("status_checks"):
+        errors.append("unfold-cluster main must require its pull request checks; a merge there deploys to production")
+
 if errors:
     print("validate-repo-config-model:", *errors, sep="\n  ")
     sys.exit(1)
