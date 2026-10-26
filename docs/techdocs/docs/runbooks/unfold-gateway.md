@@ -26,6 +26,29 @@ It fires only after Unfold has sent data in the last 7 days, so a gateway that n
 4. `kubectl -n observability logs deploy/unfold-gateway -c vmauth` shows refused paths and backend errors.
 5. Nothing wrong here: look at Unfold. `vmagent_remotewrite_pending_data_bytes` grows there while the path is broken, and the data arrives once it is fixed.
 
+## Reading Unfold's own stack from the homelab
+
+Unfold now runs its own VictoriaMetrics, VictoriaLogs, vmalert, Alertmanager and Grafana (unfold-cluster `docs/observability.md`). The homelab reads them through the same gateway, the other way round:
+
+| Object | Path | Role |
+| --- | --- | --- |
+| `unfold-query` container and Service | `kubernetes/apps/observability/unfold/app/gateway/`, `query/` | socat on `:8481` forwards each connection through the tailscale container's outbound HTTP proxy (`127.0.0.1:1055`, `TS_OUTBOUND_HTTP_PROXY_LISTEN`) to `unfold-observability.tailnet.unfold.internal:8427`, Unfold's `vmauth-query`. Tailscale resolves the MagicDNS name itself, so the pod's `--accept-dns=false` does not matter. The tailnet policy lets `tag:homelab-gateway` open only that port of `tag:observability`. |
+| CiliumNetworkPolicy `unfold-gateway-ingress` | `query/networkpolicy.yaml` | Only the homelab Grafana and the blackbox exporter reach `8481`; vmagent keeps its scrape of `8427` and `9002`. |
+| `unfold-query-token` ExternalSecret and PushSecret | `query/` | A generated bearer token, pushed to OpenBao `secret/unfold-main/observability/query-token` (`token`), where Unfold's External Secrets reads it for `vmauth-query`. Both sides hold the same value and nobody types it. |
+| GrafanaDatasources `unfold-metrics`, `unfold-logs` | `grafana/app/datasources/` | Read-only: Unfold's VictoriaMetrics and its logs store (14 days), with the token as an `Authorization` header. vmauth-query on Unfold passes only query paths. Unfold's audit log is deliberately not here: every homelab Grafana Editor can query every data source (see [the audit trail](kubernetes-audit-trail.md)), so the audit trail stays in Unfold's own Grafana, which only `unfold-viewers` and `unfold-admins` open. |
+| Probe `blackbox-unfold-watchdog`, PrometheusRule `blackbox-unfold-watchdog` | `blackbox-exporter/app/` | The homelab half of the dead-man's switch: every minute the blackbox exporter asks Unfold's VictoriaMetrics for its always-firing `Watchdog` alert. `UnfoldAlertingSilent` (critical) fires after 15 minutes without it, but only once the probe has succeeded in the last 7 days, so it stays quiet until Unfold's stack runs. The off-site uptime-kuma push monitor is the other half. |
+| `unfold-alertmanager-ntfy` ExternalSecret and PushSecret | `kubernetes/apps/observability/unfold/app/notifications/` | Copies the homelab Alertmanager's write-only ntfy token to OpenBao `secret/unfold-main/alertmanager/ntfy`, so Unfold's Alertmanager can publish to `alerts-critical` and `alerts-warning` on the public `ntfy.${SECRET_DOMAIN}` while the off-site ntfy does not exist. It is the interim route and still depends on the homelab being up. |
+| Authentik application `unfold-grafana` | `kubernetes/apps/security/access-plane/`, `kubernetes/apps/authentik/app/unfold-grafana-oidc-client.*` | Login to Unfold's Grafana for `unfold-viewers` and `unfold-admins`; the client secret is generated here and pushed to both `secret/authentik/unfold-grafana-oidc` and `secret/unfold-main/grafana/oidc`. |
+
+During the move Unfold also keeps writing to `vmsingle-unfold` and the homelab VictoriaLogs, so vmauth here accepts the Loki push paths `/insert/loki/api/v1/push` and `/audit/insert/loki/api/v1/push` next to the old ones. The homelab copy, its rules and the 8427 ingest go away once Unfold's own stack has proven itself.
+
+### When `UnfoldAlertingSilent` fires
+
+1. Explore **VictoriaMetrics (Unfold)**: `ALERTS{alertname="Watchdog"}`. An error means the read path; an empty result means Unfold's alerting itself.
+2. `kubectl -n observability logs deploy/unfold-gateway -c unfold-query --tail=20` shows a refused proxy CONNECT (tailnet policy or the Unfold node is down); `-c tailscale` shows the proxy's own errors.
+3. A 401 in the blackbox debug output means the token differs: the PushSecret has not written it, or Unfold's ExternalSecret has not refreshed.
+4. On Unfold: `kubectl -n observability get pods`; vmalert-metrics, alertmanager and vmsingle must be Running.
+
 ## The Headscale name
 
 `headscale.${SECRET_DOMAIN}`, the Unfold tailnet's coordination server, is published by the CronJob `network/unfold-headscale-address` (every 2 minutes) from OpenBao `secret/unfold/headscale-address`, which the Unfold `infra` apply writes (`ipv4`). A rebuild into a new Hetzner project, whose primary IP differs, therefore needs no commit here. The same secret's `drill_ipv4` publishes `headscale-drill.${SECRET_DOMAIN}` while the Unfold rebuild drill runs and is cleared by its teardown. A missing or invalid `ipv4` keeps the published record; the job never removes the production name. Check: `kubectl -n network logs job/<newest unfold-headscale-address job>` says `unchanged` or `published`, and `kubectl -n network get dnsendpoint unfold-headscale -o yaml` lists the address.
