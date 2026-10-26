@@ -224,9 +224,11 @@ def row_work():
                                                     instant=True)], decimals=0,
               desc="Checkpoints written per phase: branch created, pull request opened, pull request updated. The "
                    "drop from branch to pull request is work that started and never reached review."), 16, 8, 8),
-        (bars("Stuck Runs by reason · 30 days", [target(f"sum by (stuck_reason) (ploeg_stuck_count{{{TEAM}}})", "A",
-                                                       "{{stuck_reason}}", instant=True)], decimals=0,
-              fixed_color=AMBER, no_value="No Run got stuck.", desc="Why agents declared themselves stuck."),
+        (bars("Stuck Runs by failure reason · 30 days", [target(
+            f"sum by (failure_reason) (ploeg_stuck_count{{{TEAM}}})", "A", "{{failure_reason}}", instant=True)],
+              decimals=0, fixed_color=AMBER, no_value="No Run got stuck.",
+              desc="Runs whose agent declared itself stuck, by Ploeg's failure_reason class. The agent's own "
+                   "explanation stays in Ploeg: open the Run in Unfold to read it."),
          0, 12, 7),
         (table("Longest Runs per outcome · 30 days", [target(
             f"max by (outcome) (ploeg_run_duration_seconds{{outcome!=\"running\", {TEAM}}})", "A", instant=True,

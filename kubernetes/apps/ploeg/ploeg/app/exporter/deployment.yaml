@@ -2,7 +2,7 @@
 # postgres-exporter over ploegd's own dispatch DB — the Prometheus metrics path
 # ploegd itself lacks (ADR-0048; :8080 exposes no /metrics). Standalone because
 # ploegd is an external chart we cannot sidecar into (unlike the litellm sidecar).
-# Reads via the existing read-only `ploeg_scaler` role (pg_read_all_data). Same
+# Reads as its own `ploeg_exporter` role (through ploeg_observer). Same
 # quay image + digest the litellm exporter already runs (proven pullable). Fully
 # hardened (non-root, read-only rootfs, drop-all) so it needs no PSA exception;
 # the quay registry is waived audit-only in exception-third-party-images.
@@ -43,7 +43,7 @@ spec:
           # Renovate's soak can clear — quay.io reports no release timestamps.
           image: harbor.webgrip.dev/quay/prometheuscommunity/postgres-exporter:v0.20.1@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
           args:
-            # The app/scaler user lacks pg_monitor (pg_ls_waldir); we only want
+            # The exporter user lacks pg_monitor (pg_ls_waldir); we only want
             # the custom ploeg_* queries anyway. Silence the wal collector.
             - "--no-collector.wal"
           env:
@@ -52,12 +52,12 @@ spec:
             - name: DATA_SOURCE_USER
               valueFrom:
                 secretKeyRef:
-                  name: ploeg-scaler
+                  name: ploeg-exporter
                   key: username
             - name: DATA_SOURCE_PASS
               valueFrom:
                 secretKeyRef:
-                  name: ploeg-scaler
+                  name: ploeg-exporter
                   key: password
             - name: PG_EXPORTER_EXTEND_QUERY_PATH
               value: /etc/pg-exporter/queries.yaml
