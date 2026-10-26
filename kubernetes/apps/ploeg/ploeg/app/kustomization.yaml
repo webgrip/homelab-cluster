@@ -32,6 +32,8 @@ resources:
   - ./kata-clusterip-probe.job.yaml
   - ./runc-clusterip-probe.job.yaml
   - ./worker-egress-probe.job.yaml
+  - ./worker-boundary-probe/job.yaml
+  - ./forge-revocation-probe/job.yaml
   # postgres-exporter over the dispatch DB — ploeg_* metrics for the dark-factory
   # dashboards + alerts (ploegd ships no /metrics of its own). Reads via the
   # existing read-only ploeg_scaler role; observability->:9187 and exporter->db
@@ -42,3 +44,18 @@ resources:
   - ./exporter/vmservicescrape.yaml
   # ./database is reconciled by its own Kustomization (ploeg-db in ks.yaml)
   # so the app layer can depend on a HEALTHY database, not just applied CRs.
+configMapGenerator:
+  - name: worker-boundary-probe
+    files:
+      - ./worker-boundary-probe/worker-boundary-probe.sh
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled
+  - name: forge-revocation-probe
+    files:
+      - ./forge-revocation-probe/forge-revocation-probe.sh
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        kustomize.toolkit.fluxcd.io/substitute: disabled

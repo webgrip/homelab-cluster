@@ -1,0 +1,63 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: worker-boundary-probe
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: enabled
+  labels:
+    app.kubernetes.io/name: ploeg-worker
+    app.kubernetes.io/component: boundary-probe
+    app.kubernetes.io/part-of: ploeg
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 604800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ploeg-worker
+        app.kubernetes.io/component: boundary-probe
+        app.kubernetes.io/part-of: ploeg
+    spec:
+      runtimeClassName: kata
+      serviceAccountName: ploeg-worker
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        runtime.webgrip.io/kata: "true"
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: probe
+          image: harbor.webgrip.dev/dockerhub/curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: PROBE_RUNTIME, value: kata}
+            - name: PROBE_REACHABLE_URLS
+              value: >-
+                http://ploeg.ploeg.svc.cluster.local:8080/healthz
+                http://litellm.ai.svc.cluster.local:4000/health/liveliness
+                http://forgejo-http.forgejo.svc.cluster.local:3000/api/healthz
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+          command:
+            - /bin/sh
+            - -c
+            - echo "worker-boundary-probe runtime=$PROBE_RUNTIME node=$NODE_NAME kernel=$(uname -r)"; exec /bin/sh /probe/worker-boundary-probe.sh
+          volumeMounts:
+            - {name: probe, mountPath: /probe, readOnly: true}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+      volumes:
+        - name: probe
+          configMap:
+            name: worker-boundary-probe

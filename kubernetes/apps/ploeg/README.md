@@ -67,6 +67,20 @@ and `ploeg` (ploegd). A sandbox launcher reaches only ploegd and the API server.
 `worker-egress-probe` checks both halves as a worker-labelled Job; rerun it by changing its
 `PROBED_POLICY` value.
 
+Two more worker-labelled Jobs qualify Ploeg's profile P1 (ploeg-hq/ploeg #16 and #17). Each is deleted
+seven days after it finishes and Flux recreates it, so both rerun about weekly; a failure fires
+`KubeJobFailed`:
+
+- `worker-boundary-probe` runs Ploeg's `scripts/worker-boundary-probe.sh` (copied from ploeg-hq/ploeg
+  PR #291 into [`worker-boundary-probe/`](ploeg/app/worker-boundary-probe/)) in a Kata pod with the
+  `ploeg-worker` service account: no root, no capabilities, seccomp on, no service-account token, no host
+  paths or runtime sockets, no metadata endpoint, no Kubernetes API, no egress beyond ploegd, LiteLLM and
+  Forgejo.
+- `forge-revocation-probe` mints a Forgejo token for `agent-builder` with the bot password ploegd's
+  forge broker uses, proves it works, revokes it, and replays it five times against the API and git
+  discovery; every replay must answer 401. The password stays in the pod's environment and the token is
+  never printed; an exit trap revokes the token if the probe stops early.
+
 The Claude runner (`app.kubernetes.io/name: claude-runner`, Kata) is left out of `ploeg-allow-egress`. It reaches only DNS, `api.anthropic.com:443`, ploegd on 8080 (the checkout and post-session hooks), the public gateway on 10443 (it clones `https://forgejo.<domain>`), and Alloy on 4318: no LiteLLM, no database, no other pod in `ploeg`.
 
 - Workers clone, push and call the PR API through `ploeg.executor.forgejo.url`, the in-cluster

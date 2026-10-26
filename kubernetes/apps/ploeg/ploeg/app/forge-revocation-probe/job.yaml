@@ -1,0 +1,59 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: forge-revocation-probe
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: enabled
+  labels:
+    app.kubernetes.io/name: ploeg-worker
+    app.kubernetes.io/component: forge-revocation-probe
+    app.kubernetes.io/part-of: ploeg
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 604800
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ploeg-worker
+        app.kubernetes.io/component: forge-revocation-probe
+        app.kubernetes.io/part-of: ploeg
+    spec:
+      serviceAccountName: ploeg-worker
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: probe
+          image: harbor.webgrip.dev/dockerhub/curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: FORGE_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+            - {name: FORGE_BOT, value: agent-builder}
+            - {name: GIT_REPO, value: webgrip/unfold}
+            - name: FORGEJO_BOT_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: agent-builder-password, key: FORGEJO_BOT_PASSWORD}
+          command:
+            - "/bin/sh"
+            - "/probe/forge-revocation-probe.sh"
+          volumeMounts:
+            - {name: probe, mountPath: /probe, readOnly: true}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+      volumes:
+        - name: probe
+          configMap:
+            name: forge-revocation-probe
