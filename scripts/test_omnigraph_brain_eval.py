@@ -236,10 +236,21 @@ class FakeBrainTools:
         self.p0_tie_flips_left = {}
         self.tool_chars = 1200
         self.answer_commit = None
+        self.rerank_order = {}
+        self.rerank_fallback_questions = set()
+        self.rerank_outcome_override = None
 
     def search(self, query):
         self.requests.append(query)
         question, profile, snapshot = query["q"][0], query["profile"][0], (query.get("snapshot") or [None])[0]
+        if query.get("rerank") == ["true"]:
+            base = self.search({key: value for key, value in query.items() if key != "rerank"})
+            self.requests.pop()
+            fallback = question in self.rerank_fallback_questions
+            if not fallback and question in self.rerank_order:
+                base["results"] = [{"document": document, "ref": f"doc:{document}#0"} for document in self.rerank_order[question]]
+            outcome = self.rerank_outcome_override or ("fallback" if fallback else "reranked")
+            return {**base, "reranked": outcome == "reranked", "rerank": {"outcome": outcome}}
         documents = interleaved(*RECALL.get(question, ([], [], [])))
         if profile == "p0" and self.p0_swap and len(documents) > 2:
             documents = [documents[0], documents[2], documents[1], *documents[3:]]
@@ -455,6 +466,9 @@ class Metrics(unittest.TestCase):
         self.assertAlmostEqual(scores["recall_at_5"], 1.0)
         self.assertEqual(scores["hit_at_1"], 0.0)
         self.assertAlmostEqual(scores["mrr_at_8"], 0.5)
+        dcg_at_3 = 1 / math.log2(3) + 3 / math.log2(4)
+        self.assertAlmostEqual(scores["ndcg_at_3"], dcg_at_3 / idcg, places=9)
+        self.assertAlmostEqual(scores["recall_at_3"], 2 / 3)
         self.assertAlmostEqual(be.retrieval_scores(["x", "y", "z", "w", "v", "a"], grades)["recall_at_5"], 0.0)
         self.assertAlmostEqual(be.retrieval_scores(["x", "y", "z", "w", "v", "a"], grades)["recall_at_8"], 1 / 3)
 
@@ -655,6 +669,55 @@ class BrainToolsProfiles(unittest.TestCase):
         self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
         passed = json.loads(next(path for path in self.harness.results("gate") if path.name == "gate-2.json").read_text())["decisions"]["p0:p1"]
         self.assertFalse(any(reason.startswith("guardrail failed") for reason in passed["reasons"]), passed["reasons"])
+
+
+class RerankArms(unittest.TestCase):
+    def setUp(self):
+        self.harness = Harness()
+
+    def tearDown(self):
+        self.harness.close()
+
+    def gate(self, *extra):
+        return self.harness.run("gate", "--profile=p0-rest", "--profile=p0r", "--compare=p0-rest:p0r", "--primary-metric=ndcg_at_3",
+                                "--search-p95-budget-seconds=2.0", *extra, global_args=(f"--snapshot={SNAPSHOT}",))
+
+    def test_a_reranked_arm_asks_for_the_rerank_and_the_gate_judges_it_on_the_top_three(self):
+        result = self.gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        asked = [query for query in self.harness.brain_tools.requests if query.get("rerank") == ["true"]]
+        plain = [query for query in self.harness.brain_tools.requests if "rerank" not in query]
+        self.assertTrue(asked)
+        self.assertTrue(plain)
+        self.assertEqual({query["profile"][0] for query in asked}, {"p0"})
+        gate = json.loads(self.harness.results("gate")[0].read_text())
+        decision = gate["decisions"]["p0-rest:p0r"]
+        self.assertEqual(decision["primary_metric"], "ndcg_at_3")
+        self.assertTrue(all(case["reranked"] for case in gate["retrieval"]["p0r"]["cases"]))
+        self.assertTrue(all("reranked" not in case for case in gate["retrieval"]["p0-rest"]["cases"]))
+        self.assertFalse(any(reason.startswith("guardrail failed") for reason in decision["reasons"]), decision["reasons"])
+        self.assertIn("ndcg_at_3", gate["retrieval"]["p0r"]["aggregates"]["all|all"])
+
+    def test_a_reranked_arm_the_server_did_not_rerank_invalidates_the_run(self):
+        self.harness.brain_tools.rerank_outcome_override = "not_asked"
+        result = self.gate()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("is BRAIN_TOOLS_RERANK on-request?", result.stdout + result.stderr)
+
+    def test_rerank_fallbacks_over_five_percent_fail_the_guardrail(self):
+        self.harness.brain_tools.rerank_fallback_questions = {Q1}
+        result = self.gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        decision = json.loads(self.harness.results("gate")[0].read_text())["decisions"]["p0-rest:p0r"]
+        self.assertFalse(decision["adopt"])
+        self.assertIn("guardrail failed: rerank fallbacks <= 5%", decision["reasons"])
+
+    def test_a_rerank_that_lifts_the_top_three_on_enough_cases_is_adopted(self):
+        self.harness.brain_tools.rerank_order = {Q1: [RUNBOOK, ADR_ARTIFACT], Q2: ["obsidian/gamma"], Q4: ["obsidian/alpha"]}
+        baseline = self.gate()
+        self.assertEqual(baseline.returncode, 0, baseline.stdout + baseline.stderr)
+        decision = json.loads(self.harness.results("gate")[0].read_text())["decisions"]["p0-rest:p0r"]
+        self.assertEqual(decision["losses"], 0, decision)
 
 
 class PublicRepoLeakCheck(unittest.TestCase):
