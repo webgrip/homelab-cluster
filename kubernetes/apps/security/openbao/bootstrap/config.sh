@@ -32,6 +32,7 @@ bao policy write ci-unfold /scripts/ci-unfold.hcl
 bao policy write ci-twente-dev /scripts/ci-twente-dev.hcl
 bao policy write ci-cloudflare /scripts/ci-cloudflare.hcl
 bao policy write ci-unfold-cluster /scripts/ci-unfold-cluster.hcl
+bao policy write ci-unfold-cluster-etcd-check /scripts/ci-unfold-cluster-etcd-check.hcl
 bao policy write unfold-main-reader /scripts/unfold-main-reader.hcl
 bao policy write forgejo-repo-config /scripts/forgejo-repo-config.hcl
 bao policy write github-config-ploeg-hq /scripts/github-config-ploeg-hq.hcl
@@ -85,7 +86,6 @@ bao write auth/kubernetes/role/homelab-etcd-age-keygen \
 # to signing = adding it to the bound_claims repository list below (deliberate one-line PR). NB: releases are cut with the
 # webgrip-ci bot PAT, so Forgejo DOES emit a native `release` event (only same-token actions
 # are loop-suppressed) — on_release_published now runs event_name=release on ref=refs/tags/*.
-# workflow_dispatch + refs/heads/* stays allowed for manual re-publish/backfill runs.
 # (Harden later by also binding the `workflow` claim to on_release_published once its exact
 # value is confirmed from the job's printed claims.)
 # Token iss is https://forgejo.<domain>/api/actions. Configuring the mount config needs it enabled
@@ -103,7 +103,7 @@ if [ -n "${SECRET_DOMAIN:-}" ]; then
   "user_claim": "sub",
   "bound_audiences": ["openbao-cosign"],
   "bound_claims_type": "glob",
-  "bound_claims": {"repository": ["webgrip/infrastructure", "webgrip/glide", "webgrip/unfold", "webgrip/omnigraph-explorer", "webgrip/brain-tools", "webgrip/semantic-release-config", "webgrip/talos-kata-extension"], "event_name": ["release", "workflow_dispatch"], "ref": ["refs/tags/*", "refs/heads/*"]},
+  "bound_claims": {"repository": ["webgrip/infrastructure", "webgrip/glide", "webgrip/unfold", "webgrip/omnigraph-explorer", "webgrip/brain-tools", "webgrip/semantic-release-config", "webgrip/talos-kata-extension"], "event_name": ["release", "workflow_dispatch"], "ref": ["refs/tags/*", "refs/heads/main"]},
   "token_policies": ["cosign-signer"],
   "token_ttl": "10m"
 }
@@ -141,7 +141,7 @@ JSON
   "user_claim": "sub",
   "bound_audiences": ["openbao-ci"],
   "bound_claims_type": "string",
-  "bound_claims": {"repository": ["webgrip/unfold-cluster"], "ref": ["refs/heads/main", "main"], "event_name": ["push", "schedule", "workflow_dispatch"], "actor": ["ryangr0", "yon", "forgejo-actions"]},
+  "bound_claims": {"repository": ["webgrip/unfold-cluster"], "ref": ["refs/heads/main", "main"], "event_name": ["push", "workflow_dispatch"], "actor": ["ryangr0"], "run_attempt": ["1"]},
   "token_policies": ["ci-unfold-cluster"],
   "token_ttl": "10m",
   "token_max_ttl": "10m"
@@ -151,6 +151,23 @@ JSON
       echo "   forgejo jwt role ci-unfold-cluster configured for webgrip/unfold-cluster main"
     else
       echo "   WARN: forgejo jwt role ci-unfold-cluster write FAILED"
+    fi
+    if bao write auth/forgejo/role/ci-unfold-cluster-etcd-check - >/dev/null <<JSON
+{
+  "role_type": "jwt",
+  "user_claim": "sub",
+  "bound_audiences": ["openbao-ci"],
+  "bound_claims_type": "string",
+  "bound_claims": {"repository": ["webgrip/unfold-cluster"], "ref": ["refs/heads/main", "main"], "event_name": ["schedule"], "actor": ["forgejo-actions"], "workflow": ["etcd-backup-check.yml"], "run_attempt": ["1"]},
+  "token_policies": ["ci-unfold-cluster-etcd-check"],
+  "token_ttl": "10m",
+  "token_max_ttl": "10m"
+}
+JSON
+    then
+      echo "   forgejo jwt role ci-unfold-cluster-etcd-check configured for the webgrip/unfold-cluster schedule"
+    else
+      echo "   WARN: forgejo jwt role ci-unfold-cluster-etcd-check write FAILED"
     fi
   else
     echo "   forgejo jwt auth mount not present yet (break-glass: bao auth enable -path=forgejo jwt)"
