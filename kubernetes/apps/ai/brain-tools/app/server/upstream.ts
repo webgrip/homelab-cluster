@@ -192,3 +192,53 @@ export class Embedder {
     return l2Normalise(vector as number[]);
   }
 }
+
+export interface RerankerOptions {
+  baseUrl: string;
+  key: string | null;
+  model: string;
+  record: Recorder;
+  fetch?: typeof fetch;
+}
+
+export function relevanceByIndex(payload: unknown, documents: number): number[] {
+  const results = (payload as { results?: unknown } | null)?.results;
+  if (!Array.isArray(results) || results.length !== documents) throw new UpstreamError('litellm', 200, 'server_error');
+  const scores: (number | undefined)[] = new Array(documents).fill(undefined);
+  for (const item of results as { index?: unknown; relevance_score?: unknown }[]) {
+    const index = item?.index;
+    const score = item?.relevance_score;
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= documents || scores[index] !== undefined) throw new UpstreamError('litellm', 200, 'server_error');
+    if (typeof score !== 'number' || !Number.isFinite(score)) throw new UpstreamError('litellm', 200, 'server_error');
+    scores[index] = score;
+  }
+  return scores as number[];
+}
+
+export class Reranker {
+  private readonly baseUrl: string;
+  private readonly key: string | null;
+  private readonly model: string;
+  private readonly record: Recorder;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(options: RerankerOptions) {
+    this.baseUrl = options.baseUrl.replace(/\/+$/, '');
+    this.key = options.key;
+    this.model = options.model;
+    this.record = options.record;
+    this.fetchImpl = options.fetch ?? fetch;
+  }
+
+  async rerank(query: string, documents: readonly string[], signal: AbortSignal): Promise<number[]> {
+    if (this.key === null) throw new UpstreamError('litellm', 0, 'client_error');
+    if (documents.length === 0) return [];
+    const payload = await exchange('litellm', this.fetchImpl, this.record, `${this.baseUrl}/rerank`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.key}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ model: this.model, query, documents, top_n: documents.length }),
+      signal,
+    });
+    return relevanceByIndex(payload, documents.length);
+  }
+}

@@ -32,10 +32,10 @@ SPLITS = ("dev", "holdout")
 LANGUAGES = ("nl", "en")
 ORIGINS = ("drafted", "ryan", "synthetic")
 TEMPORAL_KINDS = ("recent_notes", "recent_docs", "open_threads")
-RETRIEVAL_METRICS = ("recall_at_5", "recall_at_8", "hit_at_1", "mrr_at_8", "ndcg_at_8", "candidate_recall_at_40")
+RETRIEVAL_METRICS = ("recall_at_3", "recall_at_5", "recall_at_8", "hit_at_1", "mrr_at_8", "ndcg_at_3", "ndcg_at_8", "candidate_recall_at_40")
 ANSWER_METRICS = ("key_fact_recall", "faithfulness", "citation_precision", "abstention_accuracy", "tool_error_rate", "tool_calls", "usd_per_answer", "latency_seconds")
 TOOL_METRICS = ("about_top1", "connect_path_found")
-PROFILES = ("p0", "p0-rest", "p1", "p2", "p3", "b0", "tools", "e1-raw", "e1-prefixed")
+PROFILES = ("p0", "p0-rest", "p0r", "p1", "p2", "p3", "b0", "tools", "e1-raw", "e1-prefixed")
 MODES = ("retrieval", "answer", "gate", "experiment", "candidates", "calibration")
 JOB_MODES = MODES + ("smoke",)
 LATENCY_STAGES = ("leg", "case", "answer", "judge")
@@ -57,6 +57,7 @@ TOOL_ERROR_CLASSES = ("gq_foreign", "gq_parse", "gq_type", "gq_parameter", "gq_r
 CANDIDATE_POOL_DEPTH = 40
 BRAIN_TOOLS_URL = "http://brain-tools.ai.svc.cluster.local:8081"
 SEARCH_P95_BUDGET_SECONDS = 3.0
+RERANK_FALLBACK_BUDGET = 0.05
 SEARCH_RESPONSE_BUDGET_CHARS = 6000
 SENTINEL_PHRASE = "quillfeather sentinel 7c1e"
 ANSWER_MODEL = "chat-default"
@@ -590,10 +591,12 @@ def ndcg_at(ranked, grades, k):
 def retrieval_scores(ranked, grades):
     relevant = {doc for doc, grade in grades.items() if grade >= 1}
     return {
+        "recall_at_3": recall_at(ranked, relevant, 3),
         "recall_at_5": recall_at(ranked, relevant, 5),
         "recall_at_8": recall_at(ranked, relevant, 8),
         "hit_at_1": hit_at_1(ranked, relevant),
         "mrr_at_8": mrr_at(ranked, relevant, 8),
+        "ndcg_at_3": ndcg_at(ranked, grades, 3),
         "ndcg_at_8": ndcg_at(ranked, grades, 8),
         "candidate_recall_at_40": recall_at(ranked, relevant, CANDIDATE_POOL_DEPTH),
     }
@@ -852,6 +855,7 @@ class Retrieved:
     ranked: list
     payload_chars: int
     leg_seconds: list = field(default_factory=list)
+    reranked: bool | None = None
 
 
 def interleave(*ranked_lists):
@@ -877,8 +881,10 @@ class BrainTools:
         self.base = base.rstrip("/")
         self.timeout = timeout
 
-    def search(self, profile, question, snapshot):
+    def search(self, profile, question, snapshot, rerank=False):
         query = {"q": question, "profile": profile, "limit": CANDIDATE_POOL_DEPTH, "scope": "all"}
+        if rerank:
+            query["rerank"] = "true"
         if snapshot:
             query["snapshot"] = snapshot
         started = time.monotonic()
@@ -888,18 +894,24 @@ class BrainTools:
         if snapshot and result.get("graph_commit") not in (None, snapshot):
             raise EvalError(f"brain-tools answered from graph commit {result.get('graph_commit')} instead of the pinned snapshot")
         ranked = [item["document"] for item in result.get("results") or [] if item.get("document")]
-        return Retrieved(ranked, int(result.get("tool_chars") or 0), [seconds])
+        if not rerank:
+            return Retrieved(ranked, int(result.get("tool_chars") or 0), [seconds])
+        outcome = (result.get("rerank") or {}).get("outcome")
+        if outcome not in ("reranked", "fallback"):
+            raise EvalError(f"brain-tools answered a reranked arm with rerank outcome {outcome!r}; is BRAIN_TOOLS_RERANK on-request?")
+        return Retrieved(ranked, int(result.get("tool_chars") or 0), [seconds], reranked=outcome == "reranked")
 
 
 def direct_profile(runner):
     return lambda omnigraph, question, snapshot, brain_tools: runner(omnigraph, question, snapshot)
 
 
-def rest_profile(profile):
-    return lambda omnigraph, question, snapshot, brain_tools: brain_tools.search(profile, question, snapshot)
+def rest_profile(profile, rerank=False):
+    return lambda omnigraph, question, snapshot, brain_tools: brain_tools.search(profile, question, snapshot, rerank=rerank)
 
 
-PROFILE_RUNNERS = {"p0": direct_profile(profile_p0), "p0-rest": rest_profile("p0"), "p1": rest_profile("p1")}
+PROFILE_RUNNERS = {"p0": direct_profile(profile_p0), "p0-rest": rest_profile("p0"), "p0r": rest_profile("p0", rerank=True),
+                   "p1": rest_profile("p1"), "p2": rest_profile("p1", rerank=True)}
 REPLICA_PAIRS = (("p0", "p0-rest"),)
 REPLICA_REDRAWS = 4
 P0_QUERIES = ("recall_notes", "recall_passages", "recall_topics")
@@ -1645,9 +1657,12 @@ def run_retrieval(args, workspace, sink, omnigraph, cases, profiles, run_label="
             full_rankings[profile][case["id"]] = ranked
             if case["id"] not in grades_by_case:
                 continue
-            results.append({"id": case["id"], "category": case["category"], "split": case["split"], "state": case_state(case),
-                            "metrics": retrieval_scores(ranked, grades_by_case[case["id"]]), "ranked": ranked[:10],
-                            "expected": grades_by_case[case["id"]], "payload_chars": retrieved.payload_chars, "seconds": round(time.monotonic() - started, 4)})
+            result = {"id": case["id"], "category": case["category"], "split": case["split"], "state": case_state(case),
+                      "metrics": retrieval_scores(ranked, grades_by_case[case["id"]]), "ranked": ranked[:10],
+                      "expected": grades_by_case[case["id"]], "payload_chars": retrieved.payload_chars, "seconds": round(time.monotonic() - started, 4)}
+            if retrieved.reranked is not None:
+                result["reranked"] = retrieved.reranked
+            results.append(result)
         table = aggregate(results, RETRIEVAL_METRICS)
         add_aggregate_metrics(sink, table, profile, "retrieval")
         sink.add("brain_eval_scored_cases", {"mode": "retrieval", "profile": profile}, len(results))
@@ -1703,13 +1718,18 @@ def replica_checks(full_rankings, sink, redraw):
     return checks
 
 
-def search_guardrails(document):
+def search_guardrails(document, p95_budget_seconds=SEARCH_P95_BUDGET_SECONDS):
     seconds = [case["seconds"] for case in document["cases"]]
     payloads = [case["payload_chars"] for case in document["cases"]]
-    return {
-        f"search p95 <= {SEARCH_P95_BUDGET_SECONDS:.1f} s": bool(seconds) and quantile(seconds, 0.95) <= SEARCH_P95_BUDGET_SECONDS,
+    guardrails = {
+        f"search p95 <= {p95_budget_seconds:.1f} s": bool(seconds) and quantile(seconds, 0.95) <= p95_budget_seconds,
         f"response <= {SEARCH_RESPONSE_BUDGET_CHARS} characters": bool(payloads) and max(payloads) <= SEARCH_RESPONSE_BUDGET_CHARS,
     }
+    reranks = [case["reranked"] for case in document["cases"] if "reranked" in case]
+    if reranks:
+        fallback_share = reranks.count(False) / len(reranks)
+        guardrails[f"rerank fallbacks <= {RERANK_FALLBACK_BUDGET:.0%}"] = fallback_share <= RERANK_FALLBACK_BUDGET
+    return guardrails
 
 
 def run_answers(args, workspace, sink, cases, llm, arm, repeats, judge_prompt):
@@ -2005,8 +2025,10 @@ def command_gate(args):
         for pair in args.compare:
             baseline, candidate = pair.split(":")
             if baseline in documents and candidate in documents:
-                per_case = lambda profile: {result["id"]: result["metrics"]["ndcg_at_8"] for result in documents[profile]["cases"] if result["split"] == "dev"}
-                decisions[pair] = decide(per_case(baseline), per_case(candidate), categories, guardrails=search_guardrails(documents[candidate]))
+                per_case = lambda profile: {result["id"]: result["metrics"][args.primary_metric] for result in documents[profile]["cases"] if result["split"] == "dev"}
+                decisions[pair] = decide(per_case(baseline), per_case(candidate), categories,
+                                         guardrails=search_guardrails(documents[candidate], args.search_p95_budget_seconds))
+                decisions[pair]["primary_metric"] = args.primary_metric
                 log("gate decision", pair=pair, **{key: value for key, value in decisions[pair].items() if key != "category_losses"})
     answer_documents = {}
     records = []
@@ -2176,6 +2198,8 @@ def build_parser():
     gate.add_argument("--arm", action="append", choices=sorted(ARMS), default=None)
     gate.add_argument("--repeats", type=int, default=3)
     gate.add_argument("--compare", action="append", help="baseline:candidate profiles for the decision rule")
+    gate.add_argument("--primary-metric", choices=RETRIEVAL_METRICS, default="ndcg_at_8", help="the per-case retrieval metric the decision rule compares")
+    gate.add_argument("--search-p95-budget-seconds", type=float, default=SEARCH_P95_BUDGET_SECONDS, help="the candidate's search p95 guardrail")
     gate.set_defaults(handler=command_gate)
     experiment = commands.add_parser("experiment")
     experiment.set_defaults(handler=command_experiment)

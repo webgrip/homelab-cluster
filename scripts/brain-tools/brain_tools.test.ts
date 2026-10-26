@@ -6,7 +6,7 @@ import { parseRef } from '../../kubernetes/apps/ai/brain-tools/app/server/read.t
 import { PRIVACY, SEARCH_MAX_CHARS } from '../../kubernetes/apps/ai/brain-tools/app/server/render.ts';
 import { interleave } from '../../kubernetes/apps/ai/brain-tools/app/server/search.ts';
 import { guessLanguage, keywordTerms, snippet, textHash } from '../../kubernetes/apps/ai/brain-tools/app/server/text.ts';
-import { COMMIT, LONG, MODEL, callTool, captureRow, docRow, getJson, noteRow, postJson, rig, schemaWith, topicRow } from './fakes.ts';
+import { COMMIT, LONG, MODEL, callTool, captureRow, docRow, getJson, noteRow, postJson, rig, schemaWith, scoreByMention, topicRow } from './fakes.ts';
 import type { Rig } from './fakes.ts';
 
 const SNAPSHOT = '01M3SNAPSHOTPINNED000000000';
@@ -421,6 +421,160 @@ describe('mcp protocol', () => {
     assert.equal((await getJson(`${rigged.restUrl}/api/search?q=x&profile=p9`)).status, 400);
     assert.equal((await getJson(`${rigged.restUrl}/api/search?q=x&snapshot=bad!`)).status, 400);
     assert.equal((await getJson(`${rigged.restUrl}/api/other`)).status, 404);
+  });
+});
+
+describe('rerank', () => {
+  const TOKEN = { OMNIGRAPH_TOKEN: 'reader-token-0123456789' };
+  const refs = (json: any): string[] => json.results.map((result: any) => result.ref);
+  const ask = (rigged: Rig, extra: string): Promise<{ status: number; json: any }> =>
+    getJson(`${rigged.restUrl}/api/search?q=${encodeURIComponent('the Flux kustomization')}&limit=40${extra}`);
+
+  test('config keeps the reranker off unless asked, and refuses values it does not know', () => {
+    const plain = loadConfig(TOKEN);
+    assert.equal(plain.rerank.mode, 'off');
+    assert.equal(plain.rerank.model, 'rerank-default');
+    assert.equal(plain.rerank.candidates, 24);
+    assert.equal(plain.rerank.windowChars, 1000);
+    assert.equal(plain.rerank.timeoutMs, 2500);
+    assert.equal(loadConfig({ ...TOKEN, BRAIN_TOOLS_RERANK: 'on-request' }).rerank.mode, 'on-request');
+    assert.throws(() => loadConfig({ ...TOKEN, BRAIN_TOOLS_RERANK: 'maybe' }), ConfigError);
+    assert.throws(() => loadConfig({ ...TOKEN, BRAIN_TOOLS_RERANK_CANDIDATES: '33' }), ConfigError);
+    assert.throws(() => loadConfig({ ...TOKEN, BRAIN_TOOLS_RERANK_CANDIDATES: '1.5' }), ConfigError);
+    assert.throws(() => loadConfig({ ...TOKEN, BRAIN_TOOLS_RERANK_TIMEOUT_SECONDS: '8' }), ConfigError);
+    assert.throws(() => loadConfig({ ...TOKEN, BRAIN_TOOLS_RERANK_MODEL: 'bad model' }), ConfigError);
+  });
+
+  test('with the flag off a REST rerank is refused and nothing reaches the reranker', async () => {
+    const rigged = await rig();
+    try {
+      seedSearch(rigged);
+      await rigged.service.checkCatalog();
+      const refused = await ask(rigged, '&rerank=true');
+      assert.equal(refused.status, 400);
+      assert.match(refused.json.message, /BRAIN_TOOLS_RERANK=off/);
+      const plain = await ask(rigged, '');
+      assert.equal(plain.status, 200);
+      assert.equal(plain.json.reranked, false);
+      assert.equal(plain.json.rerank.outcome, 'not_asked');
+      assert.equal(rigged.litellm.rerankCalls.length, 0);
+    } finally {
+      await rigged.stop();
+    }
+  });
+
+  describe('on request', () => {
+    let rigged: Rig;
+    before(async () => {
+      rigged = await rig({ rerank: 'on-request', rerankTimeoutMs: 300 });
+    });
+    after(async () => {
+      await rigged.stop();
+    });
+    beforeEach(async () => {
+      seedSearch(rigged);
+      rigged.litellm.rerankCalls = [];
+      rigged.litellm.rerankFailWith = null;
+      rigged.litellm.rerankDelayMs = 0;
+      rigged.litellm.rerankAnswer = scoreByMention('garden');
+      await rigged.service.checkCatalog();
+    });
+
+    test('REST reorders the fused head by relevance and keeps every other source in fused order', async () => {
+      const fused = refs((await ask(rigged, '')).json);
+      const { status, json } = await ask(rigged, '&rerank=true');
+      assert.equal(status, 200);
+      const garden = fused.find((ref) => ref.includes('garden'))!;
+      assert.notEqual(fused[0], garden);
+      assert.deepEqual(refs(json), [garden, ...fused.filter((ref) => ref !== garden)]);
+      assert.equal(json.reranked, true);
+      assert.equal(json.rerank.outcome, 'reranked');
+      assert.equal(json.rerank.candidates, fused.length);
+      assert.match(json.text, /reranked: yes/);
+      const call = rigged.litellm.rerankCalls.at(-1)!;
+      assert.equal(call.model, 'rerank-default');
+      assert.equal(call.query, 'the Flux kustomization');
+      assert.equal(call.documents.length, fused.length);
+      assert.equal(call.topN, fused.length);
+      for (const document of call.documents) {
+        const [title, ...body] = document.split('\n');
+        assert.ok(title!.length > 0);
+        assert.ok(body.join('\n').length <= 1000, `a candidate carries ${body.join('\n').length} characters`);
+      }
+    });
+
+    test('MCP and REST without the flag never call the reranker', async () => {
+      await callTool(rigged, 'search', { query: 'kustomization' });
+      const plain = await ask(rigged, '');
+      assert.equal(plain.json.reranked, false);
+      assert.equal(rigged.litellm.rerankCalls.length, 0);
+    });
+
+    test('a failing, slow or malformed reranker keeps the fused order and says so', async () => {
+      const fused = refs((await ask(rigged, '')).json);
+      rigged.litellm.rerankFailWith = 500;
+      const failed = await ask(rigged, '&rerank=1');
+      assert.deepEqual(refs(failed.json), fused);
+      assert.equal(failed.json.reranked, false);
+      assert.equal(failed.json.rerank.outcome, 'fallback');
+      assert.match(failed.json.text, /reranked: no/);
+      rigged.litellm.rerankFailWith = null;
+      rigged.litellm.rerankDelayMs = 1200;
+      const started = performance.now();
+      const slow = await ask(rigged, '&rerank=true');
+      assert.ok(performance.now() - started < 1100, 'the rerank timeout did not cut the call off');
+      assert.deepEqual(refs(slow.json), fused);
+      assert.equal(slow.json.rerank.outcome, 'fallback');
+      assert.equal(slow.json.rerank.reason, 'timeout');
+      rigged.litellm.rerankDelayMs = 0;
+      rigged.litellm.rerankAnswer = (documents) => ({ results: documents.slice(1).map((_, index) => ({ index: index + 1, relevance_score: 1 })) });
+      const malformed = await ask(rigged, '&rerank=true');
+      assert.deepEqual(refs(malformed.json), fused);
+      assert.equal(malformed.json.rerank.outcome, 'fallback');
+      assert.match(rigged.registry.render(), /brain_tools_reranks_total\{outcome="fallback"\} 3/);
+    });
+
+    test('rerank must be a boolean', async () => {
+      assert.equal((await ask(rigged, '&rerank=maybe')).status, 400);
+    });
+  });
+
+  test('only the configured number of candidates is sent, and the rest keeps its place', async () => {
+    const rigged = await rig({ rerank: 'on-request', rerankCandidates: 2 });
+    try {
+      seedSearch(rigged);
+      rigged.litellm.rerankAnswer = (documents) => ({ results: documents.map((_, index) => ({ index, relevance_score: index })) });
+      await rigged.service.checkCatalog();
+      const fused = refs((await ask(rigged, '')).json);
+      const { json } = await ask(rigged, '&rerank=true');
+      assert.equal(rigged.litellm.rerankCalls.at(-1)!.documents.length, 2);
+      assert.deepEqual(refs(json), [fused[1], fused[0], ...fused.slice(2)]);
+      assert.match(rigged.registry.render(), /brain_tools_rerank_seconds_count 1/);
+    } finally {
+      await rigged.stop();
+    }
+  });
+
+  test('p0 reranks its interleaved list before the limit cuts it, so a lower rank can reach the top', async () => {
+    const rigged = await rig({ profile: 'p0', rerank: 'on-request' });
+    try {
+      rigged.omnigraph.rows = {
+        recall_notes: [
+          { 'n.slug': 'obsidian/a', 'n.name': 'A', 'n.kind': 'idea', 'n.content': 'first note' },
+          { 'n.slug': 'obsidian/b', 'n.name': 'B', 'n.kind': 'idea', 'n.content': 'second note' },
+          { 'n.slug': 'obsidian/c', 'n.name': 'C', 'n.kind': 'idea', 'n.content': 'third note rerank-me' },
+        ],
+        recall_passages: [{ 'a.slug': 'forge/r/doc/x', 'a.name': 'X', 'p.chunk_index': 0, 'p.text': 'a passage' }],
+        recall_topics: [],
+      };
+      rigged.litellm.rerankAnswer = scoreByMention('rerank-me');
+      await rigged.service.checkCatalog();
+      const { json } = await getJson(`${rigged.restUrl}/api/search?q=question&limit=2&rerank=true`);
+      assert.deepEqual(refs(json), ['note:obsidian/c', 'note:obsidian/a']);
+      assert.equal(rigged.litellm.rerankCalls.at(-1)!.documents.length, 4);
+    } finally {
+      await rigged.stop();
+    }
   });
 });
 

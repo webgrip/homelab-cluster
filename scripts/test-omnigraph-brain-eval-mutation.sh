@@ -142,7 +142,13 @@ spawn replica-excuses-every-mismatch brain_eval.py '        if seen_original & s
     return False' '        if seen_original & seen_replica:
             return True
     return True'
-spawn gate-without-guardrails brain_eval.py ', guardrails=search_guardrails(documents[candidate]))' ')'
+spawn gate-without-guardrails brain_eval.py ',
+                                         guardrails=search_guardrails(documents[candidate], args.search_p95_budget_seconds))' ')'
+spawn rerank-never-asked brain_eval.py '            query["rerank"] = "true"' '            query["rerank_ignored"] = "true"'
+spawn rerank-outcome-unchecked brain_eval.py '        if outcome not in ("reranked", "fallback"):' '        if False:'
+spawn rerank-fallbacks-unguarded brain_eval.py 'fallback_share <= RERANK_FALLBACK_BUDGET' 'True'
+spawn ndcg-at-3-reads-eight brain_eval.py '"ndcg_at_3": ndcg_at(ranked, grades, 3)' '"ndcg_at_3": ndcg_at(ranked, grades, 8)'
+spawn recall-at-3-reads-five brain_eval.py '"recall_at_3": recall_at(ranked, relevant, 3)' '"recall_at_3": recall_at(ranked, relevant, 5)'
 spawn response-budget-loosened brain_eval.py 'SEARCH_RESPONSE_BUDGET_CHARS = 6000' 'SEARCH_RESPONSE_BUDGET_CHARS = 60000'
 wait
 for result in "$work"/*.result; do

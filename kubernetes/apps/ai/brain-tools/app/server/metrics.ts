@@ -128,6 +128,8 @@ export const METRICS = {
   cacheRows: 'brain_tools_cache_rows',
   cacheRefreshed: 'brain_tools_cache_refreshed_timestamp_seconds',
   responseChars: 'brain_tools_response_chars',
+  reranks: 'brain_tools_reranks_total',
+  rerankLatency: 'brain_tools_rerank_seconds',
   build: 'brain_tools_build_info',
 } as const;
 
@@ -145,5 +147,7 @@ export function declareMetrics(registry: MetricRegistry): void {
   registry.declare(METRICS.cacheRows, 'gauge', 'Rows held by each cache at head');
   registry.declare(METRICS.cacheRefreshed, 'gauge', 'Unix time each cache was last refreshed at head');
   registry.declare(METRICS.responseChars, 'histogram', 'Characters of the text a tool returns, by tool', CHAR_BUCKETS);
+  registry.declare(METRICS.reranks, 'counter', 'Searches that asked for a rerank, by outcome (reranked, or fallback to the fused order)');
+  registry.declare(METRICS.rerankLatency, 'histogram', 'Seconds the reranker took for the searches it reranked');
   registry.declare(METRICS.build, 'gauge', 'Build information');
 }
