@@ -261,6 +261,7 @@ locals {
       redirects = [
         { matching_mode = "strict", url = "http://localhost:8000" },
         { matching_mode = "strict", url = "http://localhost:18000" },
+        { matching_mode = "strict", url = "https://headlamp.ops.unfoldhq.dev/oidc-callback" },
       ]
       extra_scopes     = ["unfold-kubernetes"]
       passkey_required = true
@@ -281,6 +282,25 @@ locals {
       extra_scopes          = ["groups"]
       passkey_required      = true
       adopt                 = false
+    }
+    unfold-consoles = {
+      provider_name          = "unfold-consoles-oidc"
+      app_name               = "Unfold consoles"
+      description            = "Hubble UI and Policy Reporter on the Unfold production cluster, behind oauth2-proxy, over the Unfold tailnet."
+      launch_url             = "https://hubble.ops.unfoldhq.dev"
+      client_id              = "unfold-consoles"
+      client_secret          = data.vault_kv_secret_v2.oidc_client["unfold-consoles"].data["client_secret"]
+      client_type            = "confidential"
+      signing_key            = true
+      grant_types            = ["authorization_code", "refresh_token"]
+      access_token_validity  = "minutes=15"
+      refresh_token_validity = "hours=12"
+      redirects = [
+        { matching_mode = "strict", url = "https://hubble.ops.unfoldhq.dev/oauth2/callback" },
+        { matching_mode = "strict", url = "https://policy-reporter.ops.unfoldhq.dev/oauth2/callback" },
+      ]
+      extra_scopes = ["unfold-kubernetes"]
+      adopt        = false
     }
     unfold-grafana = {
       provider_name          = "unfold-grafana-oidc"

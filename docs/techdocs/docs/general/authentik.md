@@ -104,6 +104,15 @@ endpoints and the public half of the signing key. The login itself, the authoriz
 endpoints, stays on the LAN and the VPN: k8s-gateway answers the name with envoy-internal
 there, and only off-LAN resolvers see the tunnel.
 
+The Unfold cluster's operations consoles sign in here too, over the Unfold tailnet: Headlamp uses
+the same public client `unfold-kubernetes` (redirect `https://headlamp.ops.unfoldhq.dev/oidc-callback`),
+so its API calls carry the person's own token and Unfold's RBAC; Hubble UI and Policy Reporter sit
+behind oauth2-proxy with the confidential client `unfold-consoles`, whose secret is generated here and
+pushed to `authentik/unfold-consoles-oidc` and `unfold-main/ops-consoles/oidc`. Both read the
+`unfold_kubernetes` scope, so only `unfold-admins` and `unfold-viewers` get in. Their token
+exchanges reach Authentik through the Unfold gateway's 443 (unfold-cluster
+`docs/runbooks/ops-consoles.md`).
+
 | Piece | Where |
 | --- | --- |
 | Public record | `kubernetes/apps/network/cloudflare-tunnel/app/dnsendpoint.yaml` |
