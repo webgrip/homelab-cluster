@@ -1,0 +1,45 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: unfold-audit
+  labels:
+    rules: audit
+spec:
+  groups:
+    - name: unfold-kubernetes-audit
+      type: vlogs
+      interval: 5m
+      rules:
+        - alert: UnfoldBreakGlassCertificateUsed
+          expr: >-
+            _time:15m {cluster="unfold", job="kube-audit"}
+            | rename "user.username" as user
+            | filter NOT user:~"^(system:|oidc:)"
+            AND NOT (userAgent:~"^Go-http-client" AND sourceIPs:~"^\\[\"(::1|127[.]0[.]0[.]1|10[.]64[.]0[.]1[123])\"\\]$")
+            | stats by (user, userAgent, sourceIPs) count() as hits
+          for: 0m
+          labels:
+            severity: critical
+            cluster: unfold
+            team: platform
+            service: kubernetes-api
+          annotations:
+            summary: "Break-glass certificate used on the Unfold Kubernetes API (user {{ $labels.user }})"
+            description: |
+              What's happening:
+              - {{ $labels.user }} called the Unfold API server with a client certificate {{ $value }} times in 15m, from {{ $labels.sourceIPs }} with {{ $labels.userAgent }}.
+              - People reach Unfold as `oidc:` users and workloads as `system:`; anything else is the admin kubeconfig from the OpenTofu state, which carries `system:masters`.
+
+              Impact/risk:
+              - That identity bypasses RBAC and every admission rule that exempts nobody, and it is not attributable to a person.
+
+              Likely causes:
+              - A deliberate break-glass because the OIDC login is broken.
+              - An infra apply that rolls out disk encryption, or a diagnose run; both read the admin kubeconfig from the state.
+              - A copy of the state or its passphrase outside OpenBao.
+
+              First actions:
+              - Match the time against the infra workflow runs on webgrip/unfold-cluster; an apply or diagnose dispatch by the owner explains it.
+              - If nothing explains it, treat the cluster CA as compromised and rotate it; nothing else revokes this credential.
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/kubernetes-login.md#break-glass"

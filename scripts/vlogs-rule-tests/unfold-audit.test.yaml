@@ -1,0 +1,73 @@
+---
+stream_fields: cluster,job,node
+extra_fields: cluster=unfold,job=kube-audit
+tests:
+  - name: kubectl with the admin kubeconfig fires
+    logs:
+      - age: 400
+        node: unfold-cp-1
+        message: /api/v1/namespaces/kube-system/secrets
+        verb: list
+        user:
+          username: admin
+          groups:
+            - system:masters
+            - system:authenticated
+        userAgent: kubectl/v1.37.1 (linux/amd64) kubernetes/abcdef0
+        sourceIPs:
+          - 100.64.0.7
+    firing:
+      - UnfoldBreakGlassCertificateUsed
+    mutations:
+      - alert: UnfoldBreakGlassCertificateUsed
+        replace: 'NOT user:~"^(system:|oidc:)"'
+        with: 'NOT user:~"^(system:|oidc:|admin)"'
+  - name: a person signed in through OIDC stays quiet
+    logs:
+      - age: 400
+        node: unfold-cp-1
+        message: /api/v1/namespaces/default/pods
+        verb: list
+        user:
+          username: oidc:ryan@webgrip.nl
+        userAgent: kubectl/v1.37.1 (linux/amd64) kubernetes/abcdef0
+        sourceIPs:
+          - 100.64.0.7
+    firing: []
+    mutations:
+      - alert: UnfoldBreakGlassCertificateUsed
+        replace: 'NOT user:~"^(system:|oidc:)"'
+        with: 'NOT user:~"^(system:)"'
+  - name: Talos's own call from a control-plane node stays quiet
+    logs:
+      - age: 400
+        node: unfold-cp-2
+        message: /api/v1/nodes/unfold-cp-2
+        verb: patch
+        user:
+          username: admin
+        userAgent: Go-http-client/2.0
+        sourceIPs:
+          - 10.64.0.12
+    firing: []
+    mutations:
+      - alert: UnfoldBreakGlassCertificateUsed
+        replace: '10[.]64[.]0[.]1[123]'
+        with: '10[.]64[.]0[.]9[9]'
+  - name: the Go user agent from outside the control planes still fires
+    logs:
+      - age: 400
+        node: unfold-cp-1
+        message: /api/v1/secrets
+        verb: list
+        user:
+          username: admin
+        userAgent: Go-http-client/2.0
+        sourceIPs:
+          - 203.0.113.9
+    firing:
+      - UnfoldBreakGlassCertificateUsed
+    mutations:
+      - alert: UnfoldBreakGlassCertificateUsed
+        replace: 'AND sourceIPs:~'
+        with: 'OR sourceIPs:~'
