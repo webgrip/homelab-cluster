@@ -36,6 +36,8 @@ The rules owned since 2026-10-26 (ADR-0083):
 
 Required contexts stay per repository: homelab-cluster `main` the four `e2e / … (pull_request)` jobs, unfold `development` and `main` their `[Workflow] On Pull Request` jobs, unfold-cluster `main` its seven checks, talos-kata-extension `main` its source-change check; every other repository none, because a required context that never reports blocks every merge.
 
+Private repositories are in the model with `settings.private: true`, so tofu keeps them private: compyutah, erfbeeld, omnigraph-explorer, ploeg-bench, ploeg-bench-world and talos-kata-extension. ploeg-bench-world's default branch is `bench/void`, which the bench harness resets, so only its unused `main` carries the rule. Two private repositories stay outside the model on purpose, because a protected `main` would break how they are written: `obsidian-vault`, which the Obsidian git plugin pushes straight to `main`, and `previews`, which `agent-builder` publishes to by pushing `main`. Either joins the model once its writer delivers through a pull request.
+
 `agent-builder` is deliberately in **no** list anywhere: the agent fleet delivers via PRs
 (ADR-0048) and never merges its own work.
 
@@ -181,7 +183,7 @@ lists with:
 
 in VictoriaLogs, or from the readable plan after a change.
 
-Not covered: private repos (`talos-kata-extension`, unreadable without a token in a data
+Not covered: private repos (the six above, unreadable without a token in a data
 source) and GitHub entries (`ploeg-hq/ploeg`), which are modelled but not compared.
 
 ## Symptom → cause
