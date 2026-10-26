@@ -20,26 +20,29 @@ applied by a separate module (since 2026-10-24, VIK-2320): see
 
 | Term | Meaning |
 | --- | --- |
-| **Push whitelist** | Identities allowed to push the branch directly — everyone else must open a PR. `push` in the model; absent means no whitelist. |
+| **Push whitelist** | Identities allowed to push the branch directly. `push` in the model. Since [ADR-0083](../adr/adr-0083-nobody-pushes-to-main-and-core-repositories-need-a-second-person.md) every active rule says `push: []`: nobody pushes, the owner and the bots included, and the validator refuses anything else. |
+| **Required approvals** | `required_approvals` in the model: approving reviews a pull request needs before it merges. `1` on `protected-core`, with `dismiss_stale_approvals`, `block_on_rejected_reviews` and `block_on_outdated_branch`; `0` elsewhere. An author cannot approve their own pull request. |
+| **Tag protection** | `tags` in a profile or repo: a pattern (`*` is every tag) and the users who may create or update matching tags. Applied as `restapi_object.tag_protection`, because the svalabs/forgejo provider has no tag resource. |
 | **Merge whitelist** | Identities allowed to merge PRs into the branch. `merge` in the model; absent means no whitelist. |
 | **Status checks** | `status_checks` in the model: contexts that must be green before a merge. Forgejo reads each entry as a glob pattern, so a literal `[` or `]` must be escaped (`"\\[Workflow\\] On Pull Request / checks (pull_request)"` in YAML). Unescaped, `[Workflow]` is a character class, the context never matches, and "merge when checks succeed" waits forever; the schema refuses it. |
 
-The rules owned today:
+The rules owned since 2026-10-26 (ADR-0083):
 
-| Rule | Push whitelist | Merge whitelist | Required contexts |
-| --- | --- | --- | --- |
-| `homelab-cluster` `main` (`homelab` profile) | `ryangr0` | `ryangr0`, `renovate` | the four `e2e / … (pull_request)` jobs |
-| `unfold` `development` | none | none | `checks`, `release-policy`, `ploeg-pin`, `ploeg-docs` |
-| `unfold` `main` | none | none | `checks`, `release-policy`, `ploeg-pin` |
-| `workflows` `main`, `claude-config` `main` | none | none | none |
+| Profile | Repositories | Push | Merge | Approvals | Tags |
+| --- | --- | --- | --- | --- | --- |
+| `protected-core` | agent-standards, workflows, renovate-config, homelab-cluster, unfold-cluster | nobody | `ryangr0`, `yon`, `renovate` (unfold-cluster: `ryangr0` only) | 1 | `webgrip-ci` only |
+| `protected` | every other active Forgejo repository | nobody | `ryangr0`, `yon`, `renovate` (unfold `development` adds `ploeg-release`) | 0 | `webgrip-ci` only |
+| `baseline` | archived repositories | unchanged | unchanged | 0 | none |
+
+Required contexts stay per repository: homelab-cluster `main` the four `e2e / … (pull_request)` jobs, unfold `development` and `main` their `[Workflow] On Pull Request` jobs, unfold-cluster `main` its seven checks, talos-kata-extension `main` its source-change check; every other repository none, because a required context that never reports blocks every merge.
 
 `agent-builder` is deliberately in **no** list anywhere: the agent fleet delivers via PRs
 (ADR-0048) and never merges its own work.
 
 ## Changing a rule
 
-1. Edit `profiles.yaml` (a profile's `branches`) or `repos.yaml` (a repo's `branches`, which
-   replaces the profile's rule per branch). A rule that does not exist live yet needs no import;
+1. Edit `profiles.yaml` (a profile's `branches` or `tags`) or `repos.yaml` (a repo's `branches`
+   or `tags`, which add to and override the profile's rule field by field). A rule that does not exist live yet needs no import;
    a rule that already exists by hand must be added to `branch_protections_live_before_tofu` in
    `tofu/imports.tf` first, or the create fails.
 2. `./scripts/validate-repo-config-model.sh` (pre-commit runs it with the mutation cases).
@@ -48,18 +51,18 @@ The rules owned today:
 
 ## Lock-out guard
 
-Three layers keep the owner's trunk push on homelab-cluster:
+Nobody pushes to `main`, so the owner lands a change in homelab-cluster only by merging a pull request. Three layers keep that possible:
 
-- the JSON Schema requires `homelab-cluster` on the `homelab` profile, forbids it a
-  `branches` or `settings` override, and requires `ryangr0` in that profile's `main` push list;
-- every `forgejo_branch_protection` instance has a precondition that reads the model and fails
-  the plan, before anything is applied, when `homelab-cluster/main` is missing or its push list
-  lacks `ryangr0`;
+- the JSON Schema requires `homelab-cluster` on `protected-core`, allows its `main` override only `status_checks`, and requires `ryangr0` in both protected profiles' merge lists;
+- every `forgejo_branch_protection` instance has a precondition that fails the plan, before anything is applied, when `homelab-cluster/main` is missing or its merge list lacks `ryangr0`;
 - every rule has `prevent_destroy`, so deleting a rule from the model fails the plan.
 
-Break-glass if the owner is locked out anyway: an admin token from OpenBao
-`secret/forgejo/admin`, a PATCH of `/repos/webgrip/homelab-cluster/branch_protections/main` with
-`{"push_whitelist_usernames":["ryangr0"]}`, then fix the model, or the next apply reverts the PATCH.
+## Break-glass
+
+A change that cannot wait for the other developer's approval, or a merge path that is broken:
+
+1. A repository administrator can force-merge a pull request past approvals and checks in the web UI: the provider cannot set `apply_to_admins`, which stays off, so Forgejo keeps its administrator override. The merge stays visible on the pull request.
+2. If no pull request can merge at all: an admin token from OpenBao `secret/forgejo/admin`, a PATCH of `/repos/webgrip/<repo>/branch_protections/main` that lifts the rule (`{"enable_push": true, "enable_push_whitelist": true, "push_whitelist_usernames": ["ryangr0"]}`), the fix, then wait for the hourly apply or reconcile `Terraform/repo-config`: it puts the rule back. Say in the fix's commit that it went past the rule.
 
 ## Why status checks (added 2026-08-04)
 
@@ -100,7 +103,7 @@ removes Renovate's one-merge-per-run ceiling (merging one PR flips every other P
 checks pass.
 
 `platformAutomerge: true` is set on one group so far: `ploeg-unfold-release` (2026-10-18). It is
-gated by exactly the contexts the `homelab` profile requires.
+gated by exactly the contexts homelab-cluster's `main` rule requires.
 
 ## Verify
 
@@ -114,8 +117,9 @@ kubectl -n repo-config get terraform repo-config
 
 The whitelists are not readable anonymously; the plan in `tfplan-default-repo-config` shows
 them as tofu reads them. Expect the Terraform object Ready with `Plan no changes` between model
-commits. Behavioral check, both directions: a direct push from a non-whitelisted identity is
-rejected on homelab-cluster, **and** the owner's trunk push still lands.
+commits. Behavioral check, both directions: a direct push to `main`, the owner's included, is rejected,
+**and** a pull request with green checks (and, on a core repository, an approval) merges.
+`curl -s -H "Authorization: token $FORGEJO_TOKEN" "$FORGEJO_API/repos/webgrip/<repo>/tag_protections"` lists `*` with `webgrip-ci`.
 
 ## Repo merge defaults
 
@@ -187,11 +191,14 @@ source) and GitHub entries (`ploeg-hq/ploeg`), which are modelled but not compar
 | `403` on apply — even as org **owner** | Role ≠ API permission: the **token** lacks scopes. Re-mint with *repository: Read and Write* + *organization: Read*, or mint a short-lived token from the admin account (OpenBao `secret/forgejo/admin`), apply, then revoke it. *(Scope fix inferred from the API's requirements, not yet confirmed by a successful run — verify on first rollout and update this row.)* |
 | A repo never appears in the `--all` sweep | Pre-2026-07-26 the script fetched a single page (silent truncation past 100 repos — ploeg, ai-skills, previews, semantic-release-config were invisible). Current script paginates; if it recurs, check the resolved repo list first. |
 | A rule changed back an hour after a hand edit | Expected: tofu owns it and `ForgejoRepoConfigApplyChangedSomething` fired. Change the model instead. |
-| Plan fails with "must keep ryangr0 in the push list" | The lock-out guard: the model dropped the owner from `homelab-cluster/main`. Nothing was applied; revert the model change. |
+| Plan fails with "must keep ryangr0 in the merge list" | The lock-out guard: the model dropped the owner from `homelab-cluster/main`'s merge list. Nothing was applied; revert the model change. |
+| A release job fails to push its tag | The tag rule allows `webgrip-ci` only: the job pushed as another identity. Releases tag as `webgrip-ci`. |
+| Renovate's automerge never lands on a core repository | Expected: `protected-core` needs an approval, Renovate's included. Approve the pull request. |
 
 ## Related
 
 - [ADR-0050 — per-repo delivery contract](../adr/adr-0050-per-repo-delivery-contract.md) — the why, and the #438 post-mortem.
+- [ADR-0083 — nobody pushes to main](../adr/adr-0083-nobody-pushes-to-main-and-core-repositories-need-a-second-person.md) — the profiles, approvals and tag rules in force since 2026-10-26.
 - `kubernetes/apps/repo-config/repo-config` — the model, the tofu module and the alerts.
 - Weekly janitor `.forgejo/workflows/scheduled-maintenance.yml` — closes zombie PRs, prunes merged branches (Mondays 06:00 UTC).
 - `forgejo-leading` skill — repo cutover; protection is now a model entry, not a script run.
