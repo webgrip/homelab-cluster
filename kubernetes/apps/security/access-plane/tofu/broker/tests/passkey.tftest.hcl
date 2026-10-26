@@ -51,7 +51,7 @@ variables {
   vault_token   = "mock"
 }
 
-run "the_tailnet_login_demands_a_passkey_and_nothing_else_does" {
+run "the_unfold_logins_demand_a_passkey_and_nothing_else_does" {
   command = plan
 
   assert {
@@ -60,9 +60,14 @@ run "the_tailnet_login_demands_a_passkey_and_nothing_else_does" {
   }
 
   assert {
+    condition     = authentik_provider_oauth2.app["unfold-kubernetes"].authorization_flow == authentik_flow.passkey_authorization.uuid
+    error_message = "the Unfold Kubernetes API login (kubelogin, Headlamp) must run the passkey authorization flow"
+  }
+
+  assert {
     condition = alltrue([
       for key, provider in authentik_provider_oauth2.app :
-      provider.authorization_flow != authentik_flow.passkey_authorization.uuid if key != "unfold-headscale"
+      provider.authorization_flow != authentik_flow.passkey_authorization.uuid if !contains(["unfold-headscale", "unfold-kubernetes"], key)
     ])
     error_message = "only applications that ask for passkey_required get the passkey flow"
   }

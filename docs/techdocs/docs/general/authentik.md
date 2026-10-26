@@ -38,14 +38,17 @@ so a rostered person's leftover local password opens nothing; the Google door is
   a password and an authenticator. Only `akadmin` has those, and its password is in the vault
   at `secret/authentik/app`. Use it when Google or the access plane is broken.
 
-MFA is Google's, enforced in the Workspace admin console. One application adds a step of its own:
-`unfold-headscale`, the Unfold tailnet's browser login, sets `passkey_required` in
-`applications.tf`, which gives it the authorization flow `webgrip-passkey-authorization`
-(`tofu/broker/passkey.tf`). That flow accepts only a WebAuthn passkey or security key with user
-verification, every time, and refuses a person who has none. People enroll one under
-**Settings → MFA Devices → Passkey or security key** (flow `webgrip-passkey-setup`).
-`tofu/broker/tests/passkey.tftest.hcl` checks the flow and the gate with mocked providers
-(`mise exec -- tofu test` in `tofu/broker`).
+MFA is Google's, enforced in the Workspace admin console. Two applications add a step of their own:
+`unfold-headscale`, the Unfold tailnet's browser login, and `unfold-kubernetes`, the Unfold
+Kubernetes API login (kubelogin, Headlamp). Both set `passkey_required` in `applications.tf`, which
+gives them the authorization flow `webgrip-passkey-authorization` (`tofu/broker/passkey.tf`). That
+flow accepts only a WebAuthn passkey or security key with user verification, every time it runs,
+and refuses a person who has none. People enroll one under
+**Settings → MFA Devices → Passkey or security key** (flow `webgrip-passkey-setup`). The flow runs
+on every browser authorization, not on a refresh: kubelogin renews a Kubernetes token with its
+refresh token (12 hours) without asking again. `tofu/broker/tests/passkey.tftest.hcl` checks the
+flow and which applications get it, with mocked providers (`mise exec -- tofu test` in
+`tofu/broker`).
 
 ## GitOps layout
 

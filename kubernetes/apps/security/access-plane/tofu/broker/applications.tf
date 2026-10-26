@@ -262,8 +262,9 @@ locals {
         { matching_mode = "strict", url = "http://localhost:8000" },
         { matching_mode = "strict", url = "http://localhost:18000" },
       ]
-      extra_scopes = ["unfold-kubernetes"]
-      adopt        = false
+      extra_scopes     = ["unfold-kubernetes"]
+      passkey_required = true
+      adopt            = false
     }
     unfold-headscale = {
       provider_name         = "unfold-headscale-oidc"
