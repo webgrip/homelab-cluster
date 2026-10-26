@@ -117,9 +117,50 @@ spec:
             }
           }
 
+          discovery.relabel "pod_logs_except_renovate" {
+            targets = discovery.relabel.pod_logs.output
+
+            rule {
+              source_labels = ["namespace"]
+              regex         = "renovate"
+              action        = "drop"
+            }
+          }
+
+          discovery.relabel "renovate_pod_logs" {
+            targets = discovery.relabel.pod_logs.output
+
+            rule {
+              source_labels = ["namespace"]
+              regex         = "renovate"
+              action        = "keep"
+            }
+          }
+
           loki.source.kubernetes "pod_logs" {
-            targets    = discovery.relabel.pod_logs.output
+            targets    = discovery.relabel.pod_logs_except_renovate.output
             forward_to = [loki.process.pod_logs.receiver]
+          }
+
+          loki.source.kubernetes "renovate_pod_logs" {
+            targets    = discovery.relabel.renovate_pod_logs.output
+            forward_to = [loki.process.renovate_pod_logs.receiver]
+          }
+
+          loki.process "renovate_pod_logs" {
+            stage.static_labels {
+              values = {
+                cluster = "homelab-cluster",
+              }
+            }
+
+            forward_to = [loki.write.renovate.receiver]
+          }
+
+          loki.write "renovate" {
+            endpoint {
+              url = "http://vlsingle-victorialogs.observability.svc.cluster.local:9428/insert/loki/api/v1/push?_stream_fields=cluster,namespace,pod,container,job,node,instance&_msg_field=msg"
+            }
           }
 
           loki.source.kubernetes_events "events" {

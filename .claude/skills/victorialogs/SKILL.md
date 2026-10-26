@@ -34,6 +34,7 @@ url = "http://vlsingle-victorialogs.observability.svc.cluster.local:9428/insert/
 VL parses JSON log bodies into first-class fields — **there is no `_msg`** for JSON-emitting apps
 (flux, OTLP events, tetragon). Plain-text logs keep `_msg`.
 
+- Exception: ns `renovate` ships through its own alloy-agent `loki.write "renovate"` with `_msg_field=msg`, which *renames* `msg` to `_msg` (VL renames, never copies). To give another namespace a `_msg` the same way, fork its targets the same way; a global `_msg_field` would also rename fields that existing rules filter on (`message` in the LiteLLM honeytoken rule).
 - Text filters against a shredded stream match nothing **silently** — filter on fields, or rebuild a line: `| pack_json | filter _msg:~"(?i)(...)"`.
 - OTLP `attributes.*` arrive pre-flattened (dotted names) → `| rename attributes.y as x`, not json-extraction.
 - `| unpack_json from <field>` only for nested JSON-string fields (e.g. claude-code `attributes.tool_parameters`).
