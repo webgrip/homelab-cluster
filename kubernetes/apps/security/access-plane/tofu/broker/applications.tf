@@ -281,6 +281,21 @@ locals {
       passkey_required      = true
       adopt                 = false
     }
+    unfold-grafana = {
+      provider_name          = "unfold-grafana-oidc"
+      app_name               = "Unfold Grafana"
+      description            = "Unfold production's own dashboards, metrics and logs, reached over the Unfold tailnet."
+      launch_url             = "http://unfold-observability.tailnet.unfold.internal/"
+      client_id              = "unfold-grafana"
+      client_secret          = data.vault_kv_secret_v2.oidc_client["unfold-grafana"].data["client_secret"]
+      client_type            = "confidential"
+      signing_key            = true
+      grant_types            = ["authorization_code", "refresh_token"]
+      refresh_token_validity = "hours=12"
+      redirects              = [{ matching_mode = "strict", url = "http://unfold-observability.tailnet.unfold.internal/login/generic_oauth" }]
+      extra_scopes           = ["groups"]
+      adopt                  = false
+    }
     longhorn = {
       provider_name          = "longhorn-oidc"
       app_name               = "Longhorn"

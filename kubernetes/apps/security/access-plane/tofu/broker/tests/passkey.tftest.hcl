@@ -118,3 +118,24 @@ run "the_tailnet_login_is_a_confidential_client_for_headscale_that_only_unfold_a
     error_message = "unfold-admins, and no other group, opens the Unfold tailnet login"
   }
 }
+
+run "unfold_grafana_is_a_confidential_client_with_its_tailnet_callback_that_unfold_viewers_and_admins_open" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      authentik_provider_oauth2.app["unfold-grafana"].client_id == "unfold-grafana",
+      authentik_provider_oauth2.app["unfold-grafana"].client_type == "confidential",
+      authentik_application.app["unfold-grafana"].slug == "unfold-grafana",
+      [for redirect in authentik_provider_oauth2.app["unfold-grafana"].allowed_redirect_uris : redirect.url] == ["http://unfold-observability.tailnet.unfold.internal/login/generic_oauth"],
+      [for redirect in authentik_provider_oauth2.app["unfold-grafana"].allowed_redirect_uris : redirect.matching_mode] == ["strict"],
+      contains(authentik_provider_oauth2.app["unfold-grafana"].property_mappings, authentik_property_mapping_provider_scope.app["groups"].id),
+    ])
+    error_message = "Unfold Grafana is a confidential client with one exact callback on the Unfold tailnet, and gets the groups claim it maps to roles"
+  }
+
+  assert {
+    condition     = sort([for binding in local.gate_bindings : binding.group if binding.app == "unfold-grafana"]) == tolist(["unfold-admins", "unfold-viewers"])
+    error_message = "unfold-viewers and unfold-admins, and no other group, open Unfold Grafana"
+  }
+}
