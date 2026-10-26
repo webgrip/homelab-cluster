@@ -48,6 +48,10 @@ spec:
               value: forgejo-ci-token
             - name: TOKEN_NAME
               value: webgrip-ci-actions
+            - name: ROLLOUT_TOKEN_SECRET
+              value: forgejo-agentstd-rollout-token
+            - name: ROLLOUT_TOKEN_NAME
+              value: agentstd-rollout
             - name: BOT_USERNAME
               value: webgrip-ci
             - name: BOT_EMAIL
@@ -95,6 +99,24 @@ spec:
                   --from-literal="FORGEJO_TOKEN=$tok" \
                   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
                 echo "wrote Secret $TOKEN_SECRET"
+              fi
+
+              rtok="$(kubectl -n "$NAMESPACE" get secret "$ROLLOUT_TOKEN_SECRET" -o jsonpath='{.data.FORGEJO_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+              if [ -n "$rtok" ] && curl -fsS -o /dev/null -H "Authorization: token $rtok" "$api/orgs/${ORG}/repos?limit=1" \
+                 && curl -fsS -o /dev/null -H "Authorization: token $rtok" "$api/repos/${ORG}/agent-standards"; then
+                echo "existing rollout token still valid — no change"
+              else
+                echo "minting a fresh rollout token"
+                curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/${BOT_USERNAME}" \
+                  -d "{\"login_name\":\"${BOT_USERNAME}\",\"source_id\":0,\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
+                curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${ROLLOUT_TOKEN_NAME}" || true
+                rtok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
+                  -d "{\"name\":\"${ROLLOUT_TOKEN_NAME}\",\"scopes\":[\"write:repository\",\"read:organization\"]}" | jq -r '.sha1')"
+                [ -n "$rtok" ] && [ "$rtok" != "null" ] || { echo "rollout token mint failed" >&2; exit 1; }
+                kubectl -n "$NAMESPACE" create secret generic "$ROLLOUT_TOKEN_SECRET" \
+                  --from-literal="FORGEJO_TOKEN=$rtok" \
+                  --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+                echo "wrote Secret $ROLLOUT_TOKEN_SECRET"
               fi
 
               # 3) Give the bot org-wide write in webgrip (team 'ci', write, all repos) so
