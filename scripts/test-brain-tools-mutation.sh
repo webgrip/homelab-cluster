@@ -82,6 +82,21 @@ check "readiness ignores missing queries" service.ts "return this.catalog.reacha
 check "the question vector is not normalised" upstream.ts "return l2Normalise(vector as number[]);" "return vector as number[];"
 check "request bodies are unbounded" mcp.ts "export const MAX_BODY_BYTES = 16 * 1024;" "export const MAX_BODY_BYTES = 16 * 1024 * 1024;"
 
+check "rerank ignores the relevance scores" search.ts "right.source.rerankScore! - left.source.rerankScore! || left.position - right.position" "left.position - right.position"
+check "a REST rerank is accepted while the flag is off" service.ts "    if (asked === true && this.rerankSettings.mode === 'off') return this.finish('search', surface, started, invalid(MESSAGES.rerankOff), {});
+" ""
+check "MCP reranks when the flag only allows it on request" service.ts "asked ?? this.rerankSettings.mode === 'on'" "asked ?? true"
+check "rerank drops the sources past the head" search.ts ", ...result.sources.slice(head.length)]" "]"
+check "rerank sends every source, not the configured head" search.ts "const head = result.sources.slice(0, plan.candidates);" "const head = result.sources.slice(0);"
+check "a reranker failure fails the search" search.ts "    if (signal.aborted) throw error;
+    const seconds = (performance.now() - started) / 1000;
+    const reason" "    throw error;
+    const seconds = (performance.now() - started) / 1000;
+    const reason"
+check "the rerank timeout is not applied" search.ts "AbortSignal.any([signal, AbortSignal.timeout(plan.timeoutMs)])" "signal"
+check "p0 cuts to the limit before the rerank" search.ts "    sources: p0Sources(notes!.rows, passages!.rows, topics!.rows)," "    sources: p0Sources(notes!.rows, passages!.rows, topics!.rows).slice(0, request.limit),"
+check "a rerank answer missing a candidate is accepted" upstream.ts "if (!Array.isArray(results) || results.length !== documents)" "if (!Array.isArray(results))"
+
 if [ "$survivors" -gt 0 ]; then
   echo "FAIL $survivors mutant(s) survived the brain-tools suite" >&2
   exit 1

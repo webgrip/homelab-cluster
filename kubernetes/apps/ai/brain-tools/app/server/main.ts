@@ -9,7 +9,7 @@ import { createMcpHandler } from './mcp.ts';
 import { METRICS, MetricRegistry, declareMetrics } from './metrics.ts';
 import { createRestHandler } from './rest.ts';
 import { BrainService } from './service.ts';
-import { Embedder, Omnigraph } from './upstream.ts';
+import { Embedder, Omnigraph, Reranker } from './upstream.ts';
 
 function log(event: Record<string, unknown>): void {
   process.stdout.write(`${JSON.stringify({ time: new Date().toISOString(), ...event })}\n`);
@@ -37,11 +37,12 @@ function start(): void {
   }
   const registry = new MetricRegistry();
   declareMetrics(registry);
-  registry.set(METRICS.build, { version: config.version, profile: config.defaultProfile }, 1);
+  registry.set(METRICS.build, { version: config.version, profile: config.defaultProfile, rerank: config.rerank.mode }, 1);
   const record = (upstream: string, outcome: string): void => registry.increment(METRICS.upstream, { upstream, outcome });
   const contract = readContract(config.contractFile);
   const omnigraph = new Omnigraph({ baseUrl: config.omnigraphUrl, graph: config.graph, token: config.readerToken, httpApi: config.omnigraphHttpApi, record });
   const embedder = new Embedder({ baseUrl: config.litellmUrl, key: config.litellmKey, model: contract?.model ?? '', dimensions: contract?.dimensions ?? 0, record });
+  const reranker = config.rerank.mode === 'off' ? null : new Reranker({ baseUrl: config.litellmUrl, key: config.litellmKey, model: config.rerank.model, record });
   const caches = new Caches({ omnigraph, deadlineMs: config.deadlineMs });
   const service = new BrainService({
     omnigraph,
@@ -51,6 +52,8 @@ function start(): void {
     registry,
     explorerUrl: config.explorerUrl,
     defaultProfile: config.defaultProfile,
+    rerank: config.rerank,
+    reranker,
     deadlineMs: config.deadlineMs,
     log,
   });

@@ -202,3 +202,37 @@ spec:
               - Check the key's spend by model in the LiteLLM UI or litellm-db
               - kubectl -n ai logs deploy/brain-tools --tail=200 (call rate)
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-tools"
+        - alert: BrainToolsRerankFallbackHigh
+          expr: |
+            (
+              sum(increase(brain_tools_reranks_total{outcome="fallback"}[1h]))
+              /
+              sum(increase(brain_tools_reranks_total[1h]))
+            ) > 0.2
+            and
+            sum(increase(brain_tools_reranks_total[1h])) >= 5
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: brain-tools
+          annotations:
+            summary: "Over 20% of brain-tools reranks fell back to the fused order in the last hour (ai/brain-tools)"
+            description: |
+              What's happening:
+              - brain-tools asked the reranker (LiteLLM rerank-default, served by tei-reranker) to reorder a search's top candidates, and more than one in five of those calls in the last hour failed, timed out at BRAIN_TOOLS_RERANK_TIMEOUT_SECONDS or answered a malformed list. Each such search answered in the fused order with "reranked: no".
+
+              Impact/risk:
+              - Search quality drops back to the unreranked pipeline, and every fallback that timed out still cost the full rerank timeout in latency.
+              - During the reranker A/B the reranked eval arms are no longer measuring the reranker.
+
+              Likely causes:
+              - tei-reranker is down, Pending (no worker with its memory request free) or still fetching its model.
+              - The reranker is CPU-starved on its node, so 24 candidates no longer fit in the timeout.
+              - The LiteLLM model rerank-default is missing from the brain-tools key's models, or the alias points at a model that is gone.
+
+              First actions:
+              - kubectl -n ai get pods -l app.kubernetes.io/name=tei-reranker -o wide
+              - kubectl -n ai logs deploy/brain-tools --tail=200 | grep '"rerank":"fallback"'
+              - kubectl -n ai logs deploy/tei-reranker -c fetch-model
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#brain-tools"

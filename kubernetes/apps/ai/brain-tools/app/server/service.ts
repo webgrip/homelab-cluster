@@ -1,5 +1,5 @@
 import type { Caches } from './caches.ts';
-import type { Profile } from './config.ts';
+import type { Profile, RerankSettings } from './config.ts';
 import { PROFILES } from './config.ts';
 import { checkContract } from './contract.ts';
 import type { EmbeddingContract } from './contract.ts';
@@ -8,10 +8,10 @@ import type { MetricRegistry } from './metrics.ts';
 import { MAX_AROUND, parseRef, readRef } from './read.ts';
 import { linkFor, renderRead, renderSearch } from './render.ts';
 import { REQUIRED_QUERIES, SCOPES, search } from './search.ts';
-import type { Scope, SearchResult } from './search.ts';
+import type { RerankPlan, Scope, SearchResult } from './search.ts';
 import { snippet } from './text.ts';
 import { UpstreamError } from './upstream.ts';
-import type { Embedder, Omnigraph } from './upstream.ts';
+import type { Embedder, Omnigraph, Reranker } from './upstream.ts';
 
 export type Surface = 'mcp' | 'rest';
 
@@ -38,6 +38,8 @@ export const MESSAGES = {
   limit: (max: number) => `limit must be a whole number from 1 to ${max}.`,
   profile: `profile must be one of ${PROFILES.join(', ')}.`,
   snapshot: 'snapshot must be a graph commit id.',
+  rerank: 'rerank must be true or false.',
+  rerankOff: 'This brain-tools runs with BRAIN_TOOLS_RERANK=off, so it cannot rerank; ask without rerank.',
   ref: 'Unknown ref. Use refs exactly as search returned them, such as doc:<slug>#<chunk> or note:<slug>#<chunk>.',
   entity: 'read opens doc: and note: refs. topic:, person:, project: and org: refs name an entity: search with its name instead.',
   notFound: 'Nothing in the brain has that ref any more (renamed or deleted since the search). Search again.',
@@ -59,6 +61,8 @@ export interface ServiceOptions {
   registry: MetricRegistry;
   explorerUrl: string | null;
   defaultProfile: Profile;
+  rerank: RerankSettings;
+  reranker: Reranker | null;
   deadlineMs: number;
   log: (event: Record<string, unknown>) => void;
 }
@@ -87,6 +91,13 @@ function truthy(value: unknown): boolean {
   return value === true || value === 'true' || value === '1';
 }
 
+function flag(value: unknown): boolean | null | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (value === true || value === 'true' || value === '1') return true;
+  if (value === false || value === 'false' || value === '0') return false;
+  return null;
+}
+
 export class BrainService {
   private readonly omnigraph: Omnigraph;
   private readonly embedder: Embedder;
@@ -95,6 +106,8 @@ export class BrainService {
   private readonly registry: MetricRegistry;
   private readonly explorerUrl: string | null;
   private readonly defaultProfile: Profile;
+  private readonly rerankSettings: RerankSettings;
+  private readonly rerankPlan: RerankPlan | null;
   private readonly deadlineMs: number;
   private readonly log: (event: Record<string, unknown>) => void;
   catalog: CatalogState = { reachable: false, missing: [...REQUIRED_QUERIES], checkedAt: 0 };
@@ -109,6 +122,16 @@ export class BrainService {
     this.registry = options.registry;
     this.explorerUrl = options.explorerUrl;
     this.defaultProfile = options.defaultProfile;
+    this.rerankSettings = options.rerank;
+    const reranker = options.reranker;
+    this.rerankPlan = options.rerank.mode === 'off' || reranker === null
+      ? null
+      : {
+          candidates: options.rerank.candidates,
+          windowChars: options.rerank.windowChars,
+          timeoutMs: options.rerank.timeoutMs,
+          rerank: (query, documents, rerankSignal) => reranker.rerank(query, documents, rerankSignal),
+        };
     this.deadlineMs = options.deadlineMs;
     this.log = options.log;
     if (options.contract === null) this.contractReason = 'the embedding contract could not be read';
@@ -175,17 +198,22 @@ export class BrainService {
     const snapshotRaw = surface === 'rest' ? args['snapshot'] : undefined;
     const snapshot = typeof snapshotRaw === 'string' && snapshotRaw.length > 0 ? snapshotRaw : null;
     if (snapshot !== null && !SNAPSHOT.test(snapshot)) return this.finish('search', surface, started, invalid(MESSAGES.snapshot), {});
+    const asked = surface === 'rest' ? flag(args['rerank']) : undefined;
+    if (asked === null) return this.finish('search', surface, started, invalid(MESSAGES.rerank), {});
+    if (asked === true && this.rerankSettings.mode === 'off') return this.finish('search', surface, started, invalid(MESSAGES.rerankOff), {});
+    const rerank = this.rerankSettings.mode === 'off' ? false : asked ?? this.rerankSettings.mode === 'on';
     const debug = surface === 'rest' && truthy(args['debug']);
     const signal = AbortSignal.timeout(this.deadlineMs);
     let result: SearchResult;
     try {
       result = await search(
-        { question, scope, limit, profile, snapshot },
+        { question, scope, limit, profile, snapshot, rerank },
         {
           stored: (name, params, pinned, legSignal) => this.omnigraph.stored(name, params, pinned, legSignal),
           embed: (text, embedSignal) => this.embedder.embed(text, embedSignal),
           bots: (pinned, botSignal) => this.caches.bots(pinned, botSignal),
           contractOk: () => this.contractOk,
+          reranker: this.rerankPlan,
         },
         signal,
       );
@@ -193,15 +221,21 @@ export class BrainService {
       return this.finish('search', surface, started, failure(error, signal), { profile });
     }
     this.registry.increment(METRICS.searches, { profile, mode: result.mode });
+    if (result.rerank.outcome !== 'not_asked') {
+      this.registry.increment(METRICS.reranks, { outcome: result.rerank.outcome });
+      if (result.rerank.outcome === 'reranked' && result.rerank.candidates > 1) this.registry.observe(METRICS.rerankLatency, {}, result.rerank.seconds);
+    }
+    const isReranked = result.rerank.outcome === 'reranked';
     const elapsedMs = Math.round(performance.now() - started);
-    const footer = { graphCommit: result.graphCommit, reranked: false, elapsedMs, degraded: result.degraded };
+    const footer = { graphCommit: result.graphCommit, reranked: isReranked, elapsedMs, degraded: result.degraded };
     const rendered = renderSearch(result, footer, this.explorerUrl);
     const toolRendered = surface === 'rest' && limit !== DEFAULT_LIMIT ? renderSearch({ ...result, sources: result.sources.slice(0, DEFAULT_LIMIT) }, footer, this.explorerUrl) : rendered;
     const structured: Record<string, unknown> = {
       profile: result.profile,
       graph_commit: result.graphCommit,
       degraded: result.degraded,
-      reranked: false,
+      reranked: isReranked,
+      rerank: { outcome: result.rerank.outcome, candidates: result.rerank.candidates, seconds: result.rerank.seconds, reason: result.rerank.reason },
       mode: result.mode,
       elapsed_ms: elapsedMs,
       truncated: rendered.truncated,
@@ -227,7 +261,7 @@ export class BrainService {
         terms: result.terms,
         embed_seconds: result.embedSeconds,
         legs: result.legs,
-        fused: result.sources.map((source) => ({ key: source.key, score: source.score, legs: source.legRanks, bot: source.bot })),
+        fused: result.sources.map((source) => ({ key: source.key, score: source.score, rerank_score: source.rerankScore ?? null, legs: source.legRanks, bot: source.bot })),
       };
     }
     const outcome: Outcome = result.sources.length === 0 ? 'empty' : 'ok';
@@ -236,6 +270,8 @@ export class BrainService {
       mode: result.mode,
       sources: result.sources.length,
       degraded: result.degraded,
+      rerank: result.rerank.outcome,
+      rerank_ms: Math.round(result.rerank.seconds * 1000),
       graph_commit: result.graphCommit,
     });
   }
