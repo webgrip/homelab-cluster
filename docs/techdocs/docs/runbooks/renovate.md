@@ -1,6 +1,6 @@
 # Runbook: Renovate
 
-Use this when Renovate alerts are firing (for example `RenovateOperatorDeploymentUnavailable`, `RenovateProjectRunFailed`, `RenovateProjectDependencyIssues`) or Renovate PRs stop appearing.
+Use this when Renovate alerts are firing (for example `RenovateOperatorDeploymentUnavailable`, `RenovateProjectRunFailed`, `RenovateProjectDependencyIssues`, or the log-based [self-reporting alerts](#self-reporting-alerts)) or Renovate PRs stop appearing.
 
 ## Fast triage
 
@@ -16,7 +16,7 @@ mise exec -- kubectl get renovatejob -n renovate webgrip-gitops -o json \
   | jq '.status.projects[] | {name, lastRun, status, prActivity, logIssues}'
 ```
 
-**Step 3 — worker-pod debug logs.** Worker pods (`webgrip-<job>-<repo>-<hash>`) persist **~30 minutes** until the `renovate-job-cleanup` cron deletes them; their logs are NOT shipped to VictoriaLogs. Both jobs run `LOG_LEVEL: debug`; output is bunyan JSON:
+**Step 3 — worker-pod logs.** Worker pods (`webgrip-<job>-<repo>-<hash>`) persist **~30 minutes** until the `renovate-job-cleanup` cron deletes them. Their logs also reach VictoriaLogs (30 days, `LOG_LEVEL: info`); the LogsQL under [self-reporting alerts](#self-reporting-alerts) reads them after the pod is gone. A live pod's output is bunyan JSON:
 
 ```bash
 kubectl logs -n renovate <worker-pod> --tail=-1 | grep '^{' \
@@ -33,6 +33,67 @@ kubectl logs -n renovate <worker-pod> --tail=-1 | grep '^{' \
 **Step 5 — Flux status** (if Renovate is deployed via GitOps)
 
 - See the Flux runbook: [docs/techdocs/docs/runbooks/flux.md](flux.md)
+
+## Self-reporting alerts
+
+Renovate exits 0 after most failures, so the operator's `renovate_operator_run_failed` metric stays 0 and a repository can stop getting updates for months without a sign (searxng nine months, litellm four, `webgrip/renovate-config` skipping its `next` base branch on 679 runs in 30 days). Three log-based rules in `kubernetes/apps/renovate/renovate-operator/jobs/renovate-self-reporting.vmrule.yaml` read the executor logs in VictoriaLogs instead. `vmalert-logs` evaluates them every 5 minutes and sends them to Alertmanager with `service: renovate`.
+
+How the executor logs land in VictoriaLogs:
+
+- Executors log bunyan JSON. Alloy ships the `renovate` namespace through its own writer with `_msg_field=msg`, so the message is in `_msg` and plain searches such as `"Base branch"` match. Lines ingested before 2026-10-26 keep the message in a `msg` field and have a placeholder `_msg`; the rules match both (`_msg:"…" or msg:"…"`).
+- `logContext` is one id per run. The log shipper can store the same line more than once, so count runs with `count_uniq(logContext)`, never `count()`.
+- Each run ends with `Repository finished` and a `result` field: `done`, `onboarding` and `empty` are healthy; `unknown-error`, `external-host-error`, `temporary-error`, `repository-changed` and `config-validation` are not.
+- Discovery pods (`<job>-discovery-…`) print the discovered repositories as one JSON array in `_msg`.
+
+Paste the queries below into Grafana Explore (VictoriaLogs datasource) or the `victorialogs` MCP. Grafana sets the time range, so drop the leading `_time:` there.
+
+### RenovateRepositoryRunFailed
+
+A run logged errors and exited non-zero (`Renovate is exiting with a non-zero code due to the following logged errors`). The `first_error` label is the first logged error: `Repository has unknown error` and `Initialization error` abort the whole run, while `lookupUpdates error` and similar ones mean a run that finished but skipped dependencies. When the run failed before it knew its repository (an `Initialization error`), the label carries the slug from the pod name, for example `webgrip-homelab-cluster`.
+
+First step: read the error lines of that repository's failed runs.
+
+```logsql
+_time:6h namespace:=renovate level:>=50
+| join by (logContext) (_time:6h namespace:=renovate repository:* | uniq by (logContext, repository))
+| filter repository:="webgrip/homelab-cluster"
+| fields _time, pod, _msg, msg, err.message, err.response.statusCode
+```
+
+- `Initialization error` on several repositories within minutes: the token, not the repositories. Check the `renovate-forgejo-token` Secret and the [token minter](#fast-triage).
+- `Repository has unknown error` with an HTTP status in `err.message`: a Forgejo API call Renovate cannot handle. 2026-10-26: `422 … DELETE …/issues/878/labels/80` was the org `rebase` label (see [Forgejo path gotchas](#forgejo-path-gotchas)).
+
+### RenovateRepositorySkippedByConfig
+
+A run ended normally but skipped a repository or base branch for a configuration reason: `Base branch does not exist - skipping`, `Repository has invalid config`, `Cannot ensure issue because issues are disabled` (no Dependency Dashboard) or `Skipping repository … because pull requests are disabled`. The alert clears seven hours after the last matching run.
+
+First step: see which repositories and branches are affected and since when.
+
+```logsql
+_time:7d namespace:=renovate
+(_msg:~"^(Base branch does not exist|Repository has invalid config|Cannot ensure issue because issues are disabled|Skipping repository .* because pull requests are disabled)"
+or msg:~"^(Base branch does not exist|Repository has invalid config|Cannot ensure issue because issues are disabled|Skipping repository .* because pull requests are disabled)")
+| stats by (repository, baseBranch, _msg, msg) count_uniq(logContext) as runs, min(_time) as first_seen, max(_time) as last_seen
+```
+
+- Missing base branch: remove the branch from `baseBranches` in the repository's Renovate config, or create it.
+- Invalid config: the run's `Repository has invalid config` line lists the errors; validate locally with `npx --package renovate renovate-config-validator`.
+- Issues or pull requests disabled: `scripts/forgejo-sync.sh --repo <name> --only prs --apply` restores the Pull Requests unit; turn Issues on in the repository settings if it should have a dashboard.
+
+### RenovateRepositoryFrozen
+
+A RenovateJob lists the repository in discovery, but no run of it ended with a healthy result in six hours, and that has lasted an hour. It covers both a repository the executor never reaches and one whose every run ends in the same error (for example `repository-changed`).
+
+First step: list the last results per repository and look for the gap.
+
+```logsql
+_time:24h namespace:=renovate (_msg:="Repository finished" or msg:="Repository finished")
+| filter repository:="webgrip/workflows"
+| stats by (repository, result, exitCode) count_uniq(logContext) as runs, max(_time) as last
+```
+
+- No `Repository finished` lines at all and no executor pod for the repository: the job never started it. Compare the RenovateJob's `status.projects[]` entry for that project (Step 2 above) and force a run for it (below).
+- Only error results: handle it as [RenovateRepositoryRunFailed](#renovaterepositoryrunfailed), or for `repository-changed`, find what pushes to the repository during every run.
 
 ## Force a run
 

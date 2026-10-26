@@ -1,0 +1,121 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: renovate-self-reporting
+  labels:
+    app.kubernetes.io/name: renovate-operator
+    rules: logs
+spec:
+  groups:
+    - name: renovate.self-reporting
+      type: vlogs
+      interval: 5m
+      rules:
+        - alert: RenovateRepositoryRunFailed
+          expr: >-
+            _time:1h namespace:=renovate
+            (_msg:"Renovate is exiting with a non-zero code" or msg:"Renovate is exiting with a non-zero code")
+            | join by (logContext) (_time:1h namespace:=renovate repository:* | uniq by (logContext, repository))
+            | extract_regexp "^(?P<renovate_job>webgrip-forgejo|webgrip-gitops|ploeg-hq)-(?P<project>.+?)-[0-9a-f]{8}" from pod
+            | format if (project:"") "<pod>" as project
+            | format if (repository:"") "<project>" as repository
+            | extract_regexp "\"msg\":\"(?P<first_error>[^\"]+)\"" from loggerErrors
+            | stats by (renovate_job, repository, first_error) count_uniq(logContext) as failed_runs
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: renovate
+          annotations:
+            summary: "Renovate run failed for {{ $labels.repository }} ({{ $labels.renovate_job }})"
+            description: |
+              What's happening:
+              - {{ $value }} Renovate run(s) of {{ $labels.repository }} in the last hour exited with logged errors; the first was "{{ $labels.first_error }}".
+              - Renovate exits 0 on most of these, so the operator's renovate_operator_run_failed stays 0 and nothing else alerts.
+
+              Impact/risk:
+              - "Repository has unknown error" and "Initialization error" abort the whole run: no PR for this repository is created, rebased or automerged until a run succeeds.
+              - Errors such as "lookupUpdates error" end a run that did finish, but some dependencies were skipped.
+
+              Likely causes:
+              - A Forgejo API call Renovate cannot handle (2026-10-26: 422 on DELETE of an org label id).
+              - An expired or rejected token ("Initialization error" with "Authentication failure").
+              - A registry or datasource that keeps failing for one dependency.
+
+              First actions:
+              - Run the LogsQL in the runbook section to read the error lines (err.message, err.stack) of the failed run.
+              - Several repositories at once with "Initialization error" points at the token, not at the repositories.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/renovate/#renovaterepositoryrunfailed"
+
+        - alert: RenovateRepositorySkippedByConfig
+          expr: >-
+            _time:7h namespace:=renovate
+            (msg:~"^(Base branch does not exist|Repository has invalid config|Cannot ensure issue because issues are disabled|Skipping repository .* because pull requests are disabled)"
+            or _msg:~"^(Base branch does not exist|Repository has invalid config|Cannot ensure issue because issues are disabled|Skipping repository .* because pull requests are disabled)")
+            | format "<msg>" as reason
+            | format if (reason:"") "<_msg>" as reason
+            | stats by (repository, baseBranch, reason) count_uniq(logContext) as skipped_runs
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: renovate
+          annotations:
+            summary: "Renovate skips {{ $labels.repository }} for a configuration reason (renovate)"
+            description: |
+              What's happening:
+              - {{ $value }} Renovate run(s) of {{ $labels.repository }} in seven hours logged "{{ $labels.reason }}" (base branch "{{ $labels.baseBranch }}").
+              - The run itself ends as done, so no failure metric or other alert sees it.
+
+              Impact/risk:
+              - Base branch does not exist: every update for that branch is silently dropped (webgrip/renovate-config targeted a missing "next" branch for months).
+              - Repository has invalid config: Renovate does nothing for the repository.
+              - Issues or pull requests disabled: no Dependency Dashboard, or no pull requests at all.
+
+              Likely causes:
+              - baseBranches in the repository's renovate config names a branch that was deleted or never created.
+              - A renovate.json that fails validation after a preset or Renovate upgrade.
+              - A repository converted from a mirror with the Issues or Pull Requests unit still off.
+
+              First actions:
+              - Read the matching lines with the LogsQL in the runbook section.
+              - Fix the repository's Renovate config or unit settings; the alert clears seven hours after the last skip.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/renovate/#renovaterepositoryskippedbyconfig"
+
+        - alert: RenovateRepositoryFrozen
+          expr: >-
+            _time:7h namespace:=renovate pod:~"-discovery-" _msg:~"^\\["
+            | extract_regexp "^(?P<renovate_job>.+)-discovery-" from pod
+            | unroll (_msg)
+            | rename _msg as repository
+            | filter repository:* -repository:in(
+                _time:6h namespace:=renovate
+                (_msg:="Repository finished" or msg:="Repository finished")
+                -result:in("unknown-error", "external-host-error", "temporary-error", "repository-changed", "config-validation")
+                | uniq by (repository))
+            | stats by (renovate_job, repository) count_uniq(pod) as discovery_runs
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: renovate
+          annotations:
+            summary: "Renovate discovers {{ $labels.repository }} but has not finished a run on it for six hours ({{ $labels.renovate_job }})"
+            description: |
+              What's happening:
+              - {{ $labels.renovate_job }} listed {{ $labels.repository }} in {{ $value }} discovery run(s) over seven hours, yet no run of it ended with a usable result in six hours, for an hour now.
+              - A run that ends with unknown-error, external-host-error, temporary-error, repository-changed or config-validation does not count.
+
+              Impact/risk:
+              - No dependency updates reach this repository; nothing else reports it (searxng went nine months, litellm four, before anyone noticed).
+
+              Likely causes:
+              - The job never reaches the repository: the executor works through the discovered list one repository at a time, and the ones at the end of the list starve.
+              - Every run aborts the same way, for example repository-changed on a repository that changes during each run.
+              - The executor pod for the repository never starts or is killed.
+
+              First actions:
+              - Run the LogsQL in the runbook section to see the last results of this repository.
+              - Check the RenovateJob status for the project: kubectl get renovatejob -n renovate {{ $labels.renovate_job }} -o json
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/renovate/#renovaterepositoryfrozen"

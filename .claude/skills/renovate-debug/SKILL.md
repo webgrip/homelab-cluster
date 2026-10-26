@@ -17,7 +17,7 @@ silent branch failure; soak (`renovate/stability-days`) does not eat clicks.
 1. **Per-repo run outcome** (MCP can't list this CRD — use kubectl):
    `mise exec -- kubectl get renovatejob -n renovate webgrip-gitops -o json | jq '.status.projects[] | {name, lastRun, status, prActivity, logIssues}'`
    (jobs: `webgrip-gitops` = GitHub, `webgrip-forgejo` = Forgejo)
-2. **Worker-pod log** — pods `webgrip-<job>-<repo>-<hash>` persist **~30 min** (cleanup cron), logs NOT in VictoriaLogs, bunyan JSON:
+2. **Worker-pod log** — in VictoriaLogs for 30 days (`namespace:=renovate`, message in `_msg` since 2026-10-26, in field `msg` before; one run = one `logContext`; queries + the three self-reporting alerts in the runbook's "Self-reporting alerts"). A live pod (`webgrip-<job>-<repo>-<hash>`, kept **~30 min** by the cleanup cron) is bunyan JSON:
    `kubectl logs -n renovate <pod> --tail=-1 | grep '^{' | jq -rc 'select(.level >= 40) | {branch, msg, artifactErrors}'`
    Per-branch trace: `jq -rc 'select(.branch=="renovate/<branch>") | [.level, .msg, (.packageFile//""), (.depName//"")] | @tsv'`
 3. **Match the signature** → cause/fix table in [runbooks/renovate.md](../../../docs/techdocs/docs/runbooks/renovate.md) (canonical; covers preset digest-pin, mise digest-pin, Harbor-401 artifactErrors, multi-ARG replaceString, zombie branch, release-age).
