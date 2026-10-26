@@ -21,6 +21,13 @@ or you're verifying the logs backend after a change. Design + rationale:
   via **mcp-victorialogs**, only through LiteLLM (`https://litellm.${SECRET_DOMAIN}/victorialogs/mcp` with an `observability`-group key, in `.mcp.json`).
 - Storage: 20Gi Longhorn PVC, 30d retention, drop-oldest valve at 18GiB
   (`retention.maxDiskSpaceUsageBytes`). No S3.
+- **Ploeg agent text never reaches the store.** `alloy-agent` drops every line of a Ploeg worker
+  container (`{namespace="ploeg", container="worker"}`) that is not one of the worker's own slog
+  lines (`time=… level=…`), because the worker copies the harness's stdout and stderr, and with
+  them task specs and model output, to the pod log. It also rewrites `summary`, `stuck_reason`,
+  `title` and `links` to `"[redacted]"` in `ploegd` and worker lines. Dropped lines count under
+  `loki_process_dropped_lines_total{reason="ploeg_worker_harness_output"}`. This is interim until
+  Ploeg stops logging run text; logs shipped before the change keep their 30 days.
 
 ## Fast triage — log panels empty / no fresh logs
 
