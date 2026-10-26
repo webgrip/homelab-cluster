@@ -24,8 +24,8 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 | n8n | `n8n` | `n8n.${SECRET_DOMAIN}` | Workflow automation; CNPG DB |
 | Alloy gateway (OTLP) | `observability` | `otlp.${SECRET_DOMAIN}` | OTLP ingest for off-cluster clients |
 | Grafana | `observability` | `grafana.${SECRET_DOMAIN}` | Dashboards/alerting; CNPG DB |
-| k8s MCP | `observability` | `k8s-mcp.${SECRET_DOMAIN}` | Read-only Kubernetes MCP server |
-| Grafana MCP | `observability` | `mcp-grafana.${SECRET_DOMAIN}` | Grafana MCP server |
+| k8s MCP | `observability` | none; LiteLLM `/kubernetes/mcp` | Read-only Kubernetes MCP server |
+| Grafana MCP | `observability` | none; LiteLLM `/grafana/mcp` | Grafana MCP server |
 | OpenCost MCP | `observability` | `opencost-mcp.${SECRET_DOMAIN}` | Cost-query MCP server |
 | VMSingle ("Prometheus") | `observability` | `prometheus.${SECRET_DOMAIN}` | VictoriaMetrics TSDB/query UI |
 | VMAlertmanager | `observability` | `alertmanager.${SECRET_DOMAIN}` | Alert routing UI |

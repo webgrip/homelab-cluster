@@ -18,7 +18,7 @@ or you're verifying the logs backend after a change. Design + rationale:
   `/select/logsql/field_names`, `/select/logsql/hits`.
 - **vmui**: `https://victorialogs.${SECRET_DOMAIN}/select/vmui` (LAN-only).
 - Grafana datasource `uid: victorialogs` (plugin `victoriametrics-logs-datasource`); agent access
-  via **mcp-victorialogs** (`https://mcp-victorialogs.${SECRET_DOMAIN}/mcp`, in `.mcp.json`).
+  via **mcp-victorialogs**, only through LiteLLM (`https://litellm.${SECRET_DOMAIN}/victorialogs/mcp` with an `observability`-group key, in `.mcp.json`).
 - Storage: 20Gi Longhorn PVC, 30d retention, drop-oldest valve at 18GiB
   (`retention.maxDiskSpaceUsageBytes`). No S3.
 

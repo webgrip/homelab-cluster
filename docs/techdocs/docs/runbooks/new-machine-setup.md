@@ -30,9 +30,10 @@ repo root.
 - **git**, and **mise** installed + activated in your shell.
 - **Docker**, running — `scripts/run-flux-local-test.sh` runs flux-local in a
   container.
-- **LAN / WireGuard access to `10.0.0.0/24`** — `kubeconfig`, `talosconfig`, and
-  both MCP endpoints (`mcp-grafana.webgrip.dev`, `k8s-mcp.webgrip.dev`) are
-  LAN-only via split-DNS.
+- **LAN / WireGuard access to `10.0.0.0/24`** — `kubeconfig` and `talosconfig`
+  are LAN-only via split-DNS. The `grafana`, `kubernetes` and `victorialogs` MCP
+  servers are reached through LiteLLM with `LITELLM_MCP_KEY` exported (the
+  `claude-code` key from `secret/litellm/keys/claude-code`).
 - **A browser** — `just bao-login` authenticates to OpenBao via Authentik OIDC.
 
 ## Steps

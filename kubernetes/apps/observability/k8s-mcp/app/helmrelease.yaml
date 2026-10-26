@@ -51,30 +51,125 @@ spec:
     serviceAccount:
       create: true
       automountToken: true
-    # Bind the pod's ServiceAccount to Kubernetes' built-in read-only `view`
-    # ClusterRole — it grants get/list/watch on standard resources and EXCLUDES
-    # Secrets by design. No custom role to maintain; no write access possible.
     rbac:
       create: true
+      extraClusterRoles:
+        - name: reader
+          rules:
+            - apiGroups:
+                - ""
+              resources:
+                - bindings
+                - configmaps
+                - endpoints
+                - events
+                - limitranges
+                - namespaces
+                - namespaces/status
+                - persistentvolumeclaims
+                - persistentvolumeclaims/status
+                - pods
+                - pods/status
+                - replicationcontrollers
+                - replicationcontrollers/scale
+                - replicationcontrollers/status
+                - resourcequotas
+                - resourcequotas/status
+                - serviceaccounts
+                - services
+                - services/status
+              verbs:
+                - get
+                - list
+                - watch
+            - apiGroups:
+                - events.k8s.io
+              resources:
+                - events
+              verbs:
+                - get
+                - list
+                - watch
+            - apiGroups:
+                - discovery.k8s.io
+              resources:
+                - endpointslices
+              verbs:
+                - get
+                - list
+                - watch
+            - apiGroups:
+                - apps
+              resources:
+                - controllerrevisions
+                - daemonsets
+                - daemonsets/status
+                - deployments
+                - deployments/scale
+                - deployments/status
+                - replicasets
+                - replicasets/scale
+                - replicasets/status
+                - statefulsets
+                - statefulsets/scale
+                - statefulsets/status
+              verbs:
+                - get
+                - list
+                - watch
+            - apiGroups:
+                - autoscaling
+              resources:
+                - horizontalpodautoscalers
+                - horizontalpodautoscalers/status
+              verbs:
+                - get
+                - list
+                - watch
+            - apiGroups:
+                - batch
+              resources:
+                - cronjobs
+                - cronjobs/status
+                - jobs
+                - jobs/status
+              verbs:
+                - get
+                - list
+                - watch
+            - apiGroups:
+                - policy
+              resources:
+                - poddisruptionbudgets
+                - poddisruptionbudgets/status
+              verbs:
+                - get
+                - list
+                - watch
+            - apiGroups:
+                - networking.k8s.io
+              resources:
+                - ingresses
+                - ingresses/status
+                - networkpolicies
+              verbs:
+                - get
+                - list
+                - watch
       extraClusterRoleBindings:
-        - name: view
+        - name: reader
           roleRef:
-            kind: ClusterRole
-            name: view
+            name: reader
+        - name: custom-resources
+          roleRef:
+            name: human-reader-custom-resources
             external: true
+    podLabels:
+      mcp.webgrip.io/access: litellm-gateway-only
     ingress:
       enabled: false
-    # Gateway API — LAN-only via envoy-internal, matching mcp-grafana.
     httpRoute:
-      enabled: true
-      annotations:
-        monitoring.webgrip.io/synthetic-check: blackbox-k8s-mcp
-      parentRefs:
-        - name: envoy-internal
-          namespace: network
-          sectionName: https
-      hostnames:
-        - "k8s-mcp.${SECRET_DOMAIN}"
+      enabled: false
     # Keep off the shared etcd control-plane disk; run on the worker like mcp-grafana.
     nodeSelector:
       node.webgrip.io/pool: worker

@@ -154,7 +154,7 @@ restore those files. Until then `electricity` stays the Kepler floor.
 - VLSingle CR: `kubernetes/apps/observability/victorialogs/app/vlsingle.yaml` (managed by vm-operator; apiVersion `operator.victoriametrics.com/v1`).
 - Query + ingest endpoint `vlsingle-victorialogs.observability.svc:9428`; vmui at `https://victorialogs.${SECRET_DOMAIN}/select/vmui` (LAN-only).
 - Retention 30d on a 20Gi Longhorn PVC (no object storage — Garage is off the logging path); safety valve `retention.maxDiskSpaceUsageBytes: 18GiB`.
-- Ingest speaks the **Loki push protocol** (`/insert/loki/api/v1/push`), so shippers use plain `loki.write`; query language is **LogsQL** (not LogQL). Grafana datasource uid `victorialogs` (`victoriametrics-logs-datasource` plugin); agent access via **mcp-victorialogs** (`.mcp.json`).
+- Ingest speaks the **Loki push protocol** (`/insert/loki/api/v1/push`), so shippers use plain `loki.write`; query language is **LogsQL** (not LogQL). Grafana datasource uid `victorialogs` (`victoriametrics-logs-datasource` plugin); agent access via **mcp-victorialogs**, only through LiteLLM's MCP gateway (`/victorialogs/mcp`, `observability` group).
 - Alerts: `victorialogs/app/prometheusrule-victorialogs.yaml` (down / no-ingest / disk / http errors). Triage → [victorialogs runbook](../runbooks/victorialogs.md). Decision: [ADR-0041](../adr/adr-0041-victorialogs-logging-backend.md).
 - **Loki (grace period, until ~2026-08-07)**: still deployed read-only (`kubernetes/apps/observability/loki/`) so the pre-migration 30d of history stays queryable via the `loki` datasource in Explore; receives no new writes. Removal commit deletes the app dir + datasource **and the `observability-s3` component (Loki is its last consumer — Tempo, the other one, is gone)**; PVC `storage-loki-0` and Garage buckets `loki-chunks`/`loki-ruler`/`loki-admin` are cleaned up out-of-repo (the stale `tempo` bucket can go in the same sweep).
 
@@ -303,7 +303,7 @@ directory; a free-text value is a false coverage claim.
 - **Basic-auth-gated routes** (`searxng-external`): the module accepts exactly the `401` with a
   `WWW-Authenticate: Basic` challenge. An open gate turns the probe red through
   `SyntheticRouteDown`; it carries no `gate` label, so `SyntheticOidcGateOpen` does not page on it.
-- **MCP servers without a health path** (k8s-mcp, opencost-mcp): a `GET` with
+- **MCP servers without a health path** (opencost-mcp): a `GET` with
   `Accept: text/event-stream` and no session answers `400 … Mcp-Session-Id`; the module pins that
   `400` and its body, which only the MCP handler produces.
 - **Alerting by label**, not by listing endpoints: target label `synthetic: route` enrols a probe
