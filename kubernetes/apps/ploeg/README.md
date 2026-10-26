@@ -164,6 +164,15 @@ Both ADRs were proposed when this was set. The network path is `ploegd-allow-omn
 in [`ploeg/app/networkpolicy.yaml`](ploeg/app/networkpolicy.yaml), which selects the daemon label
 the chart puts on ploegd alone.
 
+### Who reaches ploeg-db
+
+[`ploeg/app/networkpolicy.yaml`](ploeg/app/networkpolicy.yaml) admits the `observability`
+namespace only as vmagent, on the metrics ports 8080 and 9187, and `ploeg-db-allow-grafana` lets
+the Grafana pod (`app: grafana`) reach ploeg-db on 5432 for the "Ploeg Dispatch DB" datasource.
+Every other pod there, the cluster-reading MCP servers included, has no path to the database. The
+KEDA operator keeps 5432 from the `keda` namespace, the CNPG operator 5432 and 8000 from
+`cnpg-system`, and ploegd and the exporter reach it from inside `ploeg`.
+
 ### `ploeg.operator`
 
 - `consumers[mcp-operator]` is ploeg-mcp acting for a person in Authentik's `ploeg-operators`
