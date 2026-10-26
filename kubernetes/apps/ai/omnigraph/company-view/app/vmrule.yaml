@@ -1,0 +1,65 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: omnigraph-company-view
+  namespace: ai
+  labels:
+    rules: logs
+spec:
+  groups:
+    - name: omnigraph.company-view
+      type: vlogs
+      interval: 5m
+      rules:
+        - alert: OmnigraphCompanyViewUntieredRepository
+          expr: >-
+            _time:2h namespace:=ai container:=report pod:omnigraph-company-view*
+            "company view untiered"
+            | stats count() as untiered
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "The brain knows a Forgejo repository that has no knowledge tier (ai/omnigraph-company-view)"
+            description: |
+              What's happening:
+              - The hourly company view met a repository whose owner has no default tier and which secret/omnigraph/repo-tiers does not name. Its job ends failed.
+
+              Impact/risk:
+              - The repository stays out of the company graph, and so does every topic its documents are about, until it has a tier. Nothing leaks; the view is only less complete.
+
+              Likely causes:
+              - A new organisation, a new client repository, or a mirror of a repository owned by someone else.
+
+              First actions:
+              - kubectl -n ai logs -l app.kubernetes.io/name=omnigraph-company-view -c report --tail=5
+              - Add each named repository to the tiers in OpenBao (bao kv patch secret/omnigraph/repo-tiers tiers=...), as internal, personal, excluded or client:<code>; an owner/* key tiers a whole organisation.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#company-view"
+        - alert: OmnigraphCompanyViewFailing
+          expr: >-
+            _time:3h namespace:=ai pod:omnigraph-company-view*
+            ("company view refused" or "company view apply failed")
+            | stats count() as failures
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: omnigraph
+          annotations:
+            summary: "The hourly company view could not read the brain or write the company graph (ai/omnigraph-company-view)"
+            description: |
+              What's happening:
+              - The omnigraph-company-view CronJob stopped before or while writing the company graph.
+
+              Impact/risk:
+              - Staff and agents reading the company graph see the state of the last good run; new decision records and repositories are missing from it.
+
+              Likely causes:
+              - act-company-view is missing from tokens.json or from the brain or company policy, omnigraph-next is down, or the tiers in secret/omnigraph/repo-tiers are empty or name an unknown tier.
+
+              First actions:
+              - kubectl -n ai logs -l app.kubernetes.io/name=omnigraph-company-view --all-containers --tail=30
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/omnigraph/#company-view"

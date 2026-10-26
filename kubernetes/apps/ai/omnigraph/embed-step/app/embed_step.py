@@ -10,7 +10,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
-EMBEDDED_FIELDS = {"Note": "content", "Passage": "text"}
+EMBEDDED_FIELDS = {"Note": "content", "Passage": "text", "DecisionRecord": "content", "Topic": "name"}
 BATCH_SIZE = 4
 MAX_VALUE_CHARS = 8000
 SIGNIFICANT_DIGITS = 8
@@ -22,7 +22,9 @@ HEAL_FILES = "heal-*.ndjson"
 EMBED_PLAN = "embed-plan.json"
 EMBED_REPORT = "embed-report.json"
 METRIC_JOB = "omnigraph-embed-step"
-WRITERS = frozenset({"vault-import", "forge-import"})
+BRAIN_TYPES = ("Note", "Passage")
+WRITER_TYPES = {"vault-import": BRAIN_TYPES, "forge-import": BRAIN_TYPES, "company-view": ("DecisionRecord", "Topic")}
+WRITERS = frozenset(WRITER_TYPES)
 EXIT_OK = 0
 EXIT_BAD_INPUT = 2
 
@@ -244,7 +246,7 @@ def summarise(plan, outcome, now):
     for key in outcome.vectorless:
         since.setdefault(key.split("|", 1)[0], []).append(now)
     missing, oldest = {}, {}
-    for type_name in EMBEDDED_FIELDS:
+    for type_name in WRITER_TYPES[plan["writer"]]:
         stamps = [stamp for stamp in since.get(type_name, []) if stamp is not None]
         missing[type_name] = len(since.get(type_name, []))
         oldest[type_name] = round(max(now - min(stamps), 0.0), 3) if stamps else 0.0
@@ -279,7 +281,7 @@ def embed(args, embedder=None, pacer=None, clock=time.monotonic):
 def metric_lines(report):
     writer = report["writer"]
     lines = []
-    for type_name in EMBEDDED_FIELDS:
+    for type_name in report["missing"]:
         labels = f'type="{type_name}",writer="{writer}"'
         lines.append(f"omnigraph_embed_rows_missing{{{labels}}} {report['missing'][type_name]}")
         lines.append(f"omnigraph_embed_oldest_missing_age_seconds{{{labels}}} {report['oldest_missing_seconds'][type_name]}")

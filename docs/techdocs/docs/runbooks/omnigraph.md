@@ -80,7 +80,7 @@ The rehearsal then opens no branch on `brain`. The variable is a statement that 
 | `act-reader` | `memory`: read and run stored queries |
 | `act-brain-agent` | `brain`: read and write on any branch including `main` (captures from the chat and Claude Code land directly; every write is a revertible commit); create and delete unprotected branches; no merge or export |
 | `act-ingest` | `webgrip` (and future client graphs): create unprotected branches and load onto them. It cannot read anything |
-| `act-explorer` | `brain`, `memory` and `webgrip`: read and export on any branch, nothing else. Only the explorer's proxy holds it |
+| `act-explorer` | `brain`, `memory`, `webgrip` and `company`: read and export on any branch, nothing else. Only the explorer's proxy holds it |
 | `act-vault-import` | `brain`: read and write on any branch including `main`, and run stored queries. No export, no branch create, merge or delete. Only the [Obsidian vault](#obsidian-vault) importer holds it |
 | `act-forge-import` | `brain`: the same rights as `act-vault-import`. Only the [Forgejo projects](#forgejo-projects) importer holds it |
 | `act-distill` | `brain`: the same rights as `act-vault-import`. Only the [distiller](#distiller) holds it |
@@ -89,6 +89,8 @@ The rehearsal then opens no branch on `brain`. The variable is a statement that 
 | `act-brain-eval` | `brain`: read and export on any branch, run stored queries. No writes, no branch actions. The [brain eval](#brain-eval) jobs and the `omnigraph_brain_eval` bridge hold it |
 | `act-brain-reader` | `brain`: read on any branch, run stored queries. Nothing else. Only [brain-tools](#brain-tools) holds it |
 | `act-brain-scribe` | `brain`: read and write on `main` only. No branch actions, no stored queries, no export. For `brain-tools` `remember` (brain retrieval RFC, P6); it can delete any row on `main`, so the scribe audit is its guard |
+| `act-company-view` | `brain`: read `main`. `company`: read and write `main`. No branch actions, no export, no stored queries. Only the [company view](#company-view) CronJob holds it |
+| `act-company-reader` | `company`: read `main` and run stored queries. Nothing else. Only the LiteLLM `omnigraph_company` MCP server holds it, for keys in the `company` access group |
 | `act-ploeg-run` | `webgrip-notes`: read on any branch, write `main`, run stored queries. `webgrip-knowledge`: read and run stored queries. No branch actions, no export. Only ploegd holds it, to write Work Item Notes and brief Runs (Ploeg ADR-0087, ADR-0088). |
 | `act-ploeg-review` | `webgrip-knowledge` and `webgrip-notes`: read and write on any branch including `main`, create, delete and merge branches, run stored queries. No export. Only ploegd holds it, to write the Client and Tenant promotions a person accepted and to purge a Client (Ploeg ADR-0122). Not wired into ploegd yet: that waits for the Ploeg release with `knowledgeGraph.reviewTokenSecret`. |
 
@@ -96,7 +98,7 @@ Each token is generated in-cluster by the `omnigraph-actor-tokens` ExternalSecre
 
 Add an actor by creating a new generator ExternalSecret and PushSecret pair, then adding one line to the aggregator. Do not add keys to `omnigraph-actor-tokens`. It is generate-once, so a new key only appears after its Secret is deleted, and deleting it rotates every existing token.
 
-Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only ploegd (the pod labelled `ploeg.webgrip.dev/component: daemon` in `ploeg`, never a Run's pod), LiteLLM (the `omnigraph_memory`, `omnigraph_brain`, `omnigraph_brain_eval` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers, the distiller, the brain eval jobs, [brain-tools](#brain-tools) and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
+Give an in-cluster consumer its token with an ExternalSecret against the `openbao` store at `omnigraph/<actor>`. Then open the network path on both ends, because namespace `ai` is default-deny and every pod in it carries its own egress allow: add the consumer to `omnigraph-ingress` (a `namespaceSelector` for another namespace, a `podSelector` for a pod in `ai`), and give a pod in `ai` an egress rule to `app: omnigraph` on 8080. Today only ploegd (the pod labelled `ploeg.webgrip.dev/component: daemon` in `ploeg`, never a Run's pod), LiteLLM (the `omnigraph_memory`, `omnigraph_brain`, `omnigraph_brain_eval` and `omnigraph_glide_*` MCP bridges), the explorer, the vault and Forgejo importers, the distiller, the brain eval jobs, [brain-tools](#brain-tools), the credential scrub, the [company view](#company-view) and the gateway may connect. The full matrix is in [LiteLLM: network](../general/litellm.md#network-namespace-ai).
 
 ## Explorer
 
@@ -664,6 +666,50 @@ REST also takes `snapshot` (a graph commit id: every stored query, the bot cache
 | `BrainToolsKeyBudgetNearlySpent` | The `brain-tools` key spent 80% of its USD 1 for 30 days |
 
 First checks: `kubectl -n ai logs deploy/brain-tools --tail=50`, and `kubectl -n ai exec deploy/brain-tools -- wget -qO- http://127.0.0.1:8081/readyz`, which names missing queries and the contract verdict.
+
+## Company view
+
+The `company` graph is the company tier (T3 in the [knowledge tiers RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md)) for repositories: what Webgrip itself builds and decided, with nothing from a client, a personal project or an excluded repository. Its schema is [company-view.pg](../../../../kubernetes/apps/ai/omnigraph/app/bundle/company-view.pg), its stored queries [company-view.gq](../../../../kubernetes/apps/ai/omnigraph/app/bundle/company-view.gq).
+
+| Row | Comes from |
+|---|---|
+| `Repository` | A brain `Project` the Forgejo importer wrote, whose repository is tiered `internal` and has at least one imported document. Forks and mirrors of other people's code have none, so they stay out |
+| `DecisionRecord` | An ADR the Forgejo importer turned into a brain `Note` in such a repository. Merging it in the repository was its review, so it lands on `main` directly |
+| `Topic` | A distilled brain `Topic` only when **every** brain node about it (note, artifact or project) belongs to an internal repository. One vault note, one personal or client repository is enough to keep it out: that is the taint rule, and the job logs how many topics it kept out that way (`topics_left_out_mixed`) |
+
+### Tiers
+
+Every repository gets a tier from, in order: its `owner/name` in OpenBao at `secret/omnigraph/repo-tiers` (field `tiers`, a JSON object), an `owner/*` key there, then the owner defaults in [default-tiers.json](../../../../kubernetes/apps/ai/omnigraph/company-view/app/default-tiers.json) (`ryangr0` personal, `webgrip` internal). A tier is `internal`, `personal`, `excluded` or `client:<code>`. Client names live only in OpenBao, never in git.
+
+Tier a repository, or a whole organisation:
+
+```bash
+export BAO_ADDR="$(just bao-addr)"
+bao kv get -field=tiers secret/omnigraph/repo-tiers | jq '. + {"<owner>/<name>": "client:<code>", "<owner>/*": "personal"}' > /tmp/tiers.json
+bao kv put secret/omnigraph/repo-tiers tiers=@/tmp/tiers.json && rm /tmp/tiers.json
+```
+
+The Secret refreshes every 5 minutes and the next hourly run applies it. Moving a repository out of `internal` deletes its records, its repository row and the topics only it held from `company/main` on that run.
+
+### How it runs
+
+The `omnigraph-company-view` CronJob runs at :10 every hour as `act-company-view`:
+
+1. `plan` reads the brain's Forgejo projects, ADR notes and topic edges and the current `company` graph, and writes only what changed. It refuses, and writes nothing, when the tiers are empty or name an unknown tier, or when the brain shows no Forgejo project at all.
+2. `embed` fills `DecisionRecord.content` and `Topic.name` vectors through the shared [embed step](#write-time-vectors) as writer `company-view`.
+3. `apply` deletes, then loads, on `company/main`.
+4. `report` pushes the embed report, then fails the job when a repository has no tier. That repository and every topic it touches stay out of the view until it is tiered.
+
+Who reads it: keys in the LiteLLM `company` access group through the read-only `omnigraph_company` MCP server (today the Claude Code key), the explorer, and `act-ryan`/`act-admin`. Ploeg runs, client users, the chat key and Glide agents cannot: no token of theirs is granted on `company`.
+
+### Monitoring and failures
+
+| Alert | Fires when |
+|---|---|
+| `OmnigraphCompanyViewUntieredRepository` | A run met a repository with no tier (log `company view untiered`, which names them) |
+| `OmnigraphCompanyViewFailing` | A run was refused or a write failed (log `company view refused` or `company view apply failed`) |
+
+First check: `kubectl -n ai logs -l app.kubernetes.io/name=omnigraph-company-view --all-containers --tail=30`. The `plan` line counts repositories per tier (client tiers as one number), records, topics and writes.
 
 ## Company meetings (`webgrip` and client graphs)
 

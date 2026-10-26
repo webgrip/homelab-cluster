@@ -143,6 +143,19 @@ class Fill(unittest.TestCase):
         finally:
             plan.close()
 
+    def test_the_company_view_embeds_decision_records_and_topics_and_reports_only_those(self):
+        record = {"type": "DecisionRecord", "data": {"slug": "record/a/x", "repository": "repo/a", "title": "X", "content": "We use Flux."}}
+        topic = {"type": "Topic", "data": {"slug": "derived/topic/flux", "name": "Flux"}}
+        plan = Plan(main=[[record, topic, {"edge": "RecordAbout", "from": "record/a/x", "to": "derived/topic/flux"}]], writer="company-view")
+        try:
+            embedder = FakeEmbedder()
+            report = plan.run(embedder)
+            self.assertEqual(embedder.batches, [["type: DecisionRecord\ncontent: We use Flux.", "type: Topic\nname: Flux"]])
+            self.assertEqual([len(row["data"]["embedding"]) for row in read(plan.root / "load-0000.ndjson")[:2]], [DIMENSIONS, DIMENSIONS])
+            self.assertEqual(report["missing"], {"DecisionRecord": 0, "Topic": 0})
+        finally:
+            plan.close()
+
     def test_batches_hold_at_most_4_inputs_in_the_contract_format(self):
         plan = Plan(main=[[passage(f"p#{index}", f"chunk {index}") for index in range(10)]])
         try:

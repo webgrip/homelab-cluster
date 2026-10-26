@@ -1,0 +1,68 @@
+---
+version: 1
+protected_branches:
+  - main
+groups:
+  operators:
+    - act-gitops
+  admins:
+    - act-admin
+    - act-ryan
+  builders:
+    - act-company-view
+  staff:
+    - act-company-reader
+  explorers:
+    - act-explorer
+rules:
+  - id: admins-read-export-change
+    allow:
+      actors: {group: admins}
+      actions:
+        - read
+        - export
+        - change
+      branch_scope: any
+  - id: admins-invoke-queries
+    allow:
+      actors: {group: admins}
+      actions:
+        - invoke_query
+  - id: admins-manage-branches
+    allow:
+      actors: {group: admins}
+      actions:
+        - branch_create
+        - branch_delete
+        - branch_merge
+      target_branch_scope: any
+  - id: builders-read-and-write-main
+    allow:
+      actors: {group: builders}
+      actions:
+        - read
+        - change
+      branch_scope: protected
+  - id: staff-read-main
+    allow:
+      actors: {group: staff}
+      actions:
+        - read
+      branch_scope: protected
+  - id: staff-invoke-queries
+    allow:
+      actors: {group: staff}
+      actions:
+        - invoke_query
+  - id: explorers-read-and-export
+    allow:
+      actors: {group: explorers}
+      actions:
+        - read
+        - export
+      branch_scope: any
+  - id: operators-apply-schema
+    allow:
+      actors: {group: operators}
+      actions:
+        - schema_apply

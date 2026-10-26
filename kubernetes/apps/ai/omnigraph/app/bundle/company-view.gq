@@ -1,0 +1,75 @@
+query company_repositories() @description("Webgrip-internal repositories in the company view, most recently active first") @instruction("Follow a repository with repository_records using its slug") {
+  match {
+    $r: Repository
+  }
+  return { $r.slug, $r.name, $r.status, $r.brief, $r.url, $r.last_activity }
+  order { $r.last_activity desc }
+  limit 200
+}
+
+query repository_records($repository: String) @description("Decision records of one internal repository, newest first") {
+  match {
+    $r: Repository { slug: $repository }
+    $d recordOf $r
+  }
+  return { $d.slug, $d.title, $d.decided_on, $d.url }
+  order { $d.decided_on desc }
+  limit 200
+}
+
+query decision_record($slug: String) @description("One decision record with its full text and repository") {
+  match {
+    $d: DecisionRecord { slug: $slug }
+    $d recordOf $r
+  }
+  return { $d.slug, $d.title, $d.decided_on, $d.url, $d.content, $r.slug as repository, $r.name as repository_name }
+  limit 1
+}
+
+query recall_records($q: String) @description("Decision records of internal repositories ranked by meaning and keywords together, in Dutch or English") @instruction("Read the full text with decision_record; cite its url") {
+  match {
+    $d: DecisionRecord
+  }
+  return { $d.slug, $d.title, $d.decided_on, $d.repository, $d.url }
+  order { rrf(nearest($d.embedding, $q), bm25($d.content, $q)) }
+  limit 10
+}
+
+query search_records($q: String) @description("Full-text search over decision record titles and bodies") @instruction("Prefer recall_records for questions; use this for exact words such as a tool name or an ADR number") {
+  match {
+    $d: DecisionRecord
+    search($d.content, $q)
+  }
+  return { $d.slug, $d.title, $d.decided_on, $d.repository, $d.url, bm25($d.content, $q) as score }
+  order { bm25($d.content, $q) desc }
+  limit 20
+}
+
+query recall_topics($q: String) @description("Topics of the company view ranked by meaning and keywords together, in Dutch or English") @instruction("Follow a topic with records_about and repositories_about using its slug") {
+  match {
+    $t: Topic
+  }
+  return { $t.slug, $t.name, $t.description, $t.aliases }
+  order { rrf(nearest($t.embedding, $q), bm25($t.name, $q)) }
+  limit 10
+}
+
+query records_about($topic: String) @description("Decision records filed under a topic, newest first") {
+  match {
+    $t: Topic { slug: $topic }
+    $d recordAbout $t
+  }
+  return { $d.slug, $d.title, $d.decided_on, $d.repository, $d.url }
+  order { $d.decided_on desc }
+  limit 50
+}
+
+query repositories_about($topic: String) @description("Internal repositories whose documents are about a topic") {
+  match {
+    $t: Topic { slug: $topic }
+    $r repositoryAbout $t
+  }
+  return { $r.slug, $r.name, $r.brief, $r.url }
+  order { $r.name asc }
+  limit 50
+}

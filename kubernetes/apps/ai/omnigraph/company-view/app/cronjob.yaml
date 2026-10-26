@@ -1,0 +1,176 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: omnigraph-company-view
+  namespace: ai
+  labels:
+    app.kubernetes.io/name: omnigraph-company-view
+    app.kubernetes.io/part-of: omnigraph
+spec:
+  schedule: "10 * * * *"
+  timeZone: Europe/Amsterdam
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: omnigraph-company-view
+            app.kubernetes.io/part-of: omnigraph
+        spec:
+          serviceAccountName: omnigraph
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            fsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            - name: plan
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:01ddf82b43479870a7ea87037b7d68472bef12cc244941843c26bb75bf9a9b04
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - -I
+                - /etc/company-view/company_view.py
+                - plan
+                - --default-tiers-file=/etc/company-view/default-tiers.json
+                - --tiers-file=/run/secrets/repo-tiers/tiers
+                - --omnigraph-url=http://omnigraph-next.ai.svc.cluster.local:8080
+                - --omnigraph-token-file=/run/secrets/omnigraph/token
+                - --out=/work/plan
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: OMNIGRAPH_HTTP_API, value: "0.14"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 50m, memory: 128Mi}
+                limits: {memory: 768Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/company-view, readOnly: true}
+                - {name: repo-tiers, mountPath: /run/secrets/repo-tiers, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: embed
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:01ddf82b43479870a7ea87037b7d68472bef12cc244941843c26bb75bf9a9b04
+              imagePullPolicy: IfNotPresent
+              command:
+                - python3
+                - -I
+                - /etc/omnigraph-embed-step/embed_step.py
+                - embed
+                - --plan=/work/plan
+                - --contract=/etc/omnigraph-embedding-contract/contract.json
+                - --litellm-url=http://litellm.ai.svc.cluster.local:4000
+                - --key-file=/run/secrets/litellm/OMNIGRAPH_EMBED_API_KEY
+                - --tokens-per-second=300
+                - --deadline-seconds=900
+              env:
+                - {name: HOME, value: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 20m, memory: 64Mi}
+                limits: {memory: 512Mi}
+              volumeMounts:
+                - {name: embed-step, mountPath: /etc/omnigraph-embed-step, readOnly: true}
+                - {name: embedding-contract, mountPath: /etc/omnigraph-embedding-contract, readOnly: true}
+                - {name: embed-key, mountPath: /run/secrets/litellm, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+            - name: apply
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:01ddf82b43479870a7ea87037b7d68472bef12cc244941843c26bb75bf9a9b04
+              imagePullPolicy: IfNotPresent
+              command:
+                - "sh"
+                - "/etc/company-view/apply.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: OMNIGRAPH_URL, value: "http://omnigraph-next.ai.svc.cluster.local:8080"}
+                - {name: OMNIGRAPH_HTTP_API, value: "0.14"}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 20m, memory: 64Mi}
+                limits: {memory: 512Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/company-view, readOnly: true}
+                - {name: embed-step, mountPath: /etc/omnigraph-embed-step, readOnly: true}
+                - {name: token, mountPath: /run/secrets/omnigraph, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          containers:
+            - name: report
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:01ddf82b43479870a7ea87037b7d68472bef12cc244941843c26bb75bf9a9b04
+              imagePullPolicy: IfNotPresent
+              command:
+                - sh
+                - -c
+                - python3 -I /etc/omnigraph-embed-step/embed_step.py report --plan=/work/plan --vmagent-url=http://vmagent-vmagent.observability.svc.cluster.local:8429 && exec python3 -I /etc/company-view/company_view.py verdict --plan=/work/plan
+              env:
+                - {name: HOME, value: /tmp}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: scripts, mountPath: /etc/company-view, readOnly: true}
+                - {name: embed-step, mountPath: /etc/omnigraph-embed-step, readOnly: true}
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: scripts
+              configMap:
+                name: omnigraph-company-view
+            - name: token
+              secret:
+                secretName: omnigraph-company-view-token
+                defaultMode: 0440
+                items:
+                  - {key: token, path: token}
+            - name: repo-tiers
+              secret:
+                secretName: omnigraph-repo-tiers
+                defaultMode: 0440
+                items:
+                  - {key: tiers, path: tiers}
+            - name: embed-step
+              configMap:
+                name: omnigraph-embed-step
+            - name: embedding-contract
+              configMap:
+                name: omnigraph-embedding-contract
+            - name: embed-key
+              secret:
+                secretName: omnigraph-embed-key
+                defaultMode: 0440
+                items:
+                  - {key: OMNIGRAPH_EMBED_API_KEY, path: OMNIGRAPH_EMBED_API_KEY}
+            - name: work
+              emptyDir:
+                sizeLimit: 512Mi
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi

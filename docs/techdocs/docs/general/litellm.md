@@ -43,6 +43,7 @@ Registered servers (`mcp_servers:` in the config) and their groups:
 | `brain` | omnigraph_brain (`omnigraph-next:8080/mcp`, `act-brain-agent`) | read and write `brain`, including `main` |
 | `glide` | omnigraph_glide_memory, omnigraph_glide_brain and omnigraph_glide_webgrip (`omnigraph-next:8080/mcp`, `act-glide`) | read every branch of `memory`, `brain` and `webgrip`; write only on unprotected branches (`glide/<run-id>`); never merge ([runbooks/omnigraph](../runbooks/omnigraph.md#glide-agents)) |
 | `brain-dogfood` | brain_tools (HTTP, `brain-tools:8080/mcp`, `act-brain-reader`) | `search` and `read` over `brain` with plain questions, read-only; the dogfood grant of brain retrieval P4, held by `claude-code` only until P6 regroups it ([runbooks/omnigraph](../runbooks/omnigraph.md#brain-tools)) |
+| `company` | omnigraph_company (`omnigraph-next:8080/mcp`, `act-company-reader`) | read `main` of the `company` graph and run its stored queries; writes and branch tools hidden by `disallowed_tools` and refused by policy. Staff keys only (today `claude-code`); the [company view](../runbooks/omnigraph.md#company-view) holds no client, personal or excluded repository |
 | `brain-eval-raw` | omnigraph_brain_eval (`omnigraph-next:8080/mcp`, `act-brain-eval`) | read every branch of `brain` and run stored queries; `mutate`, `load` and the branch writes are hidden by `disallowed_tools` and refused by policy. Only the brain eval key holds it, to score today's raw-query chat path as baseline B0 ([runbooks/omnigraph](../runbooks/omnigraph.md#brain-eval)) |
 
 **One slow server must not hide the others.** LiteLLM lists every server behind a key in parallel and waits for the slowest. `LITELLM_MCP_TOOL_LISTING_TIMEOUT` is 20 seconds (upstream default 30). Healthy servers answer in 2–3 seconds on a quiet node and up to about 10 on a loaded one (measured 2026-10-24: vikunja 2.4–7.3 s, omnigraph 1.5–10 s while worker-1 ran at 100% CPU, brain_tools 0.1 s; each omnigraph listing starts a fresh `node` process in the stateless supergateway bridge, which the 0.14 server's own `/mcp` removes). A 10-second cap dropped healthy omnigraph servers under that load, so the cap sits at twice the loaded maximum and still under Claude Code's tool fetch. With 30 seconds a backend that hung made the whole listing outlast Claude Code's tool fetch, so the client got no tools at all: on 2026-10-23 brain_tools, unready while Omnigraph was down, hid the 53 Vikunja tools for the whole session. A server that fails its listing is dropped from that answer alone. `LiteLLMMcpServerListingFails` fires when one keeps failing; `/mcp` and reconnect in Claude Code picks the tools up again afterwards. MCP backends keep their readiness pod-local for the same reason: an unready pod leaves its Service without endpoints and LiteLLM's connect hangs instead of being refused.
@@ -72,6 +73,7 @@ a `graph` argument; `query` runs a stored query by name, `read` runs ad-hoc GQ, 
 | `omnigraph_memory` | `act-agent` | `memory` | `OMNIGRAPH_MCP_AGENT_TOKEN`, `omnigraph/agent` |
 | `omnigraph_brain` | `act-brain-agent` | `brain` | `OMNIGRAPH_MCP_BRAIN_AGENT_TOKEN`, `omnigraph/brain-agent` |
 | `omnigraph_brain_eval` | `act-brain-eval` | `brain` | `OMNIGRAPH_MCP_BRAIN_EVAL_TOKEN`, `omnigraph/brain-eval` |
+| `omnigraph_company` | `act-company-reader` | `company` | `OMNIGRAPH_MCP_COMPANY_TOKEN`, `omnigraph/company-reader` |
 | `omnigraph_glide_memory` | `act-glide` | `memory` | `OMNIGRAPH_MCP_GLIDE_TOKEN`, `omnigraph/glide` |
 | `omnigraph_glide_brain` | `act-glide` | `brain` | `OMNIGRAPH_MCP_GLIDE_TOKEN`, `omnigraph/glide` |
 | `omnigraph_glide_webgrip` | `act-glide` | `webgrip` | `OMNIGRAPH_MCP_GLIDE_TOKEN`, `omnigraph/glide` |
@@ -104,7 +106,7 @@ does not know the key it deletes whatever still holds the alias before generatin
 | Key | Models | Budget | MCP groups | Consumer |
 |---|---|---|---|---|
 | `open-webui` | all | USD 20 / 30d, 60 rpm | `memory`, `brain` | Open WebUI |
-| `claude-code` | none (`no-default-models`) | USD 1 / 30d | `memory`, `brain`, `brain-dogfood` | Claude Code on Ryan's workstation |
+| `claude-code` | none (`no-default-models`) | USD 1 / 30d | `memory`, `brain`, `brain-dogfood`, `board`, `company` | Claude Code on Ryan's workstation |
 | `omnigraph-distill` | `fireworks-gpt-oss-120b`, `deepseek-chat`, `granite-embedding-97m-multilingual-r2` | USD 5 / 30d, 600 rpm | none | The [Omnigraph distiller](../runbooks/omnigraph.md#distiller) |
 | `brain-tools` | `granite-embedding-97m-multilingual-r2` | USD 1 / 30d, 600 rpm | none | [brain-tools](../runbooks/omnigraph.md#brain-tools), one embedding per search question |
 | `omnigraph-eval` | `chat-default`, `fireworks-gpt-oss-120b`, `fireworks-deepseek-v4p1-flash`, `deepseek-chat`, `granite-embedding-97m-multilingual-r2` | USD 10 / 30d, 120 rpm | `brain-eval-raw` | The [brain eval harness](../runbooks/omnigraph.md#brain-eval) |

@@ -1,0 +1,38 @@
+node Repository @description("A Webgrip-internal Forgejo repository, copied by the company view") @instruction("Only repositories tiered internal reach this graph; client, personal and excluded repositories never do. slug is repo/<owner>/<name>") {
+  slug: String @key
+  name: String @index
+  brief: String?
+  url: String?
+  status: enum(active, paused, completed) @index
+  last_activity: DateTime? @index
+}
+
+node DecisionRecord @description("An architecture decision record committed to a Webgrip-internal repository") @instruction("content is the record as merged in its repository, without frontmatter; that repository's review was its acceptance. slug is record/<owner>/<name>/<path>") {
+  slug: String @key
+  repository: String @index
+  title: String @index
+  content: String? @index
+  embedding: Vector(384)? @embed("content", model="granite-embedding-97m-multilingual-r2")
+  decided_on: Date? @index
+  url: String?
+}
+
+node Topic @description("A subject internal repositories and decision records are about") @instruction("Copied from the brain only when every brain document about the topic comes from a Webgrip-internal repository") {
+  slug: String @key
+  name: String @index
+  description: String?
+  aliases: [String]?
+  embedding: Vector(384)? @embed("name", model="granite-embedding-97m-multilingual-r2")
+}
+
+edge RecordOf: DecisionRecord -> Repository {
+  @key(@src, @dst)
+}
+
+edge RepositoryAbout: Repository -> Topic {
+  @key(@src, @dst)
+}
+
+edge RecordAbout: DecisionRecord -> Topic {
+  @key(@src, @dst)
+}
