@@ -1,0 +1,43 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: blackbox-unfold-watchdog
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: blackbox-exporter
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: blackbox.unfold-watchdog
+      rules:
+        - alert: UnfoldAlertingSilent
+          expr: |
+            max(probe_success{endpoint="unfold-watchdog"}) == 0
+            and on () max(max_over_time(probe_success{endpoint="unfold-watchdog"}[7d])) == 1
+          for: 15m
+          labels:
+            severity: critical
+            owner: platform
+            service: unfold-observability
+            cluster: unfold
+          annotations:
+            summary: "Unfold's own alerting has gone silent (seen from the homelab)"
+            description: |
+              What's happening:
+              - For 15 minutes the homelab has not found Unfold's always-firing Watchdog alert in Unfold's VictoriaMetrics, after finding it at least once in the last 7 days.
+
+              Impact/risk:
+              - Unfold evaluates and sends its own alerts; if its vmalert, Alertmanager or VictoriaMetrics stopped, nothing on Unfold pages. The off-site dead-man's switch should page too.
+
+              Likely causes:
+              - vmalert-metrics, alertmanager or vmsingle on Unfold is down
+              - The read path is broken: the unfold-gateway pod's unfold-query container, its tailscale outbound proxy, the tailnet, or Unfold's observability gateway and vmauth-query
+              - The query token in OpenBao unfold-main/observability/query-token no longer matches on both sides
+
+              First actions:
+              - probe_success{endpoint="unfold-watchdog"} and the blackbox debug output for the target
+              - Explore the "VictoriaMetrics (Unfold)" datasource: ALERTS{alertname="Watchdog"}
+              - On Unfold: kubectl -n observability get pods
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/observability.md#watchdog"

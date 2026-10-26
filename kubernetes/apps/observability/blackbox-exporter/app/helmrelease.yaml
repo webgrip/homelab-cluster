@@ -939,6 +939,29 @@ spec:
               Host: vikunja.${SECRET_DOMAIN}
             fail_if_body_not_matches_regexp:
               - '<title>Homelab Board'
+        http_unfold_watchdog:
+          prober: http
+          timeout: 10s
+          http:
+            valid_http_versions:
+              - "HTTP/1.1"
+            valid_status_codes:
+              - 200
+            follow_redirects: false
+            preferred_ip_protocol: "ip4"
+            bearer_token_file: /etc/unfold-query/token
+            fail_if_body_not_matches_regexp:
+              - '"alertname":"Watchdog"'
+
+    extraVolumes:
+      - name: unfold-query-token
+        secret:
+          secretName: unfold-query-token
+          optional: true
+    extraVolumeMounts:
+      - name: unfold-query-token
+        mountPath: /etc/unfold-query
+        readOnly: true
 
     serviceMonitor:
       enabled: false

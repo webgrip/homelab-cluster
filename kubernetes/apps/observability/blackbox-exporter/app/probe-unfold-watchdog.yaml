@@ -1,0 +1,20 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/monitoring.coreos.com/probe_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: blackbox-unfold-watchdog
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+spec:
+  interval: 60s
+  module: http_unfold_watchdog
+  prober:
+    url: blackbox-exporter.observability.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - http://unfold-query.observability.svc.cluster.local:8481/api/v1/query?query=ALERTS%7Balertname%3D%22Watchdog%22%2Calertstate%3D%22firing%22%7D
+      labels:
+        endpoint: unfold-watchdog
