@@ -74,6 +74,21 @@ patches:
       - op: remove
         path: /spec/jobTargetRef/template/spec/tolerations
       - op: test
+        path: /spec/jobTargetRef/template/spec/priorityClassName
+        value: ci-batch
+      - op: replace
+        path: /spec/jobTargetRef/template/spec/priorityClassName
+        value: ci-production
+      - op: add
+        path: /spec/jobTargetRef/template/spec/affinity/nodeAffinity/requiredDuringSchedulingIgnoredDuringExecution
+        value:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: NotIn
+                  values:
+                    - fringe-workstation
+      - op: test
         path: /spec/jobTargetRef/template/spec/volumes/5/name
         value: ci-shared
       - op: replace

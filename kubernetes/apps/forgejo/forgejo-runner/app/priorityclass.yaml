@@ -10,3 +10,15 @@ description: >-
   Forgejo Actions runner pods. Below the default (0), so when the worker pool is full every
   application and agent workload, Ploeg runs included, schedules first and may preempt CI;
   CI never preempts anything and waits for room instead.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: ci-production
+value: -50
+globalDefault: false
+preemptionPolicy: PreemptLowerPriority
+description: >-
+  The runner that plans and applies production infrastructure (unfold-infra). Still below the
+  default (0), so it never displaces an application, but above ci-batch, so a full worker pool
+  makes room for a production plan or apply by preempting ordinary CI jobs.
