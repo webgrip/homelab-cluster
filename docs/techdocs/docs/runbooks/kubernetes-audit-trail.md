@@ -26,10 +26,18 @@ break-glass alerts that read the same trail are in [Kubernetes login](kubernetes
    `status` updates.
 4. The rest lands in the dedicated `victorialogs-audit` instance (namespace `observability`),
    separate from the application logs. Grafana reads it through the **VictoriaLogs (audit)**
-   data source.
+   data source, which goes through the `victorialogs-audit-reader` vmauth. The reader adds
+   `extra_stream_filters={cluster="homelab-cluster"}` to every query, so Grafana shows the
+   homelab's own trail and nothing of the Unfold production audit records that share the
+   instance (`cluster=unfold`). Grafana OSS cannot limit a data source to some users, and every
+   Editor may query every data source, so the filter sits in front of the instance instead.
+   `scripts/test-audit-reader.sh --mutation-test` proves it in e2e. Read the Unfold records with
+   the `kubectl get --raw` command below, which only cluster admins can run.
 5. `vmalert-audit` evaluates the `kubernetes-audit` rule group every five minutes over the last
    fifteen and sends firing alerts to the shared Alertmanager, which routes `critical` to the
-   urgent ntfy topic and `warning` to the normal one.
+   urgent ntfy topic and `warning` to the normal one. It also evaluates `unfold-audit`
+   (`UnfoldBreakGlassCertificateUsed`, the Unfold admin kubeconfig), which reads the instance
+   directly, so the reader's filter does not hide Unfold from the alerts.
 
 Retention is bounded by disk, not by the configured 365 days: the 10Gi volume caps at 9GiB, and on
 2026-10-18 the trail used 6.9GB for 30 days. The noise cut in ADR-0076 removes about 40% of the

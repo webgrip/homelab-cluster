@@ -1,0 +1,83 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: victorialogs-audit-reader
+  labels:
+    app.kubernetes.io/name: victorialogs-audit-reader
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: victorialogs-audit-reader
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: victorialogs-audit-reader
+      annotations:
+        reloader.stakater.com/auto: "true"
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: vmauth
+          image: harbor.webgrip.dev/dockerhub/victoriametrics/vmauth:v1.147.0@sha256:93ff53c9ce2b1a9e54064b5158657de141588337e95a6bce7928dd205c73ce8d
+          args:
+            - -httpListenAddr=:8427
+            - -auth.config=/config/vmauth.yaml
+            - -loggerFormat=json
+          ports:
+            - name: http
+              containerPort: 8427
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: victorialogs-audit-reader
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: victorialogs-audit-reader
+  labels:
+    app.kubernetes.io/name: victorialogs-audit-reader
+spec:
+  selector:
+    app.kubernetes.io/name: victorialogs-audit-reader
+  ports:
+    - name: http
+      port: 8427
+      targetPort: http
