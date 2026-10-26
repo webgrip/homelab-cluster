@@ -123,6 +123,63 @@ rejected on homelab-cluster, **and** the owner's trunk push still lands.
 model (`baseline`: `true`, `merge`; per-repo deviations in `repos.yaml`). `--only settings`
 is retired with `protect`.
 
+## Renovate policy (since 2026-10-26, VIK-2478)
+
+Every active repo entry states which `webgrip/renovate-config` presets its Renovate config
+extends. The field is version-agnostic: a `#vX.Y.Z` pin is Renovate's job, so the schema refuses
+one here.
+
+```yaml
+ai-skills:
+  renovate:
+    profile: profile-library
+unfold:
+  renovate:
+    presets:
+      - "local>webgrip/renovate-config"
+      - "local>webgrip/renovate-config:automerge-non-major"
+      - "local>webgrip/renovate-config:apm"
+homelab-cluster:
+  renovate:
+    config_file: ".renovaterc.json5"
+    presets: [...]
+```
+
+| Key | Meaning |
+| --- | --- |
+| `profile` | One of `profile-app`, `profile-site`, `profile-library`, `profile-image-set`; expands to the single preset `local>webgrip/renovate-config:<profile>`. |
+| `presets` | The exact ordered `extends` list without pins, for repos on a legacy combination or a profile plus extras. |
+| `absent: true` | The repo deliberately has no Renovate config. |
+| `config_file` | Where the config lives on the default branch; default `renovate.json`. JSON5 files are read too. |
+
+Exactly one of `profile`, `presets`, `absent` is set. `scripts/validate-repo-config-model.sh`
+requires the field on every active repo except push mirrors, which take the policy of their
+source. When the renovate-config gate/risk/capability redesign lands, add its profile names to
+`model/schema/renovate.schema.json`.
+
+`tofu/renovate.tf` reads each anonymously readable repo's config from Forgejo every hourly run
+and never writes. Two `check` blocks warn without blocking an apply:
+
+- `renovate_policy_matches_live`: the live `extends`, with pins stripped, differs from the model,
+  the file is missing, or a repo modelled `absent` has one.
+- `renovate_extends_pinned`: a repository preset (`local>`, `github>`) has no `#vX.Y.Z` pin and
+  follows the preset repository's default branch.
+
+Both lists are also the output `renovate_policy_drift`. A plan with no resource changes does not
+log its warnings, but a change to that output is a plan change: the next run applies it (state
+only), the readable plan in `tfplan-default-repo-config` shows the new lists, the runner log
+carries the check warnings, and `ForgejoRepoConfigApplyChangedSomething` fires. Read the current
+lists with:
+
+```text
+{namespace="repo-config", container="tf-runner"} "Renovate"
+```
+
+in VictoriaLogs, or from the readable plan after a change.
+
+Not covered: private repos (`talos-kata-extension`, unreadable without a token in a data
+source) and GitHub entries (`ploeg-hq/ploeg`), which are modelled but not compared.
+
 ## Symptom → cause
 
 | Symptom | Cause / fix |

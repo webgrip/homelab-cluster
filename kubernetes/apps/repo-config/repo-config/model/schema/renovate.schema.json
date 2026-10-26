@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RenovatePolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "config_file": {
+      "type": "string",
+      "enum": [
+        "renovate.json",
+        "renovate.json5",
+        ".renovaterc",
+        ".renovaterc.json",
+        ".renovaterc.json5",
+        ".forgejo/renovate.json",
+        ".forgejo/renovate.json5",
+        ".github/renovate.json",
+        ".github/renovate.json5"
+      ]
+    },
+    "profile": {
+      "enum": [
+        "profile-app",
+        "profile-site",
+        "profile-library",
+        "profile-image-set"
+      ]
+    },
+    "presets": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[^#\\s]+$"
+      }
+    },
+    "absent": {
+      "const": true
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["profile"],
+      "not": { "anyOf": [{ "required": ["presets"] }, { "required": ["absent"] }] }
+    },
+    {
+      "required": ["presets"],
+      "not": { "anyOf": [{ "required": ["profile"] }, { "required": ["absent"] }] }
+    },
+    {
+      "required": ["absent"],
+      "not": { "anyOf": [{ "required": ["profile"] }, { "required": ["presets"] }] }
+    }
+  ]
+}

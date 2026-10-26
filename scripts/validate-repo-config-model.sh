@@ -53,6 +53,11 @@ def forgejo_archived(repo):
     return {**forge_profile.get("settings", {}), **repo.get("settings", {})}.get("archived", False)
 
 
+def archived(repo, profile):
+    forge_settings = profile.get(repo["forge"], {}).get("settings", {})
+    return {**forge_settings, **repo.get("settings", {})}.get("archived", False)
+
+
 for name, repo in sorted(repos.items()):
     forge = repo["forge"]
     if repo["profile"] not in profiles:
@@ -62,6 +67,14 @@ for name, repo in sorted(repos.items()):
     if forge not in profile:
         errors.append(f"{name}: profile {repo['profile']} carries no {forge} block, so the {forge} module has nothing to apply")
         continue
+    renovate_runs_on_this_repo = not archived(repo, profile) and "mirror_of" not in repo
+    if renovate_runs_on_this_repo and "renovate" not in repo:
+        errors.append(
+            f"{name}: an active repository must state its Renovate policy (renovate.profile, renovate.presets,"
+            " or renovate.absent), or the renovate_policy_matches_live check has nothing to compare"
+        )
+    if "mirror_of" in repo and "renovate" in repo:
+        errors.append(f"{name}: a push mirror takes its Renovate policy from {repo['mirror_of']}; drop renovate here")
     if forge != "github":
         continue
     owner = name.split("/")[0]

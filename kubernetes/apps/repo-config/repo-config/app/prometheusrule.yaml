@@ -68,7 +68,7 @@ spec:
             description: |-
               What's happening:
               - The last hourly reconcile of the repo-config Terraform object applied changes to Forgejo.
-              - A plan with no changes is never applied, so this fires only when tofu changed a repository setting or a branch protection rule.
+              - A plan with no changes is never applied, so this fires only when tofu changed a repository setting, a branch protection rule, or the renovate_policy_drift output.
 
               Impact/risk:
               - Expected right after a model commit. Without one, somebody changed Forgejo by hand and tofu reverted it.
@@ -76,6 +76,7 @@ spec:
               Likely causes:
               - A model change in kubernetes/apps/repo-config/repo-config/model was merged
               - A hand edit in the Forgejo UI or API (forgejo-sync.sh, a PATCH) drifted a setting tofu owns
+              - The renovate_policy_drift output changed (state only, nothing written to Forgejo): a repo's Renovate extends drifted from the model or lost its pin, or came back in line
 
               First actions:
               - git log -3 -- kubernetes/apps/repo-config/repo-config

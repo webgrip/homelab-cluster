@@ -61,6 +61,16 @@ run_case fail unfold-cluster-push-by-a-developer "python3 -c 'import pathlib; p=
 run_case fail unfold-cluster-merge-whitelist-dropped "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); s=p.read_text(); i=s.index(\"  unfold-cluster:\"); p.write_text(s[:i] + s[i:].replace(\"        merge:\n          - ryangr0\n\", \"\", 1))'"
 run_case fail unfold-cluster-requires-no-checks "python3 -c 'import re,pathlib; p=pathlib.Path(\"repos.yaml\"); s=p.read_text(); i=s.index(\"  unfold-cluster:\"); p.write_text(s[:i] + re.sub(r\"        status_checks:\\n(          - .*\\n)+\", \"        status_checks: []\\n\", s[i:], count=1))'"
 run_case pass unfold-cluster-fewer-checks-still-gated "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); s=p.read_text(); i=s.index(\"  unfold-cluster:\"); p.write_text(s[:i] + s[i:].replace(\"          - \\\"infra-check / token-mask-proof (pull_request)\\\"\n\", \"\", 1))'"
+run_case fail renovate-preset-pins-a-version "sed -i '0,/^        - \"local>webgrip\/renovate-config:apm\"$/s//        - \"local>webgrip\/renovate-config:apm#v1.15.0\"/' repos.yaml"
+run_case fail renovate-unknown-profile "sed -i '0,/^      profile: profile-library$/s//      profile: profile-libary/' repos.yaml"
+run_case fail renovate-profile-and-presets "sed -i '0,/^      profile: profile-library$/s//      profile: profile-library\n      presets:\n        - \"local>webgrip\/renovate-config:apm\"/' repos.yaml"
+run_case fail renovate-unknown-key "sed -i '0,/^      profile: profile-library$/s//      profile: profile-library\n      pin: v1.15.0/' repos.yaml"
+run_case fail renovate-empty-presets "python3 -c 'import re,pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(re.sub(r\"      presets:\\n(        - .*\\n)+\", \"      presets: []\\n\", p.read_text(), count=1))'"
+run_case fail renovate-absent-false "sed -i '0,/^      profile: profile-site$/s//      absent: false/' repos.yaml"
+run_case fail active-repo-without-renovate-policy "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"    renovate:\n      profile: profile-site\n\", \"\", 1))'"
+run_case fail github-mirror-carries-renovate-policy "printf '  webgrip/renovate-config:\n    forge: github\n    profile: baseline\n    mirror_of: renovate-config\n    settings:\n      default_branch: main\n    renovate:\n      profile: profile-library\n' >> repos.yaml"
+run_case pass renovate-explicit-absent "sed -i '0,/^      profile: profile-site$/s//      absent: true/' repos.yaml"
+run_case pass renovate-presets-swapped-for-profile "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"      presets:\n        - \\\"local>webgrip/renovate-config:profile-app\\\"\n        - \\\"local>webgrip/renovate-config:apm\\\"\n\", \"      profile: profile-app\n\", 1))'"
 
 if [ "$failures" -ne 0 ]; then
   echo "test-validate-repo-config-model: ${failures} case(s) wrong"
