@@ -142,9 +142,10 @@ without comments. This section keeps the reasons, by key path. Ploeg ADRs are in
   the session's end
   ([Ploeg ADR-0084](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md)).
 - `ploeg.env.PLOEG_DEFAULT_TEAM: copper`: an assignee no team lists falls through to the default
-  team. copper's exec harness makes no model call, opens no pull request and ends
-  `no_change_needed`, so a person assigned by mistake on a board with the ploegd webhook costs $0
-  instead of a live Run against a real repository. Refusing to route (`PLOEG_TARGET_STRICT`,
+  team. copper's exec harness makes no model call, opens no pull request, prints nothing and ends
+  `stuck` with "copper only runs canary items", so a person assigned by mistake on a board with the
+  ploegd webhook costs $0 instead of a live Run against a real repository, and the item waits for
+  a person instead of closing. Refusing to route (`PLOEG_TARGET_STRICT`,
   old Ploeg backlog #108) would be better and replaces this when it ships. Until then, do not
   assign an unmapped person on a webhook board unless a copper no-op is what you want.
 - There is no `PLOEG_TEAM_MAP`, `PLOEG_TARGET_MAP` or `PLOEG_TEAM_PLANS`. The roster and routing
@@ -321,9 +322,10 @@ the board is just not updated.
 ### `ploeg.executor.teams[copper]`
 
 copper is the seam-smoke team. Its `exec` harness runs in the same agent-runner image without a
-model call: for an ordinary ticket it prints the generated `taskspec.json`, which proves per-team
-harness selection, task composition, per-Run key mint and revoke, and the `no_change_needed`
-outcome without spending a token. For a ticket titled `[canary]` it writes a `ploeg-canary-note`
+model call. For an ordinary ticket it writes a `stuck` outcome, "copper only runs canary items",
+and prints nothing: the generated `taskspec.json` holds the description, findings and briefing,
+and anything the harness prints lands in the pod log, VictoriaLogs and the Run's `stuck_reason`.
+For a ticket titled `[canary]` it writes a `ploeg-canary-note`
 Work Item Note, records whether earlier notes were briefed to it, and stops the Run as `stuck` so
 the stop note is written. copper has no `plan`, so its `budget` is a per-Run ceiling, not a pool;
 its `model` only scopes the key.
