@@ -64,6 +64,7 @@ resource "forgejo_repository" "repo" {
   default_delete_branch_after_merge = each.value.default_delete_branch_after_merge
   allow_fast_forward_only_merge     = each.value.allow_fast_forward_only_merge
   allow_squash_merge                = each.value.allow_squash_merge
+  allow_rebase                      = try(each.value.allow_rebase, null)
   archived                          = try(each.value.archived, false)
   private                           = try(each.value.private, false)
   auto_init                         = contains(local.repos_created_by_tofu, each.key) ? false : null

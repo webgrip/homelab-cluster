@@ -38,7 +38,7 @@ The repo-config model carries it as two profiles:
 
 | Profile | Repositories | `main` | Tags |
 | --- | --- | --- | --- |
-| `protected-core` | agent-standards, workflows, renovate-config, homelab-cluster, unfold-cluster | no push for anyone; merge through a pull request by the merge whitelist; one approval, stale approvals dismissed, a rejecting review blocks, an outdated branch blocks; the repository's required checks | only `webgrip-ci` creates or updates any tag |
+| `protected-core` | agent-standards, workflows, renovate-config, homelab-cluster, unfold-cluster | no push for anyone; merge through a pull request by the merge whitelist; one approval, stale approvals dismissed, a rejecting review blocks, an outdated branch blocks; fast-forward and rebase merges off, so every new `main` HEAD is a merge or squash commit Forgejo signs and Flux's signature check accepts; the repository's required checks | only `webgrip-ci` creates or updates any tag |
 | `protected` | every other active Forgejo repository | no push for anyone; merge through a pull request by `ryangr0`, `yon` or `renovate`; the repository's required checks | only `webgrip-ci` creates or updates any tag |
 
 Archived repositories stay on `baseline`: they are read-only already. A repository-level rule only adds to its profile (status checks, a narrower or wider merge list): unfold-cluster keeps `ryangr0` as its only merger (identity-and-access G-01), and unfold's `development` adds `ploeg-release`, which merges the Ploeg pin pull requests. Releases stop committing to `main`: semantic-release only tags (decided the same day), so the release bot needs no push right, only the tag whitelist.
