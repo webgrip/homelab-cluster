@@ -10,10 +10,11 @@ cat > "$work/bin/curl" <<'FAKE'
 #!/bin/sh
 method=GET
 url=""
+body=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -X) method="$2"; shift 2 ;;
-    -d) shift 2 ;;
+    -d) [ "$2" = @- ] && body="$(cat)" || body="$2"; shift 2 ;;
     -u|-H|-o|-w|--connect-timeout|--max-time) shift 2 ;;
     -*) shift ;;
     *) url="$1"; shift ;;
@@ -34,7 +35,13 @@ case "$method $route" in
     sha="${route%/status}"; sha="${sha##*/}"
     cat "$state/status-$sha.json" ;;
   "POST /repos/webgrip/"*"/issues/"*"/labels")
-    echo "${route#/repos/webgrip/}" >> "$state/labelled" ;;
+    echo "${route#/repos/webgrip/} $body" >> "$state/labelled" ;;
+  "GET /repos/webgrip/"*"/labels")
+    [ "$page" = 1 ] && cat "$state/repo-labels.json" || echo '[]' ;;
+  "POST /repos/webgrip/"*"/labels")
+    jq --argjson label "$body" '. + [$label + {id: 501}]' "$state/repo-labels.json" > "$state/repo-labels.new"
+    mv "$state/repo-labels.new" "$state/repo-labels.json"
+    echo '{"id": 501}' ;;
   *)
     exit 22 ;;
 esac
@@ -56,6 +63,7 @@ reset() {
   rm -rf "$work/state" && mkdir -p "$work/state"
   echo '[{"name":"app","archived":false,"has_pull_requests":true},{"name":"old","archived":true,"has_pull_requests":true}]' > "$work/state/repos.json"
   echo '[]' > "$work/state/pulls-old.json"
+  echo '[]' > "$work/state/repo-labels.json"
 }
 
 run() {
@@ -65,7 +73,7 @@ run() {
 }
 
 fail() { echo "FAIL: $*" >&2; cat "$work/state/out" >&2; exit 1; }
-labelled() { [ -f "$work/state/labelled" ] && grep -qx "app/issues/$1/labels" "$work/state/labelled"; }
+labelled() { [ -f "$work/state/labelled" ] && grep -q "^app/issues/$1/labels " "$work/state/labelled"; }
 
 reset
 jq -s . > "$work/state/pulls-app.json" <<JSON
@@ -95,6 +103,10 @@ for n in 2 3 4 5 6 8; do
 done
 ! grep -q '/repos/webgrip/old/' "$work/state/calls" || fail "an archived repository was read"
 ! grep -q '/commits/queued/' "$work/state/calls" || fail "a PR already labelled rebase was checked again"
+
+grep -q '^app/issues/1/labels {"labels":\[501\]}$' "$work/state/labelled" || fail "the PR was not labelled with the repository label's id"
+[ "$(grep -c '^POST /repos/webgrip/app/labels$' "$work/state/calls")" = 1 ] || fail "the repository rebase label was not created exactly once"
+grep -q '^POST /repos/webgrip/app/labels$' "$work/state/calls" && ! grep -q '/orgs/webgrip/labels' "$work/state/calls" || fail "the org label was used: Renovate cannot remove an org label from a pull request"
 
 run 1 || fail "a capped run failed"
 [ "$(wc -l < "$work/state/labelled")" -eq 3 ] || fail "the retry cap did not stop at one more label"

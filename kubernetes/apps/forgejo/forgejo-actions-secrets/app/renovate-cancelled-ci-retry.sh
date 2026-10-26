@@ -50,6 +50,16 @@ only_cancelled_and_settled() {
   ' >/dev/null
 }
 
+rebase_label_id() {
+  id="$(paged "$api/repos/$ORG/$1/labels" | jq -r --arg label "$REBASE_LABEL" 'select(.name == $label) | .id' | head -n 1)"
+  if [ -z "$id" ]; then
+    id="$(jq -nc --arg label "$REBASE_LABEL" '{name: $label, color: "#8250df", description: "Asks Renovate to rebase this pull request on its next run; Renovate removes it"}' \
+      | curl -fsS -u "$admin" -H 'Content-Type: application/json' -X POST -d @- "$api/repos/$ORG/$1/labels" | jq -er '.id')"
+    echo "created label $REBASE_LABEL on $ORG/$1" >&2
+  fi
+  printf '%s' "$id"
+}
+
 repositories > "$work/repos"
 retried=0
 while read -r repo; do
@@ -60,7 +70,8 @@ while read -r repo; do
       break 2
     fi
     if curl -fsS -u "$admin" "$api/repos/$ORG/$repo/commits/$sha/status" | only_cancelled_and_settled; then
-      jq -nc --arg label "$REBASE_LABEL" '{labels: [$label]}' \
+      label_id="$(rebase_label_id "$repo")"
+      jq -nc --argjson id "$label_id" '{labels: [$id]}' \
         | curl -fsS -o /dev/null -u "$admin" -H 'Content-Type: application/json' -X POST -d @- "$api/repos/$ORG/$repo/issues/$number/labels"
       echo "asked Renovate to rebase $ORG/$repo#$number: every failed check on $sha was cancelled"
       retried=$((retried + 1))

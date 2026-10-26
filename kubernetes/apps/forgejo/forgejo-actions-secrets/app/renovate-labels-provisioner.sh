@@ -42,11 +42,25 @@ converge() {
   echo "updated $ORG label $name"
 }
 
+retire() {
+  current="$1"
+  name="$2"
+  id="$(printf '%s' "$current" | jq -r --arg name "$name" 'select(.name == $name) | .id' | head -n 1)"
+  [ -n "$id" ] || return 0
+  curl -fsS -o /dev/null -u "$admin" -X DELETE "$api/orgs/$ORG/labels/$id"
+  echo "deleted $ORG label $name"
+}
+
 current="$(existing_labels)"
+jq -r '.[]' "$RETIRED_FILE" | while IFS= read -r name; do
+  retire "$current" "$name"
+done
 jq -c '.[]' "$LABELS_FILE" | while IFS= read -r wanted; do
   converge "$current" "$wanted"
 done
 
 missing="$(existing_labels | jq -s --slurpfile wanted "$LABELS_FILE" '[$wanted[0][].name] - [.[].name]')"
 [ "$missing" = "[]" ] || { echo "labels still missing on $ORG after converge: $missing" >&2; exit 1; }
+lingering="$(existing_labels | jq -s --slurpfile retired "$RETIRED_FILE" '[.[].name] - ([.[].name] - $retired[0])')"
+[ "$lingering" = "[]" ] || { echo "retired labels still on $ORG: $lingering" >&2; exit 1; }
 echo "renovate labels converged on $ORG"

@@ -37,6 +37,10 @@ case "$method $path" in
     id="${path##*/}"
     jq --argjson label "$body" --argjson id "$id" 'map(if .id == $id then $label + {id: $id} else . end)' "$state/labels.json" > "$state/labels.new"
     mv "$state/labels.new" "$state/labels.json" ;;
+  "DELETE /orgs/webgrip/labels/"*)
+    id="${path##*/}"
+    jq --argjson id "$id" 'map(select(.id != $id))' "$state/labels.json" > "$state/labels.new"
+    mv "$state/labels.new" "$state/labels.json" ;;
   *)
     exit 22 ;;
 esac
@@ -48,11 +52,11 @@ run_case() {
   printf '%s' "$1" > "$work/state/labels.json"
   [ "${2:-}" = refuse-create ] && touch "$work/state/refuse-create"
   PATH="$work/bin:$PATH" FAKE_STATE="$work/state" FORGEJO_URL=http://forgejo.test ADMIN_USERNAME=a ADMIN_PASSWORD=p \
-    ORG=webgrip LABELS_FILE="$app/renovate-labels.json" sh "$app/renovate-labels-provisioner.sh" > "$work/state/out" 2>&1
+    ORG=webgrip LABELS_FILE="$app/renovate-labels.json" RETIRED_FILE="$app/renovate-labels-retired.json" sh "$app/renovate-labels-provisioner.sh" > "$work/state/out" 2>&1
 }
 
 fail() { echo "FAIL: $*" >&2; cat "$work/state/out" >&2; exit 1; }
-writes() { grep -cE '^(POST|PATCH) ' "$work/state/calls" || true; }
+writes() { grep -cE '^(POST|PATCH|DELETE) ' "$work/state/calls" || true; }
 wanted_count="$(jq length "$app/renovate-labels.json")"
 
 run_case '[]' || fail "an org without labels did not converge"
@@ -71,6 +75,12 @@ run_case "$drifted" || fail "an org with a drifted label failed"
 [ "$(grep -c '^PATCH ' "$work/state/calls")" = 1 ] || fail "a drifted label was not patched exactly once"
 jq -e 'any(.[]; .name == "automerge" and .color == "#2da44e")' "$work/state/labels.json" >/dev/null || fail "the drifted colour was not restored"
 jq -e 'any(.[]; .name == "kept-by-someone-else")' "$work/state/labels.json" >/dev/null || fail "a label the file does not list was removed"
+
+retired="$(printf '%s' "$converged" | jq '. + [{"id": 98, "name": "rebase", "color": "#8250df", "description": ""}]')"
+run_case "$retired" || fail "an org carrying a retired label failed"
+[ "$(grep -c '^DELETE /orgs/webgrip/labels/98' "$work/state/calls")" = 1 ] || fail "a retired label was not deleted"
+! jq -e 'any(.[]; .name == "rebase")' "$work/state/labels.json" >/dev/null || fail "the retired label is still on the org"
+! jq -e 'any(.[]; .name == "rebase")' "$app/renovate-labels.json" >/dev/null || fail "a retired label is also a wanted label"
 
 if run_case '[]' refuse-create; then fail "a refused create passed"; fi
 
