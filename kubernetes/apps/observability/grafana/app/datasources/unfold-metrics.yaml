@@ -1,0 +1,27 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: unfold-metrics
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  valuesFrom:
+    - targetPath: secureJsonData.httpHeaderValue1
+      valueFrom:
+        secretKeyRef:
+          name: unfold-query-token
+          key: token
+  datasource:
+    name: VictoriaMetrics (Unfold)
+    type: prometheus
+    uid: unfold-metrics
+    editable: false
+    access: proxy
+    url: http://unfold-query.observability.svc.cluster.local:8481
+    isDefault: false
+    jsonData:
+      httpHeaderName1: Authorization
+    secureJsonData:
+      httpHeaderValue1: Bearer $${token}

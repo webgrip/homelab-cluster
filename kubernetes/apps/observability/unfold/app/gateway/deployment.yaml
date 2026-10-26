@@ -85,6 +85,8 @@ spec:
               value: "true"
             - name: TS_LOCAL_ADDR_PORT
               value: "[::]:9002"
+            - name: TS_OUTBOUND_HTTP_PROXY_LISTEN
+              value: 127.0.0.1:1055
             - name: TS_AUTHKEY
               valueFrom:
                 secretKeyRef:
@@ -119,6 +121,30 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+        - name: unfold-query
+          image: harbor.webgrip.dev/dockerhub/alpine/socat:1.8.1.3@sha256:603174b77eebaba25ba8f8ebb15e1234d6600409554e95d6fb203fd106150287
+          args:
+            - TCP-LISTEN:8481,fork,reuseaddr
+            - PROXY:127.0.0.1:unfold-observability.tailnet.unfold.internal:8427,proxyport=1055
+          ports:
+            - name: query
+              containerPort: 8481
+          readinessProbe:
+            tcpSocket:
+              port: query
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - "ALL"
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
       volumes:
         - name: config
           configMap:

@@ -1,0 +1,42 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: unfold-gateway-ingress
+  labels:
+    app.kubernetes.io/name: unfold-gateway
+spec:
+  description: The unfold-query port of the Unfold gateway leads into Unfold's read-only query endpoint over the tailnet, so only the homelab Grafana and the blackbox exporter may open it. vmagent scrapes vmauth and tailscale metrics, and tailscale keeps its UDP paths to the Unfold peers.
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: unfold-gateway
+  ingress:
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app: grafana
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: prometheus-blackbox-exporter
+      toPorts:
+        - ports:
+            - port: "8481"
+              protocol: TCP
+    - fromEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: observability
+            app.kubernetes.io/name: vmagent
+      toPorts:
+        - ports:
+            - port: "8427"
+              protocol: TCP
+            - port: "9002"
+              protocol: TCP
+    - fromEntities:
+        - world
+        - remote-node
+        - host
+      toPorts:
+        - ports:
+            - port: "0"
+              protocol: UDP
