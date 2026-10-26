@@ -1,0 +1,75 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: renovate-cancelled-ci-retry
+  namespace: forgejo
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: renovate-cancelled-ci-retry
+  namespace: forgejo
+spec:
+  schedule: "21 * * * *"
+  startingDeadlineSeconds: 3600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 300
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: renovate-cancelled-ci-retry
+        spec:
+          serviceAccountName: renovate-cancelled-ci-retry
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: retry
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4
+              imagePullPolicy: IfNotPresent
+              command:
+                - "/bin/sh"
+                - "/scripts/renovate-cancelled-ci-retry.sh"
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: CURL_TIMEOUT, value: "30"}
+                - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+                - {name: ORG, value: webgrip}
+                - {name: RENOVATE_USER, value: renovate}
+                - {name: REBASE_LABEL, value: rebase}
+                - {name: MIN_AGE_MINUTES, value: "60"}
+                - {name: MAX_RETRIES, value: "5"}
+                - name: ADMIN_USERNAME
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
+                - name: ADMIN_PASSWORD
+                  valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {memory: 128Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: script, mountPath: /scripts, readOnly: true}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: script
+              configMap:
+                name: renovate-cancelled-ci-retry-script
