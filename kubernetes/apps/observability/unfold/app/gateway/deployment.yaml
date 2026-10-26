@@ -78,7 +78,7 @@ spec:
             - name: TS_HOSTNAME
               value: homelab-gateway
             - name: TS_EXTRA_ARGS
-              value: --login-server=https://headscale.${SECRET_DOMAIN} --accept-dns=false
+              value: --login-server=https://headscale.${SECRET_DOMAIN} --accept-dns=false --accept-routes
             - name: TS_SERVE_CONFIG
               value: /config/serve.json
             - name: TS_ENABLE_METRICS
@@ -122,15 +122,27 @@ spec:
             - name: tmp
               mountPath: /tmp
         - name: unfold-query
-          image: harbor.webgrip.dev/dockerhub/alpine/socat:1.8.1.3@sha256:603174b77eebaba25ba8f8ebb15e1234d6600409554e95d6fb203fd106150287
+          image: harbor.webgrip.dev/dockerhub/victoriametrics/vmauth:v1.147.0@sha256:93ff53c9ce2b1a9e54064b5158657de141588337e95a6bce7928dd205c73ce8d
           args:
-            - TCP-LISTEN:8481,fork,reuseaddr
-            - PROXY:127.0.0.1:unfold-observability.tailnet.unfold.internal:8427,proxyport=1055
+            - -httpListenAddr=:8481
+            - -auth.config=/config/unfold-query.yaml
+            - -loggerFormat=json
+          env:
+            - name: HTTPS_PROXY
+              value: http://127.0.0.1:1055
+            - name: NO_PROXY
+              value: localhost,127.0.0.1,.svc,.svc.cluster.local
+            - name: UNFOLD_QUERY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: unfold-query-token
+                  key: token
           ports:
             - name: query
               containerPort: 8481
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health
               port: query
             periodSeconds: 15
           securityContext:
@@ -141,10 +153,14 @@ spec:
                 - "ALL"
           resources:
             requests:
-              cpu: 5m
-              memory: 16Mi
+              cpu: 10m
+              memory: 32Mi
             limits:
-              memory: 64Mi
+              memory: 128Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
       volumes:
         - name: config
           configMap:
