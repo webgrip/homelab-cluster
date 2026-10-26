@@ -11,8 +11,8 @@ metadata:
 spec:
   instances: 2
   # Burstable, not BestEffort (Talos PSI OOM controller kills BestEffort
-  # first). Smaller than vikunja-db: ploeg's tables are work items, leases,
-  # and audit rows — no user content.
+  # first). The tables hold user content: run transcripts, uploaded context
+  # files, notes, asks and chats.
   resources:
     requests:
       cpu: 100m
@@ -35,7 +35,7 @@ spec:
       reloader.stakater.com/auto: "true"
   storage:
     resizeInUseVolumes: true
-    size: 2Gi
+    size: 10Gi
     storageClass: longhorn
   walStorage:
     # 5Gi, not 2Gi: this volume is the buffer that absorbs a stalled archive, and
@@ -53,6 +53,14 @@ spec:
     parameters:
       # Backup-tier policy (Tier 2): compress WAL full-page images.
       wal_compression: "zstd"
+      shared_buffers: "128MB"
+      effective_cache_size: "320MB"
+      work_mem: "4MB"
+      maintenance_work_mem: "64MB"
+    synchronous:
+      method: any
+      number: 1
+      dataDurability: preferred
   plugins:
     - name: barman-cloud.cloudnative-pg.io
       isWALArchiver: true
@@ -61,6 +69,19 @@ spec:
         serverName: ploeg-db
   managed:
     roles:
+      # The metadata-only read role Ploeg grants to: ploeg_grant_observer()
+      # (Ploeg migration 0072) gives it SELECT on the columns dashboards,
+      # exporters and autoscalers need, never run tokens or text people,
+      # agents or trackers wrote. Ploeg creates no roles, so it lives here.
+      # The three readers below keep pg_read_all_data beside it until
+      # ploegd runs ploeg_grant_observer() at boot; then that goes.
+      - name: ploeg_observer
+        ensure: present
+        login: false
+        superuser: false
+        createdb: false
+        createrole: false
+        bypassrls: false
       # Read-only identity for the KEDA postgresql scaler (backlog item 47:
       # the scaler gets its own role, never the app credential). Password
       # generated in-cluster (scaler-password.externalsecret.yaml).
@@ -73,14 +94,27 @@ spec:
         bypassrls: false
         inRoles:
           - pg_read_all_data
+          - ploeg_observer
         passwordSecret:
           name: ploeg-scaler
+      # Read-only identity for the ploeg_* postgres-exporter, apart from the
+      # KEDA one. Password generated in-cluster (exporter-password.externalsecret.yaml).
+      - name: ploeg_exporter
+        ensure: present
+        login: true
+        superuser: false
+        createdb: false
+        createrole: false
+        bypassrls: false
+        inRoles:
+          - pg_read_all_data
+          - ploeg_observer
+        passwordSecret:
+          name: ploeg-exporter
       # Read-only identity for Grafana's ploeg-db datasource (dark-factory
-      # dispatch-plane dashboard SQL: work_items / agent_runs / leases /
-      # checkpoints, incl. PR links). inRoles: [pg_read_all_data] grants SELECT
-      # on every table without per-table GRANT plumbing. Password generated
-      # in-cluster (grafana-ro.externalsecret.yaml) and pushed to OpenBao so the
-      # observability namespace reads the SAME value. Mirrors litellm's grafana_ro.
+      # dispatch-plane dashboard SQL over the columns ploeg_observer reads).
+      # Password generated in-cluster (grafana-ro.externalsecret.yaml) and
+      # pushed to OpenBao so the observability namespace reads the SAME value.
       - name: grafana_ro
         ensure: present
         login: true
@@ -90,6 +124,7 @@ spec:
         bypassrls: false
         inRoles:
           - pg_read_all_data
+          - ploeg_observer
         passwordSecret:
           name: ploeg-grafana-ro
   bootstrap:

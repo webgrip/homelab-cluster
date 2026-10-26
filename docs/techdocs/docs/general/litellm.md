@@ -52,8 +52,10 @@ A key with no explicit MCP grant sees an **empty tool list** (deny-by-default,
 `require_key_mcp_access_defined`). Grant on mint via
 `object_permission: {mcp_access_groups: ["observability"]}`.
 
-Interactive human use (Claude Code `.mcp.json`) deliberately stays **direct** to the LAN
-`mcp-*.<domain>` hostnames — the gateway's per-key scoping and spend attribution is for agents.
+Interactive human use (Claude Code `.mcp.json`) reaches `grafana`, `victorialogs` and
+`kubernetes` through the gateway too, at `/<server>/mcp` with the `claude-code` key: those three
+read every metric, log line and object, and their LAN routes answered anyone. Their Services and
+pods carry `mcp.webgrip.io/access: litellm-gateway-only` and admit only LiteLLM.
 The Omnigraph graphs are the exception: they have no LAN MCP endpoint of their own, so Claude
 Code and Open WebUI reach `memory` and `brain` through the gateway with the keys below
 ([runbooks/open-webui](../runbooks/open-webui.md#claude-code)).
@@ -106,7 +108,7 @@ does not know the key it deletes whatever still holds the alias before generatin
 | Key | Models | Budget | MCP groups | Consumer |
 |---|---|---|---|---|
 | `open-webui` | all | USD 20 / 30d, 60 rpm | `memory`, `brain` | Open WebUI |
-| `claude-code` | none (`no-default-models`) | USD 1 / 30d | `memory`, `brain`, `brain-dogfood`, `board`, `company` | Claude Code on Ryan's workstation |
+| `claude-code` | none (`no-default-models`) | USD 1 / 30d | `memory`, `brain`, `brain-dogfood`, `board`, `company`, `observability` | Claude Code on Ryan's workstation |
 | `omnigraph-distill` | `fireworks-gpt-oss-120b`, `deepseek-chat`, `granite-embedding-97m-multilingual-r2` | USD 5 / 30d, 600 rpm | none | The [Omnigraph distiller](../runbooks/omnigraph.md#distiller) |
 | `brain-tools` | `granite-embedding-97m-multilingual-r2` | USD 1 / 30d, 600 rpm | none | [brain-tools](../runbooks/omnigraph.md#brain-tools), one embedding per search question |
 | `omnigraph-eval` | `chat-default`, `fireworks-gpt-oss-120b`, `fireworks-deepseek-v4p1-flash`, `deepseek-chat`, `granite-embedding-97m-multilingual-r2` | USD 10 / 30d, 120 rpm | `brain-eval-raw` | The [brain eval harness](../runbooks/omnigraph.md#brain-eval) |

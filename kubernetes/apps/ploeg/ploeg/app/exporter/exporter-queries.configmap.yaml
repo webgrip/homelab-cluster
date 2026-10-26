@@ -11,10 +11,10 @@ data:
   # Metric names are prefixed by the query key, e.g. `ploeg_work_items_count`.
   #
   # CORRELATION KEY (load-bearing): the LiteLLM per-run key_alias is
-  #   'ploeg-' || left(agent_runs.run_token, 12)
-  # (run_token 06778c63…  -> key_alias ploeg-06778c636fef). So `ploeg_run_*`
-  # series carry `key_alias` and join 1:1 to `litellm_run_spend{key_alias}` in
-  # PromQL — cost + duration + outcome for a single agent run in one query.
+  # agent_runs.trace_alias. So `ploeg_run_*` series carry `key_alias` and join
+  # 1:1 to `litellm_run_spend{key_alias}` in PromQL — cost + duration + outcome
+  # for a single agent run in one query. Every query reads only the columns
+  # Ploeg's ploeg_grant_observer() grants to ploeg_observer.
   queries.yaml: |-
     # State machine + queue depth + backlog age. state ∈ {queued, done, ...};
     # queued-count = backlog, MIN(created_at) of queued = oldest-waiting item.
@@ -75,27 +75,28 @@ data:
         - team: {usage: "LABEL", description: "Team"}
         - outcome: {usage: "LABEL", description: "Run outcome (pr_opened/failed/running/…)"}
         - count: {usage: "GAUGE", description: "Runs with this outcome, 30d"}
-    # Stuck runs by reason (empty at rest). Distinct from failed: a stuck run
-    # tripped a guard (e.g. budget, timeout) and recorded why.
+    # Stuck runs by failure_reason class (empty at rest). Distinct from failed:
+    # the agent declared itself stuck.
     ploeg_stuck:
       query: |
         SELECT COALESCE(NULLIF(team,''),'none') AS team,
-               stuck_reason,
+               COALESCE(NULLIF(failure_reason,''),'unclassified') AS failure_reason,
                COUNT(*) AS count
         FROM agent_runs
-        WHERE stuck_reason <> '' AND started_at >= now() - interval '30 days'
+        WHERE outcome = 'stuck' AND started_at >= now() - interval '30 days'
         GROUP BY 1, 2
       metrics:
         - team: {usage: "LABEL", description: "Team"}
-        - stuck_reason: {usage: "LABEL", description: "Why the run got stuck"}
-        - count: {usage: "GAUGE", description: "Stuck runs with this reason, 30d"}
+        - failure_reason: {usage: "LABEL", description: "agent_runs.failure_reason class of the stuck run"}
+        - count: {usage: "GAUGE", description: "Stuck runs with this failure reason, 30d"}
     # Per-run wall-clock keyed by the litellm-joinable alias, carrying the source
     # ticket so PromQL can attribute LLM spend to a ticket without a cross-datasource
     # SQL join:  litellm_run_spend * on(key_alias) group_left(ticket) ploeg_run_*.
-    # duration uses now() for still-running rows. 30d cap bounds cardinality.
+    # duration uses now() for still-running rows. A 7d window plus unfinished
+    # runs bounds cardinality.
     ploeg_run:
       query: |
-        SELECT 'ploeg-' || left(r.run_token, 12) AS key_alias,
+        SELECT r.trace_alias AS key_alias,
                COALESCE(NULLIF(r.team,''),'none') AS team,
                CASE WHEN r.finished_at IS NULL THEN 'running'
                     ELSE COALESCE(NULLIF(r.outcome,''),'unknown') END AS outcome,
@@ -105,9 +106,10 @@ data:
                EXTRACT(EPOCH FROM r.started_at) AS started_epoch
         FROM agent_runs r
         JOIN work_items w ON w.id = r.work_item_id
-        WHERE r.started_at >= now() - interval '30 days'
+        WHERE r.started_at >= now() - interval '7 days'
+           OR (r.started_at IS NOT NULL AND r.finished_at IS NULL)
       metrics:
-        - key_alias: {usage: "LABEL", description: "ploeg-<run_token[:12]> — joins to litellm_run_spend{key_alias}"}
+        - key_alias: {usage: "LABEL", description: "agent_runs.trace_alias — joins to litellm_run_spend{key_alias}"}
         - team: {usage: "LABEL", description: "Team"}
         - outcome: {usage: "LABEL", description: "Run outcome (pr_opened/failed/running)"}
         - provider: {usage: "LABEL", description: "Tracker that sourced the work item (e.g. vikunja)"}

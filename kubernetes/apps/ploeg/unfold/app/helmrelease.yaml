@@ -71,6 +71,12 @@ spec:
               name: unfold-operator
               key: PLOEG_OPERATOR_UNFOLD_TOKEN
           - name: mcp-reader
+            teams:
+              - unfold
+              - bronze
+              - silver
+              - copper
+              - pewter
             execute: false
             tokenSecret:
               name: ploeg-mcp-reader
@@ -380,7 +386,10 @@ spec:
                 - |
                   set -eu
                   spec="$$1"
-                  grep -q '"title": "\[canary\]' "$$spec" || exec cat "$$spec"
+                  if ! grep -q '"title": "\[canary\]' "$$spec"; then
+                    printf '{"outcome":"stuck","summary":"copper only runs canary items","stuckReason":"copper only runs canary items"}\n' > "$$(dirname "$$spec")/outcome.json"
+                    exit 0
+                  fi
                   briefed=0
                   if [ -n "$${PLOEG_KNOWLEDGE_DIR:-}" ]; then
                     briefed=$$(grep -rl ploeg-canary-note "$$PLOEG_KNOWLEDGE_DIR" | wc -l)
@@ -481,6 +490,15 @@ spec:
       digest: sha256:139d0a0fb8bf1bb1b2753416ef8d9a8d9fe6383e3f33b46f29beb9ae722c7796
     imagePullSecrets:
       - name: harbor-pull
+    tolerations:
+      - key: node.kubernetes.io/unreachable
+        operator: Exists
+        effect: NoExecute
+        tolerationSeconds: 45
+      - key: node.kubernetes.io/not-ready
+        operator: Exists
+        effect: NoExecute
+        tolerationSeconds: 45
     credentialsSecret: unfold-operator
     # Unfold ADR 0042: server errors and failed Asks go to Alloy as OTLP log
     # records (exception.* attributes, event.name=unfold.error), and from there

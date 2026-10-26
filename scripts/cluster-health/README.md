@@ -1,6 +1,6 @@
 # Nightly cluster-health digest (local)
 
-The cluster MCP (`k8s-mcp.webgrip.dev`, `mcp-grafana.webgrip.dev`) is **LAN-only**, so this
+The cluster MCP (`kubernetes`, `grafana` through LiteLLM, with `LITELLM_MCP_KEY` in the environment) is **LAN-only**, so this
 can't run as a remote Claude routine. It runs **locally** via a systemd *user* timer that
 invokes a headless `claude -p` read-only audit and posts the result to Discord. It only
 fires when this machine is on and on the LAN (`Persistent=true` catches up a missed run).

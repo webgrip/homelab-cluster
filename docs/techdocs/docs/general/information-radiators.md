@@ -131,7 +131,10 @@ out of the generated CR) over frames recorded from a Forgejo 15 and Vikunja 2.6 
 Lint job runs it.
 
 The Ploeg and LiteLLM numbers come from the `ploeg-db` and `litellm-db` datasources (read-only
-roles that already existed). The Forgejo numbers come from the `forgejo-db` Grafana datasource,
+roles that already existed). On `ploeg-db`, `grafana_ro` and the `ploeg_*` exporter read through
+`ploeg_observer`, the role Ploeg's `ploeg_grant_observer()` grants metadata columns to: never run
+tokens, transcripts, uploaded context, Run summaries or `audit_log.detail`. A panel query that
+needs another column fails with `permission denied` once the readers lose `pg_read_all_data`. The Forgejo numbers come from the `forgejo-db` Grafana datasource,
 logged in as `grafana_ro`.
 That role is **not** `pg_read_all_data`: the Forgejo database holds password hashes and runner
 tokens, so an hourly CronJob in the `forgejo` namespace grants SELECT on exactly the columns the

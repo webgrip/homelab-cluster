@@ -8,7 +8,6 @@ KATA_UID = "glide-kata"
 FOLDER = "boards"
 TAGS = ["board", "glide", "ploeg"]
 PLOEG_DB = {"type": "grafana-postgresql-datasource", "uid": "ploeg-db"}
-MIXED = {"type": "datasource", "uid": "-- Mixed --"}
 
 KSM = 'job="kube-state-metrics", exported_namespace="ploeg"'
 CADVISOR = 'job="cadvisor", namespace="ploeg"'
@@ -26,15 +25,16 @@ WORK_ITEM = ("CASE WHEN w.provider = 'vikunja' THEN 'vikunja #' || w.external_id
 WORK_ITEM_URL = ("CASE WHEN w.provider = 'vikunja' THEN 'https://vikunja.webgrip.dev/tasks/' || w.external_id "
                  "ELSE coalesce(nullif(w.url, ''), 'https://unfold.webgrip.dev') END")
 QUEUED_AT = ("LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l "
-             "WHERE l.action IN ('round.opened', 'round.reopened') AND l.detail->>'shift' = r.shift_id::text "
-             "AND l.detail->>'round' = r.round::text AND l.at <= coalesce(r.started_at, now())) q ON true")
-RUN_POD_ROW = ("LEFT JOIN LATERAL (SELECT c.node_name, c.pod_uid FROM checkpoints c "
-               "WHERE c.work_item_id = r.work_item_id AND c.pod_uid <> '' AND c.created_at >= r.started_at "
-               "AND c.created_at <= coalesce(r.finished_at, now()) ORDER BY c.created_at DESC LIMIT 1) cp ON true")
+             "WHERE l.work_item_id = r.work_item_id AND l.action IN ('round.opened', 'round.reopened') "
+             "AND l.at <= coalesce(r.started_at, now())) q ON true")
 RUN_COST = ("COALESCE(a.reconciled_spend, a.observed_spend, CASE WHEN jsonb_typeof(r.usage->'costUsd') = 'number' "
             "THEN (r.usage->>'costUsd')::numeric END)")
-IDLE_KILL = "r.failure_reason = 'timeout' AND r.summary ILIKE '%idle timeout%'"
-HARNESS = "coalesce(substring(r.summary from '^([a-z0-9_-]+) run '), '')"
+PROMPT_ENDED_BEFORE_HARD_LIMIT = ("(r.limit_prompt_seconds IS NULL OR r.finished_at - r.prompt_started_at "
+                                  "< make_interval(secs => r.limit_prompt_seconds))")
+IDLE_KILL = f"r.failure_reason = 'timeout' AND r.limit_idle_seconds IS NOT NULL AND {PROMPT_ENDED_BEFORE_HARD_LIMIT}"
+HARD_LIMIT_KILL = ("r.failure_reason = 'timeout' AND r.limit_prompt_seconds IS NOT NULL "
+                   "AND r.finished_at - r.prompt_started_at >= make_interval(secs => r.limit_prompt_seconds)")
+HARNESS = "coalesce(r.harness, '')"
 
 TEAM_VARIABLE = {
     "name": "team", "label": "Team", "type": "query", "datasource": PLOEG_DB,
@@ -107,22 +107,6 @@ def sql_stat_rows(panel):
     return panel
 
 
-def mixed_table(title, targets, *, join_on, keep_if, rename, order, overrides, sort_field, desc, no_value):
-    panel = table(title, targets, rename=rename, order=order, overrides=overrides, desc=desc, no_value=no_value,
-                  cell_height="md", merge=False)
-    organize = panel["transformations"][0]
-    panel["datasource"] = MIXED
-    panel["transformations"] = [
-        {"id": "filterFieldsByName", "options": {"exclude": {"pattern": "^Time$"}}},
-        {"id": "joinByField", "options": {"byField": join_on, "mode": "outer"}},
-        {"id": "filterByValue", "options": {"type": "exclude", "match": "any", "filters": [
-            {"fieldName": keep_if, "config": {"id": "isNull", "options": {}}}]}},
-        organize,
-        {"id": "sortBy", "options": {"sort": [{"field": sort_field, "desc": True}]}},
-    ]
-    return panel
-
-
 def work_item_link():
     return col("Work Item", width=120, links=[{"title": "Open the ticket", "url": "${__data.fields.work_item_url}",
                                                "targetBlank": True}])
@@ -166,12 +150,14 @@ def idle_timeout_kills():
         thresholds=alarm_at(amber=1, vermillion=3),
         targets=[sql(PLOEG_DB, f"""
             SELECT count(*) FILTER (WHERE {IDLE_KILL}) AS "no output for too long",
-                   count(*) FILTER (WHERE r.failure_reason = 'timeout' AND NOT ({IDLE_KILL})) AS "hit the hard limit"
+                   count(*) FILTER (WHERE {HARD_LIMIT_KILL}) AS "hit the hard limit"
             FROM agent_runs r WHERE r.finished_at > now() - interval '24 hours' AND r.team IN ($team)""")],
         desc="Runs the worker stopped in the last 24 hours because the agent went quiet. No output for too long is "
              "PLOEG_HARNESS_IDLE_TIMEOUT (45 minutes on the builders): the harness printed nothing, so the worker "
              "killed it. Hit the hard limit is PLOEG_HARNESS_TIMEOUT, the total time cap. Both are failure_reason "
-             "timeout; the split reads the Run's summary text. Every kill still spent money on the model.")
+             "timeout; the split compares how long the prompt ran with the limits the worker recorded when it "
+             "started, so a timeout from a Run that recorded no limits counts in neither. Every kill still spent "
+             "money on the model.")
 
 
 def failures_by_reason():
@@ -198,9 +184,8 @@ def runs_in_flight():
                    extract(epoch FROM now() - q.at) AS "Queued for",
                    extract(epoch FROM coalesce(r.started_at, now()) - q.at) AS "Waited for a worker",
                    extract(epoch FROM now() - r.started_at) AS "Running for",
-                   coalesce(cp.node_name, '') AS "Node", r.authorized AS "Authorized",
-                   'ploeg-' || left(r.run_token, 12) AS "Key"
-            FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id {QUEUED_AT} {RUN_POD_ROW}
+                   r.authorized AS "Authorized", r.trace_alias AS "Key"
+            FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id {QUEUED_AT}
             WHERE r.state IN ('pending', 'running') AND r.team IN ($team)
             ORDER BY r.state DESC, q.at""")],
         overrides=[work_item_link(), col("work_item_url", hidden=True),
@@ -215,9 +200,8 @@ def runs_in_flight():
         no_value="No Run is running or waiting.", cell_height="md",
         desc="Every Run Ploeg has queued or started and not finished. Waited for a worker is from the Round opening "
              "to a worker claiming the Run: it covers the KEDA poll, pod scheduling, the pod booting and the worker "
-             "starting. Node comes from the checkpoint the worker writes once it has cloned the repository, so a Run "
-             "still starting shows none yet. Authorized is the most this Run may spend; the live spend per key is in the "
-             "table beside Worker pods now, matched by Key. Harness is not stored per Run in Ploeg.")
+             "starting. Authorized is the most this Run may spend; the live spend per key is in the table beside "
+             "Worker pods now, matched by Key. The node a Run is on is in Worker pods now.")
 
 
 def worker_pods_now():
@@ -283,58 +267,34 @@ def spend_so_far():
 
 
 def recent_runs():
-    runtime = (f'max by (uid, runtime) (label_replace({ksm_last("kube_pod_runtimeclass_name_info", SANDBOX_POD)}, '
-               f'"runtime", "kata", "", "")) or on (uid) max by (uid, runtime) (label_replace('
-               f'{ksm_last("kube_pod_container_info", RUNC_POD)}, "runtime", "runc", "", ""))')
-    scheduling = (f'max by (uid) ({ksm_last("kube_pod_status_scheduled_time")} - '
-                  f'{ksm_last("kube_pod_created")})')
-    booting = (f'max by (uid) ({ksm_last("kube_pod_status_ready_time")} - '
-               f'{ksm_last("kube_pod_status_scheduled_time")})')
-    return mixed_table(
+    return table(
         "Recent Runs",
         [sql(PLOEG_DB, f"""
             SELECT r.finished_at AS "Finished", r.id AS "Run", r.team AS "Team",
                    coalesce(nullif(r.role, ''), 'pre-Shift') AS "Role", r.round AS "Round",
                    {WORK_ITEM} AS "Work Item", {WORK_ITEM_URL} AS work_item_url, {HARNESS} AS "Harness",
                    coalesce(r.outcome, '') AS "Outcome", coalesce(r.failure_reason, '') AS "Failure reason",
-                   coalesce(cp.node_name, '') AS "Node", coalesce(cp.pod_uid, 'run-' || r.id) AS uid,
                    extract(epoch FROM r.started_at - q.at) AS "Queued → claimed",
                    extract(epoch FROM r.finished_at - r.started_at) AS "Ran for",
-                   {RUN_COST} AS "Spent", r.authorized AS "Authorized", left(r.summary, 140) AS "Summary"
+                   {RUN_COST} AS "Spent", r.authorized AS "Authorized"
             FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id
-            LEFT JOIN run_llm_accounts a ON a.run_token = r.run_token {QUEUED_AT} {RUN_POD_ROW}
+            LEFT JOIN run_llm_accounts a ON a.alias = r.trace_alias {QUEUED_AT}
             WHERE r.state = 'finished' AND r.team IN ($team) AND $__timeFilter(r.finished_at)
-            ORDER BY r.finished_at DESC LIMIT 100""", ref="A"),
-         target(runtime, "B", instant=True, fmt="table"),
-         target(scheduling, "C", instant=True, fmt="table"),
-         target(booting, "D", instant=True, fmt="table")],
-        join_on="uid", keep_if="Run",
-        rename={"runtime": "Runtime", "Value #C": "Pod scheduling", "Value #D": "Pod boot"},
-        order=["Finished", "Run", "Team", "Role", "Round", "Work Item", "Harness", "Runtime", "Node", "Outcome",
-               "Failure reason", "Queued → claimed", "Pod scheduling", "Pod boot", "Ran for", "Spent", "Authorized",
-               "Summary"],
+            ORDER BY r.finished_at DESC LIMIT 100""")],
         sort_field="Finished",
-        overrides=[work_item_link(), col("work_item_url", hidden=True), col("uid", hidden=True),
-                   col("Value #B", hidden=True), outcome_column(),
+        overrides=[work_item_link(), col("work_item_url", hidden=True), outcome_column(),
                    col("Finished", unit="dateTimeAsLocal", width=160),
                    col("Failure reason", width=120),
-                   col("Runtime", width=80, colour_text=True, mappings=RUNTIME_MAPPING),
                    col("Queued → claimed", unit="s", decimals=0, width=130),
-                   col("Pod scheduling", unit="s", decimals=0, width=115),
-                   col("Pod boot", unit="s", decimals=0, width=85),
                    col("Ran for", unit="s", decimals=0, width=85),
                    col("Spent", unit="currencyUSD", decimals=2, width=75),
                    col("Authorized", unit="currencyUSD", decimals=2, width=95),
                    col("Run", width=60), col("Round", width=65), col("Team", width=75), col("Harness", width=90)],
-        no_value="No Run finished in this range.",
-        desc="The last 100 Runs that finished in the selected range, newest first. The timeline reads left to "
-             "right: Queued → claimed is from the Round opening to a worker claiming the Run; inside that, Pod "
-             "scheduling is how long Kubernetes looked for a node and Pod boot is from placement to the pod being "
-             "ready (image pull, and for Kata the virtual machine start). Ran for is claim to finish. Runtime, "
-             "Node and the two pod columns come from the pod the worker recorded in its checkpoint; a Run that died "
-             "before its first checkpoint (about 1 in 15) shows blanks there. Harness is read from the start of the Run's summary (\"openhands "
-             "run ...\") because Ploeg does not store it; a blank means the summary did not say. Spent is the "
-             "settled model cost; Authorized is the Run's ceiling.")
+        no_value="No Run finished in this range.", cell_height="md",
+        desc="The last 100 Runs that finished in the selected range, newest first. Queued → claimed is from the "
+             "Round opening to a worker claiming the Run; Ran for is claim to finish. Harness is the harness the Run "
+             "was configured with. Spent is the settled model cost; Authorized is the Run's ceiling. Pod scheduling, "
+             "boot and runtime per pod are on Unfold · Kata overhead.")
 
 
 def outcomes_per_team():
@@ -370,7 +330,7 @@ def failures_per_team():
                    coalesce(nullif(r.failure_reason, ''), 'unclassified') AS "Reason",
                    count(*) AS "Runs", count(*) FILTER (WHERE {IDLE_KILL}) AS "Idle kills",
                    sum({RUN_COST}) AS "Spent"
-            FROM agent_runs r LEFT JOIN run_llm_accounts a ON a.run_token = r.run_token
+            FROM agent_runs r LEFT JOIN run_llm_accounts a ON a.alias = r.trace_alias
             WHERE r.outcome = 'failed' AND r.team IN ($team) AND $__timeFilter(r.finished_at)
             GROUP BY 1, 2, 3 ORDER BY 4 DESC""")],
         overrides=[col("Spent", unit="currencyUSD", decimals=2), col("Reason", width=130)],

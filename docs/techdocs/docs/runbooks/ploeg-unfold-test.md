@@ -28,7 +28,7 @@ The connection to Vikunja currently uses the existing shared service account on 
 `just ploeg-notes-canary` proves, at no model cost, that what a Run learns reaches the next Run:
 
 1. It admits a Work Item titled `[canary] notes loop <time>` to team `copper` through Unfold's operator consumer, against the `erfbeeld` target.
-2. Copper's `exec` harness sees the `[canary]` title, appends one note to `PLOEG_NOTES_FILE`, waits 15 seconds and reports `stuck`. Ploeg sends the note while the Run is still working, and the worker adds its stop note. Any other title gets copper's old behavior: it prints the task and changes nothing.
+2. Copper's `exec` harness sees the `[canary]` title, appends one note to `PLOEG_NOTES_FILE`, waits 15 seconds and reports `stuck`. Ploeg sends the note while the Run is still working, and the worker adds its stop note. Any other title ends `stuck` with "copper only runs canary items" and prints nothing.
 3. The script checks that both notes left the outbox with an Omnigraph commit in `webgrip-notes`.
 4. It requeues the Work Item. The second Run counts the canary notes in its briefing and must count at least one.
 5. It withdraws the Work Item (a cancel only withdraws an open Shift, so it reopens the item first) and prints `PASS` or `FAIL` for each check. Each copper Run reserves US$1 of the item's allotment; the exec harness calls no model, so nothing is spent.

@@ -264,7 +264,7 @@ spec:
         {
           "type": "stat",
           "title": "Idle-timeout kills · 24 h",
-          "description": "Runs the worker stopped in the last 24 hours because the agent went quiet. No output for too long is PLOEG_HARNESS_IDLE_TIMEOUT (45 minutes on the builders): the harness printed nothing, so the worker killed it. Hit the hard limit is PLOEG_HARNESS_TIMEOUT, the total time cap. Both are failure_reason timeout; the split reads the Run's summary text. Every kill still spent money on the model.",
+          "description": "Runs the worker stopped in the last 24 hours because the agent went quiet. No output for too long is PLOEG_HARNESS_IDLE_TIMEOUT (45 minutes on the builders): the harness printed nothing, so the worker killed it. Hit the hard limit is PLOEG_HARNESS_TIMEOUT, the total time cap. Both are failure_reason timeout; the split compares how long the prompt ran with the limits the worker recorded when it started, so a timeout from a Run that recorded no limits counts in neither. Every kill still spent money on the model.",
           "gridPos": {
             "h": 5,
             "w": 6,
@@ -327,7 +327,7 @@ spec:
               "editorMode": "code",
               "format": "table",
               "rawQuery": true,
-              "rawSql": "SELECT count(*) FILTER (WHERE r.failure_reason = 'timeout' AND r.summary ILIKE '%idle timeout%') AS \"no output for too long\", count(*) FILTER (WHERE r.failure_reason = 'timeout' AND NOT (r.failure_reason = 'timeout' AND r.summary ILIKE '%idle timeout%')) AS \"hit the hard limit\" FROM agent_runs r WHERE r.finished_at > now() - interval '24 hours' AND r.team IN ($$team)"
+              "rawSql": "SELECT count(*) FILTER (WHERE r.failure_reason = 'timeout' AND r.limit_idle_seconds IS NOT NULL AND (r.limit_prompt_seconds IS NULL OR r.finished_at - r.prompt_started_at < make_interval(secs => r.limit_prompt_seconds))) AS \"no output for too long\", count(*) FILTER (WHERE r.failure_reason = 'timeout' AND r.limit_prompt_seconds IS NOT NULL AND r.finished_at - r.prompt_started_at >= make_interval(secs => r.limit_prompt_seconds)) AS \"hit the hard limit\" FROM agent_runs r WHERE r.finished_at > now() - interval '24 hours' AND r.team IN ($$team)"
             }
           ],
           "id": 3
@@ -390,7 +390,7 @@ spec:
         {
           "type": "table",
           "title": "Runs in flight",
-          "description": "Every Run Ploeg has queued or started and not finished. Waited for a worker is from the Round opening to a worker claiming the Run: it covers the KEDA poll, pod scheduling, the pod booting and the worker starting. Node comes from the checkpoint the worker writes once it has cloned the repository, so a Run still starting shows none yet. Authorized is the most this Run may spend; the live spend per key is in the table beside Worker pods now, matched by Key. Harness is not stored per Run in Ploeg.",
+          "description": "Every Run Ploeg has queued or started and not finished. Waited for a worker is from the Round opening to a worker claiming the Run: it covers the KEDA poll, pod scheduling, the pod booting and the worker starting. Authorized is the most this Run may spend; the live spend per key is in the table beside Worker pods now, matched by Key. The node a Run is on is in Worker pods now.",
           "gridPos": {
             "h": 7,
             "w": 24,
@@ -666,7 +666,7 @@ spec:
               "editorMode": "code",
               "format": "table",
               "rawQuery": true,
-              "rawSql": "SELECT r.id AS \"Run\", r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", r.round AS \"Round\", CASE WHEN w.provider = 'vikunja' THEN 'vikunja #' || w.external_id WHEN w.provider = 'manual' THEN 'unfold ' || left(split_part(w.external_id, ':', 2), 8) ELSE w.provider || ' ' || w.external_id END AS \"Work Item\", CASE WHEN w.provider = 'vikunja' THEN 'https://vikunja.webgrip.dev/tasks/' || w.external_id ELSE coalesce(nullif(w.url, ''), 'https://unfold.webgrip.dev') END AS work_item_url, left(w.title, 60) AS \"Title\", r.state AS \"State\", extract(epoch FROM now() - q.at) AS \"Queued for\", extract(epoch FROM coalesce(r.started_at, now()) - q.at) AS \"Waited for a worker\", extract(epoch FROM now() - r.started_at) AS \"Running for\", coalesce(cp.node_name, '') AS \"Node\", r.authorized AS \"Authorized\", 'ploeg-' || left(r.run_token, 12) AS \"Key\" FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l WHERE l.action IN ('round.opened', 'round.reopened') AND l.detail->>'shift' = r.shift_id::text AND l.detail->>'round' = r.round::text AND l.at <= coalesce(r.started_at, now())) q ON true LEFT JOIN LATERAL (SELECT c.node_name, c.pod_uid FROM checkpoints c WHERE c.work_item_id = r.work_item_id AND c.pod_uid <> '' AND c.created_at >= r.started_at AND c.created_at <= coalesce(r.finished_at, now()) ORDER BY c.created_at DESC LIMIT 1) cp ON true WHERE r.state IN ('pending', 'running') AND r.team IN ($$team) ORDER BY r.state DESC, q.at"
+              "rawSql": "SELECT r.id AS \"Run\", r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", r.round AS \"Round\", CASE WHEN w.provider = 'vikunja' THEN 'vikunja #' || w.external_id WHEN w.provider = 'manual' THEN 'unfold ' || left(split_part(w.external_id, ':', 2), 8) ELSE w.provider || ' ' || w.external_id END AS \"Work Item\", CASE WHEN w.provider = 'vikunja' THEN 'https://vikunja.webgrip.dev/tasks/' || w.external_id ELSE coalesce(nullif(w.url, ''), 'https://unfold.webgrip.dev') END AS work_item_url, left(w.title, 60) AS \"Title\", r.state AS \"State\", extract(epoch FROM now() - q.at) AS \"Queued for\", extract(epoch FROM coalesce(r.started_at, now()) - q.at) AS \"Waited for a worker\", extract(epoch FROM now() - r.started_at) AS \"Running for\", r.authorized AS \"Authorized\", r.trace_alias AS \"Key\" FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l WHERE l.work_item_id = r.work_item_id AND l.action IN ('round.opened', 'round.reopened') AND l.at <= coalesce(r.started_at, now())) q ON true WHERE r.state IN ('pending', 'running') AND r.team IN ($$team) ORDER BY r.state DESC, q.at"
             }
           ],
           "id": 5
@@ -1226,7 +1226,7 @@ spec:
         {
           "type": "table",
           "title": "Recent Runs",
-          "description": "The last 100 Runs that finished in the selected range, newest first. The timeline reads left to right: Queued → claimed is from the Round opening to a worker claiming the Run; inside that, Pod scheduling is how long Kubernetes looked for a node and Pod boot is from placement to the pod being ready (image pull, and for Kata the virtual machine start). Ran for is claim to finish. Runtime, Node and the two pod columns come from the pod the worker recorded in its checkpoint; a Run that died before its first checkpoint (about 1 in 15) shows blanks there. Harness is read from the start of the Run's summary (\"openhands run ...\") because Ploeg does not store it; a blank means the summary did not say. Spent is the settled model cost; Authorized is the Run's ceiling.",
+          "description": "The last 100 Runs that finished in the selected range, newest first. Queued → claimed is from the Round opening to a worker claiming the Run; Ran for is claim to finish. Harness is the harness the Run was configured with. Spent is the settled model cost; Authorized is the Run's ceiling. Pod scheduling, boot and runtime per pod are on Unfold · Kata overhead.",
           "gridPos": {
             "h": 12,
             "w": 24,
@@ -1234,8 +1234,8 @@ spec:
             "y": 19
           },
           "datasource": {
-            "type": "datasource",
-            "uid": "-- Mixed --"
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
           },
           "options": {
             "showHeader": true,
@@ -1286,30 +1286,6 @@ spec:
                 "matcher": {
                   "id": "byName",
                   "options": "work_item_url"
-                },
-                "properties": [
-                  {
-                    "id": "custom.hidden",
-                    "value": true
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "uid"
-                },
-                "properties": [
-                  {
-                    "id": "custom.hidden",
-                    "value": true
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Value #B"
                 },
                 "properties": [
                   {
@@ -1393,42 +1369,6 @@ spec:
               {
                 "matcher": {
                   "id": "byName",
-                  "options": "Runtime"
-                },
-                "properties": [
-                  {
-                    "id": "custom.cellOptions",
-                    "value": {
-                      "type": "color-text"
-                    }
-                  },
-                  {
-                    "id": "mappings",
-                    "value": [
-                      {
-                        "type": "value",
-                        "options": {
-                          "kata": {
-                            "text": "kata",
-                            "color": "#56b4e9"
-                          },
-                          "runc": {
-                            "text": "runc",
-                            "color": "#898781"
-                          }
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "id": "custom.width",
-                    "value": 80
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
                   "options": "Queued → claimed"
                 },
                 "properties": [
@@ -1443,46 +1383,6 @@ spec:
                   {
                     "id": "custom.width",
                     "value": 130
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Pod scheduling"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "s"
-                  },
-                  {
-                    "id": "decimals",
-                    "value": 0
-                  },
-                  {
-                    "id": "custom.width",
-                    "value": 115
-                  }
-                ]
-              },
-              {
-                "matcher": {
-                  "id": "byName",
-                  "options": "Pod boot"
-                },
-                "properties": [
-                  {
-                    "id": "unit",
-                    "value": "s"
-                  },
-                  {
-                    "id": "decimals",
-                    "value": 0
-                  },
-                  {
-                    "id": "custom.width",
-                    "value": 85
                   }
                 ]
               },
@@ -1598,67 +1498,13 @@ spec:
           },
           "transformations": [
             {
-              "id": "filterFieldsByName",
-              "options": {
-                "exclude": {
-                  "pattern": "^Time$$"
-                }
-              }
-            },
-            {
-              "id": "joinByField",
-              "options": {
-                "byField": "uid",
-                "mode": "outer"
-              }
-            },
-            {
-              "id": "filterByValue",
-              "options": {
-                "type": "exclude",
-                "match": "any",
-                "filters": [
-                  {
-                    "fieldName": "Run",
-                    "config": {
-                      "id": "isNull",
-                      "options": {}
-                    }
-                  }
-                ]
-              }
-            },
-            {
               "id": "organize",
               "options": {
                 "excludeByName": {
                   "Time": true
                 },
-                "renameByName": {
-                  "runtime": "Runtime",
-                  "Value #C": "Pod scheduling",
-                  "Value #D": "Pod boot"
-                },
-                "indexByName": {
-                  "Finished": 0,
-                  "Run": 1,
-                  "Team": 2,
-                  "Role": 3,
-                  "Round": 4,
-                  "Work Item": 5,
-                  "Harness": 6,
-                  "Runtime": 7,
-                  "Node": 8,
-                  "Outcome": 9,
-                  "Failure reason": 10,
-                  "Queued → claimed": 11,
-                  "Pod scheduling": 12,
-                  "Pod boot": 13,
-                  "Ran for": 14,
-                  "Spent": 15,
-                  "Authorized": 16,
-                  "Summary": 17
-                }
+                "renameByName": {},
+                "indexByName": {}
               }
             },
             {
@@ -1683,40 +1529,7 @@ spec:
               "editorMode": "code",
               "format": "table",
               "rawQuery": true,
-              "rawSql": "SELECT r.finished_at AS \"Finished\", r.id AS \"Run\", r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", r.round AS \"Round\", CASE WHEN w.provider = 'vikunja' THEN 'vikunja #' || w.external_id WHEN w.provider = 'manual' THEN 'unfold ' || left(split_part(w.external_id, ':', 2), 8) ELSE w.provider || ' ' || w.external_id END AS \"Work Item\", CASE WHEN w.provider = 'vikunja' THEN 'https://vikunja.webgrip.dev/tasks/' || w.external_id ELSE coalesce(nullif(w.url, ''), 'https://unfold.webgrip.dev') END AS work_item_url, coalesce(substring(r.summary from '^([a-z0-9_-]+) run '), '') AS \"Harness\", coalesce(r.outcome, '') AS \"Outcome\", coalesce(r.failure_reason, '') AS \"Failure reason\", coalesce(cp.node_name, '') AS \"Node\", coalesce(cp.pod_uid, 'run-' || r.id) AS uid, extract(epoch FROM r.started_at - q.at) AS \"Queued → claimed\", extract(epoch FROM r.finished_at - r.started_at) AS \"Ran for\", COALESCE(a.reconciled_spend, a.observed_spend, CASE WHEN jsonb_typeof(r.usage->'costUsd') = 'number' THEN (r.usage->>'costUsd')::numeric END) AS \"Spent\", r.authorized AS \"Authorized\", left(r.summary, 140) AS \"Summary\" FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id LEFT JOIN run_llm_accounts a ON a.run_token = r.run_token LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l WHERE l.action IN ('round.opened', 'round.reopened') AND l.detail->>'shift' = r.shift_id::text AND l.detail->>'round' = r.round::text AND l.at <= coalesce(r.started_at, now())) q ON true LEFT JOIN LATERAL (SELECT c.node_name, c.pod_uid FROM checkpoints c WHERE c.work_item_id = r.work_item_id AND c.pod_uid <> '' AND c.created_at >= r.started_at AND c.created_at <= coalesce(r.finished_at, now()) ORDER BY c.created_at DESC LIMIT 1) cp ON true WHERE r.state = 'finished' AND r.team IN ($$team) AND $$__timeFilter(r.finished_at) ORDER BY r.finished_at DESC LIMIT 100"
-            },
-            {
-              "refId": "B",
-              "expr": "max by (uid, runtime) (label_replace(last_over_time(kube_pod_runtimeclass_name_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"sbx-ploeg-worker-($$team)-.+\"}[$$__range]), \"runtime\", \"kata\", \"\", \"\")) or on (uid) max by (uid, runtime) (label_replace(last_over_time(kube_pod_container_info{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"ploeg-worker-($$team)-.+\"}[$$__range]), \"runtime\", \"runc\", \"\", \"\"))",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "instant": true,
-              "range": false,
-              "format": "table"
-            },
-            {
-              "refId": "C",
-              "expr": "max by (uid) (last_over_time(kube_pod_status_scheduled_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) - last_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]))",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "instant": true,
-              "range": false,
-              "format": "table"
-            },
-            {
-              "refId": "D",
-              "expr": "max by (uid) (last_over_time(kube_pod_status_ready_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]) - last_over_time(kube_pod_status_scheduled_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"(sbx-)?ploeg-worker-($$team)-.+\"}[$$__range]))",
-              "datasource": {
-                "type": "prometheus",
-                "uid": "prometheus"
-              },
-              "instant": true,
-              "range": false,
-              "format": "table"
+              "rawSql": "SELECT r.finished_at AS \"Finished\", r.id AS \"Run\", r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", r.round AS \"Round\", CASE WHEN w.provider = 'vikunja' THEN 'vikunja #' || w.external_id WHEN w.provider = 'manual' THEN 'unfold ' || left(split_part(w.external_id, ':', 2), 8) ELSE w.provider || ' ' || w.external_id END AS \"Work Item\", CASE WHEN w.provider = 'vikunja' THEN 'https://vikunja.webgrip.dev/tasks/' || w.external_id ELSE coalesce(nullif(w.url, ''), 'https://unfold.webgrip.dev') END AS work_item_url, coalesce(r.harness, '') AS \"Harness\", coalesce(r.outcome, '') AS \"Outcome\", coalesce(r.failure_reason, '') AS \"Failure reason\", extract(epoch FROM r.started_at - q.at) AS \"Queued → claimed\", extract(epoch FROM r.finished_at - r.started_at) AS \"Ran for\", COALESCE(a.reconciled_spend, a.observed_spend, CASE WHEN jsonb_typeof(r.usage->'costUsd') = 'number' THEN (r.usage->>'costUsd')::numeric END) AS \"Spent\", r.authorized AS \"Authorized\" FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id LEFT JOIN run_llm_accounts a ON a.alias = r.trace_alias LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l WHERE l.work_item_id = r.work_item_id AND l.action IN ('round.opened', 'round.reopened') AND l.at <= coalesce(r.started_at, now())) q ON true WHERE r.state = 'finished' AND r.team IN ($$team) AND $$__timeFilter(r.finished_at) ORDER BY r.finished_at DESC LIMIT 100"
             }
           ],
           "id": 8
@@ -1996,7 +1809,7 @@ spec:
               "editorMode": "code",
               "format": "table",
               "rawQuery": true,
-              "rawSql": "SELECT r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", coalesce(nullif(r.failure_reason, ''), 'unclassified') AS \"Reason\", count(*) AS \"Runs\", count(*) FILTER (WHERE r.failure_reason = 'timeout' AND r.summary ILIKE '%idle timeout%') AS \"Idle kills\", sum(COALESCE(a.reconciled_spend, a.observed_spend, CASE WHEN jsonb_typeof(r.usage->'costUsd') = 'number' THEN (r.usage->>'costUsd')::numeric END)) AS \"Spent\" FROM agent_runs r LEFT JOIN run_llm_accounts a ON a.run_token = r.run_token WHERE r.outcome = 'failed' AND r.team IN ($$team) AND $$__timeFilter(r.finished_at) GROUP BY 1, 2, 3 ORDER BY 4 DESC"
+              "rawSql": "SELECT r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", coalesce(nullif(r.failure_reason, ''), 'unclassified') AS \"Reason\", count(*) AS \"Runs\", count(*) FILTER (WHERE r.failure_reason = 'timeout' AND r.limit_idle_seconds IS NOT NULL AND (r.limit_prompt_seconds IS NULL OR r.finished_at - r.prompt_started_at < make_interval(secs => r.limit_prompt_seconds))) AS \"Idle kills\", sum(COALESCE(a.reconciled_spend, a.observed_spend, CASE WHEN jsonb_typeof(r.usage->'costUsd') = 'number' THEN (r.usage->>'costUsd')::numeric END)) AS \"Spent\" FROM agent_runs r LEFT JOIN run_llm_accounts a ON a.alias = r.trace_alias WHERE r.outcome = 'failed' AND r.team IN ($$team) AND $$__timeFilter(r.finished_at) GROUP BY 1, 2, 3 ORDER BY 4 DESC"
             }
           ],
           "id": 10
@@ -2126,7 +1939,7 @@ spec:
               "editorMode": "code",
               "format": "table",
               "rawQuery": true,
-              "rawSql": "SELECT r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", count(*) AS \"Runs\", percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM r.started_at - q.at)) AS \"Queued p50\", max(extract(epoch FROM r.started_at - q.at)) AS \"Queued max\", percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM r.finished_at - r.started_at)) AS \"Ran p50\", max(extract(epoch FROM r.finished_at - r.started_at)) AS \"Ran max\" FROM agent_runs r LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l WHERE l.action IN ('round.opened', 'round.reopened') AND l.detail->>'shift' = r.shift_id::text AND l.detail->>'round' = r.round::text AND l.at <= coalesce(r.started_at, now())) q ON true WHERE r.state = 'finished' AND r.team IN ($$team) AND $$__timeFilter(r.finished_at) GROUP BY 1, 2 ORDER BY 1, 2"
+              "rawSql": "SELECT r.team AS \"Team\", coalesce(nullif(r.role, ''), 'pre-Shift') AS \"Role\", count(*) AS \"Runs\", percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM r.started_at - q.at)) AS \"Queued p50\", max(extract(epoch FROM r.started_at - q.at)) AS \"Queued max\", percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM r.finished_at - r.started_at)) AS \"Ran p50\", max(extract(epoch FROM r.finished_at - r.started_at)) AS \"Ran max\" FROM agent_runs r LEFT JOIN LATERAL (SELECT max(l.at) AS at FROM audit_log l WHERE l.work_item_id = r.work_item_id AND l.action IN ('round.opened', 'round.reopened') AND l.at <= coalesce(r.started_at, now())) q ON true WHERE r.state = 'finished' AND r.team IN ($$team) AND $$__timeFilter(r.finished_at) GROUP BY 1, 2 ORDER BY 1, 2"
             }
           ],
           "id": 11

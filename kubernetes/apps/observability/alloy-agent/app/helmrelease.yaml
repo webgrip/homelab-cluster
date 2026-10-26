@@ -191,6 +191,21 @@ spec:
               }
             }
 
+            stage.match {
+              selector            = "{namespace=\"ploeg\", container=\"worker\"} !~ \"^time=[^ ]+ level=(DEBUG|INFO|WARN|ERROR) \""
+              action              = "drop"
+              drop_counter_reason = "ploeg_worker_harness_output"
+            }
+
+            stage.match {
+              selector = "{namespace=\"ploeg\", container=~\"ploegd|worker\"}"
+
+              stage.replace {
+                expression = "(?:^| )(?:summary|stuck_reason|title|links)=(\"(?:[^\"\\\\]|\\\\.)*\"|[^ ]*)"
+                replace    = "\"[redacted]\""
+              }
+            }
+
             // Dark factory: promote ploegd/worker logfmt payload keys to first-class
             // VictoriaLogs fields (structured metadata -> ordinary VL fields, NOT
             // labels — per-line values like trace_id must stay out of _stream_fields).
@@ -203,8 +218,6 @@ spec:
                 mapping = {
                   outcome     = "",
                   team        = "",
-                  title       = "",
-                  links       = "",
                   budget      = "",
                   trace_id    = "trace",
                   wi_id       = "id",
@@ -220,8 +233,6 @@ spec:
                 values = {
                   outcome     = "",
                   team        = "",
-                  title       = "",
-                  links       = "",
                   budget      = "",
                   trace_id    = "",
                   wi_id       = "",

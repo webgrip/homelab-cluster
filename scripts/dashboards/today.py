@@ -214,10 +214,10 @@ def agents_sql():
 
 def run_keys_sql():
     return f"""
-        SELECT 'ploeg-' || left(r.run_token, 12) AS alias, r.team,
+        SELECT r.trace_alias AS alias, r.team,
           coalesce(nullif(w.target_repo, ''), r.team) AS project
         FROM agent_runs r JOIN work_items w ON w.id = r.work_item_id
-        WHERE r.run_token IS NOT NULL AND (r.started_at >= {WEEK_START} - interval '1 day' OR r.state = 'running')
+        WHERE r.trace_alias IS NOT NULL AND (r.started_at >= {WEEK_START} - interval '1 day' OR r.state = 'running')
     """
 
 
