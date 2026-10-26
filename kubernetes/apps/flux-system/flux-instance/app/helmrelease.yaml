@@ -42,6 +42,16 @@ spec:
           app.kubernetes.io/name: flux
       kustomize:
         patches:
+          - patch: |
+              - op: add
+                path: /spec/verify
+                value:
+                  mode: HEAD
+                  secretRef:
+                    name: trusted-signers
+            target:
+              kind: GitRepository
+              name: flux-system
           - # Increase the number of workers
             patch: |
               - op: add
