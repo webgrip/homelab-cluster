@@ -65,9 +65,14 @@ run "the_unfold_logins_demand_a_passkey_and_nothing_else_does" {
   }
 
   assert {
+    condition     = authentik_provider_oauth2.app["unfold-grafana"].authorization_flow == authentik_flow.passkey_authorization.uuid
+    error_message = "the Unfold Grafana login must run the passkey authorization flow"
+  }
+
+  assert {
     condition = alltrue([
       for key, provider in authentik_provider_oauth2.app :
-      provider.authorization_flow != authentik_flow.passkey_authorization.uuid if !contains(["unfold-headscale", "unfold-kubernetes"], key)
+      provider.authorization_flow != authentik_flow.passkey_authorization.uuid if !contains(["unfold-headscale", "unfold-kubernetes", "unfold-grafana"], key)
     ])
     error_message = "only applications that ask for passkey_required get the passkey flow"
   }
@@ -132,11 +137,11 @@ run "unfold_grafana_is_a_confidential_client_with_its_tailnet_callback_that_unfo
       authentik_provider_oauth2.app["unfold-grafana"].client_id == "unfold-grafana",
       authentik_provider_oauth2.app["unfold-grafana"].client_type == "confidential",
       authentik_application.app["unfold-grafana"].slug == "unfold-grafana",
-      [for redirect in authentik_provider_oauth2.app["unfold-grafana"].allowed_redirect_uris : redirect.url] == ["http://unfold-observability.tailnet.unfold.internal/login/generic_oauth"],
+      [for redirect in authentik_provider_oauth2.app["unfold-grafana"].allowed_redirect_uris : redirect.url] == ["https://grafana.ops.unfoldhq.dev/login/generic_oauth"],
       [for redirect in authentik_provider_oauth2.app["unfold-grafana"].allowed_redirect_uris : redirect.matching_mode] == ["strict"],
       contains(authentik_provider_oauth2.app["unfold-grafana"].property_mappings, authentik_property_mapping_provider_scope.app["groups"].id),
     ])
-    error_message = "Unfold Grafana is a confidential client with one exact callback on the Unfold tailnet, and gets the groups claim it maps to roles"
+    error_message = "Unfold Grafana is a confidential client with one exact callback on the ops Gateway, and gets the groups claim it maps to roles"
   }
 
   assert {
