@@ -72,9 +72,9 @@ spec:
       # The metadata-only read role Ploeg grants to: ploeg_grant_observer()
       # (Ploeg migration 0072) gives it SELECT on the columns dashboards,
       # exporters and autoscalers need, never run tokens or text people,
-      # agents or trackers wrote. Ploeg creates no roles, so it lives here.
-      # The three readers below keep pg_read_all_data beside it until
-      # ploegd runs ploeg_grant_observer() at boot; then that goes.
+      # agents or trackers wrote. Ploeg creates no roles, so it lives here;
+      # ploegd runs ploeg_grant_observer() at boot. The three readers below
+      # read only through it, never pg_read_all_data.
       - name: ploeg_observer
         ensure: present
         login: false
@@ -93,7 +93,6 @@ spec:
         createrole: false
         bypassrls: false
         inRoles:
-          - pg_read_all_data
           - ploeg_observer
         passwordSecret:
           name: ploeg-scaler
@@ -107,7 +106,6 @@ spec:
         createrole: false
         bypassrls: false
         inRoles:
-          - pg_read_all_data
           - ploeg_observer
         passwordSecret:
           name: ploeg-exporter
@@ -123,7 +121,6 @@ spec:
         createrole: false
         bypassrls: false
         inRoles:
-          - pg_read_all_data
           - ploeg_observer
         passwordSecret:
           name: ploeg-grafana-ro
