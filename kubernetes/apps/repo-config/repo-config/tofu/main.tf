@@ -21,20 +21,33 @@ locals {
 
   branch_protections = merge([
     for name, repo in local.forgejo_repos : {
-      for branch, rule in merge(
-        try(local.profiles[repo.profile].forgejo.branches, {}),
-        try(repo.branches, {}),
-      ) : "${name}/${branch}" => merge(rule, { repo = name, branch = branch })
+      for branch in setunion(
+        keys(try(local.profiles[repo.profile].forgejo.branches, {})),
+        keys(try(repo.branches, {})),
+        ) : "${name}/${branch}" => merge(
+        try(local.profiles[repo.profile].forgejo.branches[branch], {}),
+        try(repo.branches[branch], {}),
+        { repo = name, branch = branch },
+      )
     }
   ]...)
 
-  owner_push_guard = {
+  tag_protections = merge([
+    for name, repo in local.forgejo_repos : {
+      for pattern, users in merge(
+        try(local.profiles[repo.profile].forgejo.tags, {}),
+        try(repo.tags, {}),
+      ) : "${name}/${pattern}" => { repo = name, pattern = pattern, users = users }
+    } if !try(local.repos[name].archived, false)
+  ]...)
+
+  owner_merge_guard = {
     rule = "homelab-cluster/main"
     user = "ryangr0"
   }
-  owner_keeps_trunk_push = contains(
-    try(local.branch_protections[local.owner_push_guard.rule].push, []),
-    local.owner_push_guard.user,
+  owner_can_merge = contains(
+    try(local.branch_protections[local.owner_merge_guard.rule].merge, []),
+    local.owner_merge_guard.user,
   )
 }
 
@@ -68,20 +81,24 @@ resource "forgejo_branch_protection" "rule" {
   repository_id = forgejo_repository.repo[each.value.repo].id
   branch_name   = each.value.branch
 
-  enable_push               = true
-  enable_push_whitelist     = try(each.value.push, null) != null
-  push_whitelist_usernames  = try(each.value.push, null)
+  enable_push               = try(length(each.value.push) > 0, true)
+  enable_push_whitelist     = try(length(each.value.push) > 0, false)
+  push_whitelist_usernames  = try(length(each.value.push) > 0 ? each.value.push : null, null)
   enable_merge_whitelist    = try(each.value.merge, null) != null
   merge_whitelist_usernames = try(each.value.merge, null)
   enable_status_check       = length(each.value.status_checks) > 0
   status_check_contexts     = length(each.value.status_checks) > 0 ? each.value.status_checks : null
+  required_approvals        = try(each.value.required_approvals, 0)
+  dismiss_stale_approvals   = try(each.value.dismiss_stale_approvals, false)
+  block_on_rejected_reviews = try(each.value.block_on_rejected_reviews, false)
+  block_on_outdated_branch  = try(each.value.block_on_outdated_branch, false)
 
   lifecycle {
     prevent_destroy = true
 
     precondition {
-      condition     = local.owner_keeps_trunk_push
-      error_message = "The model must keep ${local.owner_push_guard.user} in the push list of ${local.owner_push_guard.rule}: without it the owner is locked out of trunk pushes (2026-08-05). Nothing is applied while this fails."
+      condition     = local.owner_can_merge
+      error_message = "The model must keep ${local.owner_merge_guard.user} in the merge list of ${local.owner_merge_guard.rule}: nobody pushes to main (ADR-0083), so without it the owner cannot land a change in the GitOps repository at all. Nothing is applied while this fails."
     }
   }
 }

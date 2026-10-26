@@ -101,8 +101,35 @@ for name, repo in sorted(repos.items()):
         elif forgejo_archived(source) and not settings.get("archived", False):
             errors.append(f"{name}: push mirror of archived Forgejo repository {repo['mirror_of']} must be archived on GitHub too (ADR-0078 R4)")
 
+def branch_rule(name, branch):
+    repo = repos[name]
+    profile_rule = profiles.get(repo["profile"], {}).get("forgejo", {}).get("branches", {}).get(branch, {})
+    return {**profile_rule, **repo.get("branches", {}).get(branch, {})}
+
+
+core_repositories = {"agent-standards", "workflows", "renovate-config", "homelab-cluster", "unfold-cluster"}
+for name, repo in sorted(repos.items()):
+    if repo["forge"] != "forgejo" or forgejo_archived(repo):
+        continue
+    expected = "protected-core" if name in core_repositories else "protected"
+    if repo["profile"] != expected:
+        errors.append(
+            f"{name}: an active Forgejo repository is on profile {expected} (ADR-0083), not {repo['profile']};"
+            " a repository off it can be pushed to directly or tagged by anyone with write access"
+        )
+    for branch in set(profiles.get(repo["profile"], {}).get("forgejo", {}).get("branches", {})) | set(repo.get("branches", {})):
+        pushers = branch_rule(name, branch).get("push")
+        if pushers is None or pushers:
+            errors.append(
+                f"{name} {branch}: nobody pushes to a protected branch (ADR-0083), so its rule must say push: []"
+                f" (it says {pushers!r}); changes land through pull requests"
+            )
+missing_core = sorted(core_repositories - set(repos))
+if missing_core:
+    errors.append(f"the core repositories {', '.join(missing_core)} must be in the model, on profile protected-core")
+
 platform_automerge_gate = "e2e / Lint & static validation (pull_request)"
-homelab_main_checks = profiles[repos["homelab-cluster"]["profile"]]["forgejo"]["branches"]["main"]["status_checks"]
+homelab_main_checks = branch_rule("homelab-cluster", "main")["status_checks"]
 if platform_automerge_gate not in homelab_main_checks:
     errors.append(
         f"homelab-cluster main must require '{platform_automerge_gate}'. The Ploeg and Unfold release group"

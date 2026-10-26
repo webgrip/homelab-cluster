@@ -19,7 +19,8 @@
       "type": "object",
       "required": [
         "baseline",
-        "homelab"
+        "protected",
+        "protected-core"
       ],
       "propertyNames": {
         "pattern": "^[a-z][a-z0-9-]*$"
@@ -35,7 +36,7 @@
             "github"
           ]
         },
-        "homelab": {
+        "protected": {
           "$ref": "#/$defs/profile",
           "required": [
             "forgejo"
@@ -43,7 +44,8 @@
           "properties": {
             "forgejo": {
               "required": [
-                "branches"
+                "branches",
+                "tags"
               ],
               "properties": {
                 "branches": {
@@ -52,17 +54,67 @@
                   ],
                   "properties": {
                     "main": {
+                      "required": [
+                        "push",
+                        "merge",
+                        "required_approvals"
+                      ],
                       "properties": {
                         "push": {
+                          "maxItems": 0
+                        },
+                        "merge": {
                           "contains": {
                             "const": "ryangr0"
                           }
+                        },
+                        "required_approvals": {
+                          "minimum": 0
                         }
-                      },
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "protected-core": {
+          "$ref": "#/$defs/profile",
+          "required": [
+            "forgejo"
+          ],
+          "properties": {
+            "forgejo": {
+              "required": [
+                "branches",
+                "tags"
+              ],
+              "properties": {
+                "branches": {
+                  "required": [
+                    "main"
+                  ],
+                  "properties": {
+                    "main": {
                       "required": [
                         "push",
-                        "merge"
-                      ]
+                        "merge",
+                        "required_approvals"
+                      ],
+                      "properties": {
+                        "push": {
+                          "maxItems": 0
+                        },
+                        "merge": {
+                          "contains": {
+                            "const": "ryangr0"
+                          }
+                        },
+                        "required_approvals": {
+                          "minimum": 1
+                        }
+                      }
                     }
                   }
                 }
@@ -114,6 +166,9 @@
         },
         "branches": {
           "$ref": "branch-protection.schema.json"
+        },
+        "tags": {
+          "$ref": "tag-protection.schema.json"
         }
       }
     },
