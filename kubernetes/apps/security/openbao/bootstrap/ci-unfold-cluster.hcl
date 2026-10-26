@@ -57,3 +57,7 @@ path "secret/data/unfold-cluster/disk-kms" {
 path "secret/data/authentik/unfold-headscale-oidc" {
   capabilities = ["read"]
 }
+
+path "secret/data/unfold-main/observability/tailnet-key" {
+  capabilities = ["create", "read", "update"]
+}
