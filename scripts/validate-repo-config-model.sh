@@ -67,12 +67,19 @@ for name, repo in sorted(repos.items()):
     if forge not in profile:
         errors.append(f"{name}: profile {repo['profile']} carries no {forge} block, so the {forge} module has nothing to apply")
         continue
-    renovate_runs_on_this_repo = not archived(repo, profile) and "mirror_of" not in repo
-    if renovate_runs_on_this_repo and "renovate" not in repo:
+    active_source = not archived(repo, profile) and "mirror_of" not in repo
+    if active_source and "renovate" not in repo:
         errors.append(
             f"{name}: an active repository must state its Renovate policy (renovate.profile, renovate.presets,"
             " or renovate.absent), or the renovate_policy_matches_live check has nothing to compare"
         )
+    if active_source and "kind" not in repo:
+        errors.append(
+            f"{name}: an active repository must state its kind (service, image-set, package, site, config or none;"
+            " ADR-0078)"
+        )
+    if "mirror_of" in repo and "kind" in repo:
+        errors.append(f"{name}: a push mirror takes its kind from {repo['mirror_of']}; drop kind here")
     if "mirror_of" in repo and "renovate" in repo:
         errors.append(f"{name}: a push mirror takes its Renovate policy from {repo['mirror_of']}; drop renovate here")
     if forge != "github":

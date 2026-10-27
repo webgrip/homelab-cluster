@@ -128,3 +128,11 @@ promising but pre-1.0 with one maintainer and is piloted separately
   GitHub repository settings in the same repo-config model ([VIK-2320](https://vikunja.webgrip.dev/tasks/2320)),
   to move the semantic-release toolchain images into `semantic-release-config`, and to archive
   `common-charts` and `application-template` (homelab `0fb4fbd8`).
+* 2026-10-27 — Amended: point 5 gains two kinds for repositories that release nothing. **config**
+  is an OpenTofu, Flux or cluster tree applied from `main` (homelab-cluster, unfold-cluster,
+  cloudflare); **none** ships nothing (the `.profile` README, ploeg-bench and its fixture
+  ploeg-bench-world, and compyutah until it releases). Every active repository in the repo-config
+  model now carries `kind`, and `scripts/validate-repo-config-model.sh` refuses one without it; a
+  push mirror takes the kind of its source. Branch shape per kind is not checked yet: it lands
+  repository by repository, as the gate of [ADR-0084](adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md)
+  does.
