@@ -38,6 +38,7 @@ bao policy write forgejo-repo-config /scripts/forgejo-repo-config.hcl
 bao policy write github-config-ploeg-hq /scripts/github-config-ploeg-hq.hcl
 bao policy write github-config-webgrip /scripts/github-config-webgrip.hcl
 bao policy write github-secrets-bridge /scripts/github-secrets-bridge.hcl
+bao policy write github-mirrors /scripts/github-mirrors.hcl
 bao policy write renovate-github-app-token-ploeg-hq /scripts/renovate-github-app-token-ploeg-hq.hcl
 bao policy write renovate-github-app-token-wellhead-dev /scripts/renovate-github-app-token-wellhead-dev.hcl
 bao policy write homelab-etcd-age-keygen /scripts/homelab-etcd-age-keygen.hcl
@@ -74,6 +75,9 @@ bao write auth/kubernetes/role/github-config-webgrip \
 bao write auth/kubernetes/role/github-secrets-bridge \
   bound_service_account_names=github-secrets-bridge bound_service_account_namespaces=github-secrets-bridge \
   policies=github-secrets-bridge ttl=10m >/dev/null
+bao write auth/kubernetes/role/github-mirrors \
+  bound_service_account_names=github-mirrors bound_service_account_namespaces=github-config \
+  policies=github-mirrors ttl=10m >/dev/null
 bao write auth/kubernetes/role/renovate-github-app-token-ploeg-hq \
   bound_service_account_names=renovate-github-app-token-ploeg-hq bound_service_account_namespaces=renovate \
   policies=renovate-github-app-token-ploeg-hq ttl=10m >/dev/null
