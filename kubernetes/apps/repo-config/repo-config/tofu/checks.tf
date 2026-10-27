@@ -56,3 +56,26 @@ check "resent_provider_defaults_match_live" {
     error_message = "A repository update re-sends these provider defaults over a different live value: ${join(", ", local.resent_default_drift)}"
   }
 }
+
+data "http" "org_repos" {
+  for_each = toset(["1", "2", "3", "4"])
+  url      = "${var.forgejo_url}/api/v1/orgs/${local.owner}/repos?limit=50&page=${each.key}"
+}
+
+locals {
+  live_active_sources = sort(flatten([
+    for page in data.http.org_repos : [
+      for repo in try(jsondecode(page.response_body), []) : repo.name
+      if !repo.archived && !repo.mirror
+    ]
+  ]))
+
+  unmodelled_repos = [for name in local.live_active_sources : name if !contains(keys(local.repos), name)]
+}
+
+check "every_active_repo_is_modelled" {
+  assert {
+    condition     = length(local.unmodelled_repos) == 0
+    error_message = "Active Forgejo repositories outside the repo-config model get no branch protection: ${join(", ", local.unmodelled_repos)}"
+  }
+}

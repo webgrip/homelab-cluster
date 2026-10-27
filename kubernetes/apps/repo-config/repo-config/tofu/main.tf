@@ -1,20 +1,37 @@
 locals {
-  model_dir = var.model_dir != "" ? var.model_dir : "${path.module}/../model"
-  profiles  = yamldecode(file("${local.model_dir}/profiles.yaml")).profiles
-  model     = yamldecode(file("${local.model_dir}/repos.yaml"))
-  owner     = local.model.forgejo.owner
+  model_dir   = var.model_dir != "" ? var.model_dir : "${path.module}/../model"
+  profile_set = yamldecode(file("${local.model_dir}/profiles.yaml"))
+  profiles    = local.profile_set.profiles
+  staged      = local.profile_set.staged
+  kinds       = local.profile_set.kinds
+  model       = yamldecode(file("${local.model_dir}/repos.yaml"))
+  owner       = local.model.forgejo.owner
 
   repos_created_by_tofu = toset([
     "talos-kata-extension",
   ])
 
   forgejo_repos = {
-    for name, repo in local.model.repos : name => repo if repo.forge == "forgejo"
+    for name, repo in local.model.repos : name => merge(repo, {
+      profile = (
+        try(repo.settings.archived, false) ? "baseline" :
+        try(repo.writer, null) != null ? "workspace" :
+        try(repo.core, false) ? "protected-core" :
+        "protected"
+      )
+      staged   = try(repo.staged, false)
+      renovate = try(repo.renovate, local.kinds[repo.kind].renovate, null)
+    }) if repo.forge == "forgejo"
+  }
+
+  writer_rules = {
+    for name, repo in local.forgejo_repos : name => try({ main = { push = [repo.writer] } }, {})
   }
 
   repos = {
     for name, repo in local.forgejo_repos : name => merge(
       local.profiles[repo.profile].forgejo.settings,
+      repo.staged ? local.staged.settings : {},
       try(repo.settings, {}),
     )
   }
@@ -23,9 +40,12 @@ locals {
     for name, repo in local.forgejo_repos : {
       for branch in setunion(
         keys(try(local.profiles[repo.profile].forgejo.branches, {})),
+        keys(repo.staged ? local.staged.branches : {}),
         keys(try(repo.branches, {})),
         ) : "${name}/${branch}" => merge(
         try(local.profiles[repo.profile].forgejo.branches[branch], {}),
+        try(repo.staged ? local.staged.branches[branch] : {}, {}),
+        try(local.writer_rules[name][branch], {}),
         try(repo.branches[branch], {}),
         { repo = name, branch = branch },
       )

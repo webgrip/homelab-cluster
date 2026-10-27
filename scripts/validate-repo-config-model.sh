@@ -16,7 +16,10 @@ import sys
 import yaml
 
 model = pathlib.Path(sys.argv[1])
-profiles = yaml.safe_load((model / "profiles.yaml").read_text())["profiles"]
+profile_set = yaml.safe_load((model / "profiles.yaml").read_text())
+profiles = profile_set["profiles"]
+staged_layer = profile_set["staged"]
+kinds = profile_set["kinds"]
 repo_set = yaml.safe_load((model / "repos.yaml").read_text())
 repos = repo_set["repos"]
 github_owners = repo_set["github"]["owners"]
@@ -50,8 +53,19 @@ fields_a_tracked_mirror_leaves_to_github = ["settings", "rulesets", "release_con
 
 
 def forgejo_archived(repo):
-    forge_profile = profiles.get(repo["profile"], {}).get("forgejo", {})
-    return {**forge_profile.get("settings", {}), **repo.get("settings", {})}.get("archived", False)
+    return repo.get("settings", {}).get("archived", False)
+
+
+def profile_name(repo):
+    if repo["forge"] != "forgejo":
+        return repo["profile"]
+    if forgejo_archived(repo):
+        return "baseline"
+    if "writer" in repo:
+        return "workspace"
+    if repo.get("core"):
+        return "protected-core"
+    return "protected"
 
 
 def archived(repo, profile):
@@ -59,21 +73,41 @@ def archived(repo, profile):
     return {**forge_settings, **repo.get("settings", {})}.get("archived", False)
 
 
+def renovate_presets(policy):
+    if "profile" in policy:
+        return [f"local>webgrip/renovate-config:{policy['profile']}"]
+    return policy.get("presets")
+
+
+def kind_renovate(repo):
+    return kinds.get(repo.get("kind"), {}).get("renovate")
+
+
 for name, repo in sorted(repos.items()):
     forge = repo["forge"]
-    if repo["profile"] not in profiles:
-        errors.append(f"{name}: names profile {repo['profile']}, which profiles.yaml does not define")
+    if profile_name(repo) not in profiles:
+        errors.append(f"{name}: names profile {profile_name(repo)}, which profiles.yaml does not define")
         continue
-    profile = profiles[repo["profile"]]
+    profile = profiles[profile_name(repo)]
     if forge not in profile:
-        errors.append(f"{name}: profile {repo['profile']} carries no {forge} block, so the {forge} module has nothing to apply")
+        errors.append(f"{name}: profile {profile_name(repo)} carries no {forge} block, so the {forge} module has nothing to apply")
         continue
     active_source = not archived(repo, profile) and "mirror_of" not in repo
-    if active_source and "renovate" not in repo:
+    if active_source and "renovate" not in repo and kind_renovate(repo) is None:
         errors.append(
             f"{name}: an active repository must state its Renovate policy (renovate.profile, renovate.presets,"
-            " or renovate.absent), or the renovate_policy_matches_live check has nothing to compare"
+            " or renovate.absent) unless its kind carries one, or the renovate_policy_matches_live check has nothing to compare"
         )
+    default = kind_renovate(repo)
+    own = repo.get("renovate", {})
+    if default and own and set(own) <= {"profile", "presets"} and renovate_presets(own) == renovate_presets(default):
+        errors.append(f"{name}: its Renovate policy is what kind {repo['kind']} already gives it; drop renovate here")
+    if forge == "forgejo" and forgejo_archived(repo):
+        carried = [field for field in ("kind", "core", "staged", "writer") if field in repo]
+        if carried:
+            errors.append(f"{name}: archived, so {', '.join(carried)} would never apply; an archived repository is on baseline")
+    if repo.get("core") and "writer" in repo:
+        errors.append(f"{name}: a core repository needs a second person on every change, so no account writes its main directly")
     if active_source and "kind" not in repo:
         errors.append(
             f"{name}: an active repository must state its kind (service, image-set, package, site, config or none;"
@@ -121,32 +155,63 @@ for name, repo in sorted(repos.items()):
         elif forgejo_archived(source) and not settings.get("archived", False):
             errors.append(f"{name}: push mirror of archived Forgejo repository {repo['mirror_of']} must be archived on GitHub too (ADR-0078 R4)")
 
+def derived_rules(repo):
+    rules = {
+        branch: dict(rule)
+        for branch, rule in profiles.get(profile_name(repo), {}).get("forgejo", {}).get("branches", {}).items()
+    }
+    if repo.get("staged"):
+        for branch, rule in staged_layer["branches"].items():
+            rules[branch] = {**rules.get(branch, {}), **rule}
+    if "writer" in repo:
+        rules["main"] = {**rules.get("main", {}), "push": [repo["writer"]]}
+    return rules
+
+
+def branches_of(name):
+    return set(derived_rules(repos[name])) | set(repos[name].get("branches", {}))
+
+
 def branch_rule(name, branch):
     repo = repos[name]
-    profile_rule = profiles.get(repo["profile"], {}).get("forgejo", {}).get("branches", {}).get(branch, {})
-    return {**profile_rule, **repo.get("branches", {}).get(branch, {})}
+    return {**derived_rules(repo).get(branch, {}), **repo.get("branches", {}).get(branch, {})}
 
 
-core_repositories = {"agent-standards", "workflows", "renovate-config", "homelab-cluster", "unfold-cluster"}
+review_guards = ("dismiss_stale_approvals", "block_on_rejected_reviews", "block_on_outdated_branch")
+required_check_events = ("(pull_request)", "(pull_request_target)")
+repositories_adr_0083_named_core = {"agent-standards", "workflows", "renovate-config", "homelab-cluster", "unfold-cluster"}
 for name, repo in sorted(repos.items()):
     if repo["forge"] != "forgejo" or forgejo_archived(repo):
         continue
-    expected = "protected-core" if name in core_repositories else "protected"
-    if repo["profile"] != expected:
-        errors.append(
-            f"{name}: an active Forgejo repository is on profile {expected} (ADR-0083), not {repo['profile']};"
-            " a repository off it can be pushed to directly or tagged by anyone with write access"
-        )
-    for branch in set(profiles.get(repo["profile"], {}).get("forgejo", {}).get("branches", {})) | set(repo.get("branches", {})):
-        pushers = branch_rule(name, branch).get("push")
-        if pushers is None or pushers:
+    if name in repositories_adr_0083_named_core and not repo.get("core"):
+        errors.append(f"{name}: ADR-0083 made it a core repository, so it says core: true")
+    for branch in sorted(branches_of(name)):
+        rule = branch_rule(name, branch)
+        pushers = rule.get("push")
+        allowed = [repo["writer"]] if "writer" in repo and branch == "main" else []
+        if pushers != allowed:
             errors.append(
-                f"{name} {branch}: nobody pushes to a protected branch (ADR-0083), so its rule must say push: []"
-                f" (it says {pushers!r}); changes land through pull requests"
+                f"{name} {branch}: only a workspace's writer pushes to its main; every other protected branch says"
+                f" push: [] (ADR-0083), and this one says {pushers!r}; changes land through pull requests"
             )
-missing_core = sorted(core_repositories - set(repos))
+        derived = derived_rules(repo).get(branch, {})
+        if rule.get("required_approvals", 0) < derived.get("required_approvals", 0):
+            errors.append(
+                f"{name} {branch}: a repository rule may only tighten what its profile derives; it lowers"
+                f" required_approvals from {derived['required_approvals']} to {rule['required_approvals']}"
+            )
+        loosened = [guard for guard in review_guards if derived.get(guard) and rule.get(guard) is False]
+        if loosened:
+            errors.append(f"{name} {branch}: a repository rule may only tighten what its profile derives; it turns off {', '.join(loosened)}")
+        not_on_pull_requests = [check for check in rule.get("status_checks", []) if not check.endswith(required_check_events)]
+        if not_on_pull_requests:
+            errors.append(
+                f"{name} {branch}: requires {', '.join(not_on_pull_requests)}, which no pull request reports;"
+                " a required check that never reports blocks every merge"
+            )
+missing_core = sorted(repositories_adr_0083_named_core - set(repos))
 if missing_core:
-    errors.append(f"the core repositories {', '.join(missing_core)} must be in the model, on profile protected-core")
+    errors.append(f"the core repositories {', '.join(missing_core)} must be in the model, with core: true")
 
 platform_automerge_gate = "e2e / Lint & static validation (pull_request)"
 homelab_main_checks = branch_rule("homelab-cluster", "main")["status_checks"]
@@ -164,7 +229,7 @@ for name, repo in sorted(repos.items()):
         continue
     if not platform_automerge_presets & set(repo.get("renovate", {}).get("presets", [])):
         continue
-    branches = set(profiles.get(repo["profile"], {}).get("forgejo", {}).get("branches", {})) | set(repo.get("branches", {}))
+    branches = branches_of(name)
     ungated = sorted(branch for branch in branches if gate_check not in branch_rule(name, branch).get("status_checks", []))
     if not branches or ungated:
         errors.append(
@@ -197,7 +262,7 @@ if errors:
     sys.exit(1)
 by_forge = {forge: sum(1 for repo in repos.values() if repo["forge"] == forge) for forge in ("forgejo", "github")}
 print(
-    f"validate-repo-config-model: {len(profiles)} profiles,"
+    f"validate-repo-config-model: {len(profiles)} profiles, {len(kinds)} kinds,"
     f" {by_forge['forgejo']} Forgejo repos, {by_forge['github']} GitHub repos, 0 errors"
 )
 PY

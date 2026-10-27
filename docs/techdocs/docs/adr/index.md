@@ -204,6 +204,7 @@ Tenant apps the platform hosts — decisions about *what* runs, not how the plat
 | [0050](adr-0050-per-repo-delivery-contract.md) | Per-repo delivery contract, server-enforced via branch protection | accepted | 2026-10-26 |
 | [0083](adr-0083-nobody-pushes-to-main-and-core-repositories-need-a-second-person.md) | Nobody pushes to main, and the core repositories need a second person | accepted | 2026-10-26 |
 | [0084](adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md) | A branch rule requires one gate check, and Forgejo merges Renovate's pull requests on it | accepted | 2026-10-27 |
+| [0086](adr-0086-a-repository-states-what-it-is-and-its-protection-follows.md) | A repository states what it is, and its protection follows | accepted | 2026-10-27 |
 | [0051](adr-0051-harness-plurality-acp.md) | Agent harnesses are plural behind ACP; OpenHands stays the default | accepted | 2026-10-04 |
 | [0053](adr-0053-daemonless-agent-plane.md) | The agent plane is daemonless: dind stays false everywhere, gates run in CI | accepted | 2026-10-04 |
 
