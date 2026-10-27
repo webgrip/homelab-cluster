@@ -124,6 +124,27 @@ and logs `already gone` once they are. The Hetzner token check that ran here
 (`GET /v1/locations`) went with them: a revoked token now fails the workflow that reads it, not
 the bridge.
 
+## Each secret reaches only the repositories that use it
+
+Forgejo hands an org-level secret to every job of every repository in the org, including
+`pull_request` runs from any same-repository branch. A branch in an unrelated repository, or a
+job on the production cluster's `unfold-ci` runner, could therefore read the npm, Cloudflare,
+GHCR and Harbor credentials. The bridge publishes each credential as a **repository** secret
+instead, only to the repositories listed for it in the CronJob's `SECRET_REPOS`
+(`NAME=repo,repo`). `put_secret` refuses a name with no entry, so a new credential cannot fall
+back to the whole org.
+
+The list was taken from every workflow in the org, including the reusable workflows a
+repository calls from `webgrip/workflows`. `TECHDOCS_S3_*` goes to `homelab-cluster` alone,
+because the docs repositories get their own bucket-scoped pair from `DOCS_REPOS`, and
+`HARBOR_ROBOT_*` leaves out `talos-kata-extension`, which has its own robot.
+
+A repository that starts using one of these secrets needs its name added to that secret's
+entry. Until then its workflow sees an empty value and fails at the step that uses it.
+
+The org-level copies stay until every listed repository has run green on its repository
+secret. They are then retired in a separate change.
+
 ## Naming
 
 - Forgejo rejects the reserved prefixes `FORGEJO_`, `GITHUB_`, `GITEA_`; the bot token is
