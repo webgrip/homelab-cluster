@@ -112,7 +112,7 @@ repoint as in step 5 above.
   `webhook-receiver.flux-system.svc` directly. When the `forgejo` namespace goes default-deny,
   that egress dies **silently** (reconciles fall back to the poll interval). The netpol change
   must allow forgejo→flux-system:80. (Tracked on the network-policy backlog.)
-- **Renovate:** this repo is updated by the `webgrip-forgejo` RenovateJob (cron `47 */6` UTC).
+- **Renovate:** this repo is updated by the `webgrip-forgejo` RenovateJob (cron `33 * * * *` UTC, hourly).
   The GitHub job's explicit list must never re-include Forgejo-leading repos — Renovate branch
   automerge on a downstream mirror is silently destroyed by the relay.
 - **Push-mirror health is silent:** `last_error` empty + fresh `last_update` is the only signal

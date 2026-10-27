@@ -67,7 +67,7 @@ Two RenovateJobs run side by side ([ADR-0029](../adr/adr-0029-dual-run-renovate-
 | RenovateJob | Platform | Scope | Schedule |
 | --- | --- | --- | --- |
 | [`webgrip-gitops`](../../../../kubernetes/apps/renovate/renovate-operator/jobs/webgrip-gitops.yaml) | GitHub | `webgrip/*` | `17 */6 * * *` |
-| [`webgrip-forgejo`](../../../../kubernetes/apps/renovate/renovate-operator/jobs/webgrip-forgejo.yaml) | Forgejo (in-cluster endpoint `forgejo-http.forgejo.svc:3000/api/v1`) | explicit list of Forgejo-authoritative repos (+ pilot) — grows as repos flip Forgejo-leading; no `webgrip/*` glob because pull-mirrors are read-only | `47 */6 * * *` (offset to avoid overlap) |
+| [`webgrip-forgejo`](../../../../kubernetes/apps/renovate/renovate-operator/jobs/webgrip-forgejo.yaml) | Forgejo (in-cluster endpoint `forgejo-http.forgejo.svc:3000/api/v1`) | every `webgrip/*` repo carrying the `renovate` topic (`discoverTopics`), plus the pilot; read-only pull-mirrors never carry the topic | `33 * * * *` (hourly, offset from `webgrip-gitops`) |
 
 Shared mechanics (both jobs):
 
