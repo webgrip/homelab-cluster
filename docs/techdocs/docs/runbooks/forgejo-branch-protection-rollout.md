@@ -54,10 +54,30 @@ Required contexts stay per repository, and only contexts the repository reports 
 
 Private repositories are in the model with `settings.private: true`, so tofu keeps them private: compyutah, erfbeeld, obsidian-vault, omnigraph-explorer, ploeg-bench, ploeg-bench-world, previews and talos-kata-extension. ploeg-bench-world's default branch is `bench/void`, which the bench harness resets, so only its unused `main` carries the rule.
 
-The `every_active_repo_is_modelled` check lists every Forgejo repository that is neither archived nor a mirror and is missing from the model. It reads the organisation anonymously, so it sees public repositories only; a new private repository has to be added by hand.
-
 `agent-builder` is deliberately in **no** list anywhere: the agent fleet delivers via PRs
 (ADR-0048) and never merges its own work.
+
+## Every repository is in the model
+
+The CronJob `repo-config/repo-config-inventory` (`kubernetes/apps/repo-config/repo-config/inventory/`) runs at minute 17 of every hour. It lists `/api/v1/orgs/webgrip/repos` page by page until an empty page, with a read-only token, so private repositories count too. Every repository that is neither archived nor a mirror gets `repo_config_unmodelled_repository{repository=...}`: `1` when `repos.yaml` has no entry for it, `0` when it has. The model reaches the pod as ConfigMap `repo-config-model`, generated from `model/repos.yaml` by `kubernetes/apps/repo-config/repo-config/kustomization.yaml`, so the job always checks the model Flux applied. Results go to vmagent's `/api/v1/import/prometheus` with `job="repo-config-inventory"`.
+
+| Alert | Fires when |
+| --- | --- |
+| `ForgejoRepositoryNotInRepoConfigModel` | a repository has been outside the model for 2h. Add it with its kind, or archive it. |
+| `ForgejoRepoInventoryStale` | no successful run for 3h, or none in the last day. The job log names the reason. |
+
+A run fails, and pushes nothing, when the token is missing, when the token sees no private repository although the model has some (lost scope or lost team membership), when the model ConfigMap is empty, when Forgejo answers anything but 200, or when vmagent refuses the push. Before 2026-10-27 this was the tofu check `every_active_repo_is_modelled`, which read the organisation anonymously and never saw a private repository: OpenTofu cannot pass the module's ephemeral token to a `data "http"` source.
+
+The token is `webgrip-repo-config-inventory` on the `webgrip-repo-config` bot, scopes `read:organization` and `read:repository`. Job `forgejo/repo-config-provisioner` mints it next to the bot's write token, keeps it while it still authenticates with those scopes, and writes Secret `forgejo/repo-config-inventory-token`. PushSecret `repo-config-inventory-token` copies it to OpenBao `secret/forgejo/repo-config-inventory`, and ExternalSecret `repo-config/repo-config-inventory-forgejo` brings it to the job. Nobody mints it by hand. To re-mint, delete the Secret and the Job: `kubectl -n forgejo delete secret repo-config-inventory-token` and `kubectl -n forgejo delete job repo-config-provisioner`, and Flux recreates the Job.
+
+Run it now and read the result:
+
+```sh
+kubectl -n repo-config create job --from=cronjob/repo-config-inventory repo-config-inventory-manual
+kubectl -n repo-config logs -f job/repo-config-inventory-manual
+```
+
+The per-repository drift checks in `tofu/checks.tf` (`write_only_fields_match_live`, `resent_provider_defaults_match_live`) still read anonymously, so they cover public repositories only.
 
 ## Changing a rule
 
