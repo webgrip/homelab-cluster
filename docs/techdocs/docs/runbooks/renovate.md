@@ -161,7 +161,7 @@ Since renovate-config v1.5.0 + the repo's digest-automerge rule this self-heals;
 
 The in-cluster Renovate also runs against Forgejo (`webgrip-forgejo` RenovateJob). Four failure modes are silent — Renovate keeps running, it just quietly does nothing for the affected repos.
 
-- **Un-mirrored repos have the Pull Requests unit OFF, so Renovate skips them.** Converting a `gitea-mirror` pull-mirror to a regular repo leaves `has_pull_requests=false` (mirrors are read-only). Renovate then logs `Skipping repository <r> because pull requests are disabled` and excludes it — the repo is *discovered but skipped*. Also note autodiscovery **can only seed `status.projects` on the cron** (`47 */6`); the per-project webhook path can't add a *new* project mid-cron. Fix / restore PR-unit parity for every de-mirrored repo:
+- **Un-mirrored repos have the Pull Requests unit OFF, so Renovate skips them.** Converting a `gitea-mirror` pull-mirror to a regular repo leaves `has_pull_requests=false` (mirrors are read-only). Renovate then logs `Skipping repository <r> because pull requests are disabled` and excludes it — the repo is *discovered but skipped*. Also note autodiscovery **can only seed `status.projects` on the cron** (`33 * * * *`); the per-project webhook path can't add a *new* project mid-cron. Fix / restore PR-unit parity for every de-mirrored repo:
 
   ```bash
   scripts/forgejo-sync.sh --all --only prs --apply
