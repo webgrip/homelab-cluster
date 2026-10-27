@@ -67,6 +67,7 @@ Large parts of the chain already rebuild from git. They are listed so the gaps s
 | G10 | PAT `GH_MIRROR_TOKEN` for Forgejo → GitHub push mirrors | a person's shell when running `forgejo-sync.sh --only mirror` | hand | no | new push mirrors cannot be created; existing ones keep the token they were made with |
 | G11 | Mirror repos `github.com/webgrip/*` (e.g. `webgrip/unfold`) | GitHub | hand | no | push mirror errors; GitHub copies of releases vanish |
 | G12 | Renovate GitHub App for `ploeg-hq` (registration, private key, installation on `ploeg-hq/ploeg`), separate from `ploeg-hq-gitops` | GitHub App settings; key in OpenBao `github/ploeg-hq-renovate-app` (V9) | **not created**; CronJob `renovate/renovate-github-app-token-ploeg-hq` and RenovateJob `ploeg-hq` are built and no-op until it exists ([runbook](../runbooks/github-app-ploeg-hq.md#the-renovate-app)) | key: provided L1; app: no | `ploeg-hq/ploeg` gets no dependency or security update PRs (`GitHubAppPloegHqRenovatePending`, info) |
+| G13 | Renovate GitHub App `wellhead-dev-renovate` (App ID 5500760, installation 175945578 on `wellhead-dev/wellhead`) | GitHub App settings; key in OpenBao `github/wellhead-dev-renovate-app` (V10) | created and installed 2026-10-27; CronJob `renovate/renovate-github-app-token-wellhead-dev` and RenovateJob `wellhead-dev` ([runbook](../runbooks/github-app-wellhead-dev.md)) | key: provided L1; app: no | `wellhead-dev/wellhead` gets no dependency or security update PRs (`GitHubAppWellheadDevRenovatePending`, info) |
 
 ### Forgejo (`forgejo.webgrip.dev`)
 
@@ -98,6 +99,7 @@ These are read by ExternalSecrets in git, so the *wiring* is declarative; the *v
 | V7 | `openvsx/unfold`, VS Marketplace PAT and Azure ids | extension publishing for Unfold | provided | extension publish steps fail or skip |
 | V8 | `github/ci-pat` | see G9 | provided | see G9 |
 | V9 | `github/ploeg-hq-renovate-app` | App id, installation id, private key of the G12 App | provided, **not yet stored** | see G12 |
+| V10 | `github/wellhead-dev-renovate-app` | App id, installation id, private key of the G13 App | provided, stored 2026-10-27 | see G13 |
 
 V8 is the vault copy of G9 and is counted once below.
 
