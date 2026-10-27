@@ -129,12 +129,20 @@ mise exec -- kubectl -n github-config logs job/$(mise exec -- kubectl -n github-
 
 A GitHub copy exists that the model does not list. Either add it to `repos.yaml` (a tracked
 mirror, or `settings.archived: true` for an archived one; the Forgejo source must be in the model),
-or archive or delete the GitHub copy. On 2026-10-27 this listed `discord-moon`, `techdocs-builder`,
-`techdocs-runner` (archived on both forges, Forgejo sources not modelled) and `webgrip.nl`
-(archived on GitHub with an older history than Forgejo, so it is not a mirror).
+or archive or delete the GitHub copy.
 
 Adding an archived entry imports it into `Terraform/webgrip`, so the repository must be in the
-`webgrip-gitops` installation first, or that plan fails with `404 Not Found`.
+`webgrip-gitops` installation first, or that plan fails with `404 Not Found`. Until it is, give the
+entry `managed: false`: the model lists it (so it is no drift) and `tofu-github` leaves it alone.
+The validator accepts `managed: false` only on an archived entry.
+
+On 2026-10-27 the four copies this listed were modelled that way: `discord-moon`,
+`techdocs-builder` and `techdocs-runner` (archived on both forges; Forgejo source entries archived,
+GitHub entries archived with `mirror_of`), and `webgrip.nl` (archived on GitHub with an older
+history than Forgejo, so an archived GitHub entry without `mirror_of`: not a mirror, no head check,
+no release copies). Once the owner adds those four to the installation, delete their
+`managed: false` lines; the next `Terraform/webgrip` plan then reads 4 to import and no change,
+because all four are already archived on GitHub.
 
 ### GitHubMirrorAppAccessMissing
 

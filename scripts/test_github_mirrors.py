@@ -492,6 +492,25 @@ class ReconcilerTest(unittest.TestCase):
         self.assertEqual(self.metric("model_drift_known", forge="github"), 1)
         self.assertEqual(self.metric("model_drift_known", forge="forgejo"), 1)
 
+    def test_archived_entries_close_drift_without_being_tracked(self):
+        self.world.forgejo["webgrip.nl"] = {"default_branch": "main", "head": "03f807e2", "tags": [], "releases": [],
+                                            "push_mirrors": []}
+        self.world.github["webgrip.nl"] = {"default_branch": "main", "head": "45e315e0", "tags": [], "releases": [],
+                                           "archived": True}
+        self.world.model += ("  webgrip/discord-moon:\n    forge: github\n    profile: baseline\n    managed: false\n"
+                             "    mirror_of: discord-moon\n    settings:\n      archived: true\n"
+                             "  webgrip/webgrip.nl:\n    forge: github\n    profile: baseline\n    managed: false\n"
+                             "    settings:\n      archived: true\n")
+        self.assertEqual(self.run_reconciler(), 0, self.output)
+        self.assertEqual(self.metric("model_drift", forge="github", repository="discord-moon"), 0)
+        self.assertEqual(self.metric("model_drift", forge="forgejo", repository="discord-moon"), 0)
+        self.assertEqual(self.metric("model_drift", forge="github", repository="webgrip.nl"), 0)
+        self.assertIsNone(self.metric("tracked", repository="discord-moon"))
+        self.assertIsNone(self.metric("tracked", repository="webgrip.nl"))
+        self.assertIsNone(self.metric("head_match", repository="webgrip.nl"))
+        requested = {request["repositories"][0] for request in self.world.token_requests}
+        self.assertEqual(requested, {"renovate-config", "telemetry-service"})
+
     def test_a_broken_read_fails_the_run_but_still_reports(self):
         del self.world.github["telemetry-service"]
         self.assertEqual(self.run_reconciler(), 1, self.output)
