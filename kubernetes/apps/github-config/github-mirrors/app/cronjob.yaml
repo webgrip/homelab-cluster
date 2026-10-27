@@ -1,0 +1,81 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: github-mirrors
+  labels:
+    app.kubernetes.io/name: github-mirrors
+spec:
+  schedule: "7,22,37,52 * * * *"
+  timeZone: Europe/Amsterdam
+  startingDeadlineSeconds: 600
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 840
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: github-mirrors
+        spec:
+          serviceAccountName: github-mirrors
+          restartPolicy: Never
+          priorityClassName: background-batch
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: reconciler
+              image: harbor.webgrip.dev/dockerhub/python:3.14-alpine@sha256:601e99e090cb08c2784a42395487709500bc39930307fe72f3f11a8f3c430762
+              imagePullPolicy: IfNotPresent
+              command:
+                - "python3"
+                - "-I"
+                - "/scripts/reconciler.py"
+              env:
+                - {name: FORGEJO_URL, value: 'http://forgejo-http.forgejo.svc.cluster.local:3000'}
+                - {name: FORGEJO_OWNER, value: webgrip}
+                - {name: FORGEJO_TOKEN_PATH, value: /forgejo/FORGEJO_TOKEN}
+                - {name: MODEL_REPOSITORY, value: homelab-cluster}
+                - {name: MODEL_PATH, value: kubernetes/apps/repo-config/repo-config/model/repos.yaml}
+                - {name: MODEL_REF, value: main}
+                - {name: GITHUB_OWNER, value: webgrip}
+                - {name: VAULT_ADDR, value: 'http://openbao.security.svc.cluster.local:8200'}
+                - {name: VAULT_ROLE, value: github-mirrors}
+                - {name: APP_SECRET_PATH, value: github/webgrip-app}
+                - {name: MAX_RELEASE_COPIES_PER_RUN, value: "40"}
+                - {name: MAX_ASSET_BYTES, value: "1073741824"}
+                - {name: SCRATCH_DIR, value: /scratch}
+                - {name: METRICS_URL, value: 'http://vmagent-vmagent.observability.svc.cluster.local:8429/api/v1/import/prometheus?extra_label=job=github-mirrors'}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 20m, memory: 64Mi}
+                limits: {memory: 256Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: scratch, mountPath: /scratch}
+                - {name: script, mountPath: /scripts, readOnly: true}
+                - {name: forgejo, mountPath: /forgejo, readOnly: true}
+          volumes:
+            - name: tmp
+              emptyDir: {sizeLimit: 64Mi}
+            - name: scratch
+              emptyDir: {sizeLimit: 2Gi}
+            - name: script
+              configMap:
+                name: github-mirrors-script
+            - name: forgejo
+              secret:
+                secretName: github-mirrors-forgejo
+                optional: true

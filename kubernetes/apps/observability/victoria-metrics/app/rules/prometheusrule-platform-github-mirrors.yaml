@@ -1,0 +1,254 @@
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-github-mirrors
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: github-mirrors
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: platform.github-mirrors
+      rules:
+        - alert: GitHubMirrorStale
+          expr: |
+            (
+              last_over_time(github_mirror_head_match{job="github-mirrors"}[1h]) == 0
+            )
+            or
+            (
+              time() - last_over_time(github_mirror_last_update_timestamp_seconds{job="github-mirrors"}[1h])
+              > last_over_time(github_mirror_interval_seconds{job="github-mirrors"}[1h]) + 3600
+            )
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-mirrors
+          annotations:
+            summary: "The GitHub copy of {{ $labels.repository }} is behind Forgejo (github-mirrors/{{ $labels.repository }})"
+            description: |
+              What's happening:
+              - The default branch of webgrip/{{ $labels.repository }} on GitHub is not at the Forgejo head, or Forgejo has not run its push mirror for longer than the mirror's interval plus one hour.
+
+              Impact/risk:
+              - GitHub is the cold-bootstrap and break-glass source (ADR-0012); a stale copy restores old manifests.
+              - Public readers and GitHub-based consumers see an old version.
+
+              Likely causes:
+              - The GitHub token behind the Forgejo push mirror expired or lost access (this stopped every mirror from 2026-07-25 to 2026-10-04)
+              - GitHub push protection rejected a commit
+              - The push mirror was deleted, or a force-push on GitHub diverged the branch
+
+              First actions:
+              - Open the GitHub mirrors dashboard and read the error and last-sync columns for the repository
+              - In Forgejo, Settings, Repository, Mirror settings of webgrip/{{ $labels.repository }}: read the last error and press Synchronize now
+              - Follow the runbook for an expired mirror token
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"
+
+        - alert: GitHubMirrorError
+          expr: last_over_time(github_mirror_error{job="github-mirrors"}[1h]) == 1
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-mirrors
+          annotations:
+            summary: "The Forgejo push mirror of {{ $labels.repository }} reports an error (github-mirrors/{{ $labels.repository }})"
+            description: |
+              What's happening:
+              - Forgejo's push mirror of webgrip/{{ $labels.repository }} to GitHub has a non-empty last_error.
+
+              Impact/risk:
+              - New commits and tags stop reaching GitHub; GitHubMirrorStale follows once the heads differ.
+
+              Likely causes:
+              - The mirror's GitHub token expired, was revoked, or lacks the workflow scope for a changed workflow file
+              - GitHub push protection blocked a commit that contains a secret
+              - The GitHub repository was renamed, archived or deleted
+
+              First actions:
+              - Read the error in Forgejo, Settings, Repository, Mirror settings of webgrip/{{ $labels.repository }}
+              - Follow the runbook section for the error you see
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"
+
+        - alert: GitHubReleasesNotMirrored
+          expr: last_over_time(github_mirror_releases_missing{job="github-mirrors"}[1h]) > 0
+          for: 2h
+          labels:
+            severity: warning
+            owner: platform
+            service: github-mirrors
+          annotations:
+            summary: "{{ $value }} Forgejo release(s) of {{ $labels.repository }} are missing on GitHub (github-mirrors/{{ $labels.repository }})"
+            description: |
+              What's happening:
+              - After the reconciler's last run, Forgejo still has releases of webgrip/{{ $labels.repository }} that GitHub does not, for two hours.
+              - The reconciler copies at most a fixed number of releases per run; a first backfill can take a few hours.
+
+              Impact/risk:
+              - GitHub readers do not see the release notes and assets of those versions.
+
+              Likely causes:
+              - The release's tag has not reached GitHub yet (tags missing on the dashboard; the push mirror is stale or failing)
+              - GitHub refused the copy (body too long, asset too large, the App lost Contents write)
+              - The GitHub repository is archived, so the reconciler does not write to it
+
+              First actions:
+              - Check the tags-missing and copy-failed columns on the GitHub mirrors dashboard
+              - kubectl -n github-config logs job/<latest github-mirrors job>; it names every release it could not copy
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"
+
+        - alert: MirrorModelDrift
+          expr: last_over_time(github_mirror_model_drift{job="github-mirrors"}[1h]) == 1
+          for: 30m
+          labels:
+            severity: info
+            owner: platform
+            service: github-mirrors
+          annotations:
+            summary: "{{ $labels.repository }} has a GitHub copy the repo-config model does not list ({{ $labels.forge }}/{{ $labels.repository }})"
+            description: |
+              What's happening:
+              - forge=github: the public GitHub repository webgrip/{{ $labels.repository }} has a Forgejo namesake but no webgrip/{{ $labels.repository }} entry in the repo-config model.
+              - forge=forgejo: Forgejo pushes webgrip/{{ $labels.repository }} to GitHub, but no model entry names it in mirror_of.
+
+              Impact/risk:
+              - Nothing tracks that copy: no staleness alert, no release copies, and nobody decides whether it should exist.
+
+              Likely causes:
+              - A push mirror was created by hand (forgejo-sync.sh --only mirror) without a model entry
+              - A repository was archived or retired on one forge and not the other
+
+              First actions:
+              - Add webgrip/{{ $labels.repository }} to kubernetes/apps/repo-config/repo-config/model/repos.yaml with mirror_of, or archive or delete the GitHub copy
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"
+
+        - alert: GitHubMirrorAppAccessMissing
+          expr: last_over_time(github_mirror_app_access{job="github-mirrors"}[1h]) == 0
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: github-mirrors
+          annotations:
+            summary: "The webgrip-gitops App cannot write webgrip/{{ $labels.repository }} (github-mirrors/{{ $labels.repository }})"
+            description: |
+              What's happening:
+              - GitHub refused an installation token with Contents write for webgrip/{{ $labels.repository }}, so the reconciler could not read or copy anything there.
+
+              Impact/risk:
+              - Head, tags and releases of this mirror are unobserved and no release is copied.
+
+              Likely causes:
+              - The repository is not in the webgrip-gitops installation
+              - The App lacks Contents read and write, or the new permission was not accepted on the installation
+
+              First actions:
+              - GitHub, organisation settings, GitHub Apps, webgrip-gitops, Configure: add the repository and accept pending permissions
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"
+
+        - alert: GitHubMirrorStatusUnknown
+          expr: |
+            (last_over_time(github_mirror_credentials_present{job="github-mirrors"}[1h]) == 0)
+            or
+            (max by (job) (last_over_time(github_mirror_push_status_known{job="github-mirrors"}[1h]) == 0))
+          for: 1h
+          labels:
+            severity: info
+            owner: platform
+            service: github-mirrors
+          annotations:
+            summary: "The GitHub mirror reconciler runs without a credential it needs (github-mirrors/reconciler)"
+            description: |
+              What's happening:
+              - credential=github_app: OpenBao secret/github/webgrip-app is missing, so nothing on GitHub is read or written.
+              - credential=forgejo_token, or no credential label: the Forgejo token is missing or cannot read push_mirrors, so mirror errors and sync times are unknown.
+
+              Impact/risk:
+              - GitHubMirrorError and the sync-age half of GitHubMirrorStale cannot fire; head and release checks still run while the App works.
+
+              Likely causes:
+              - The ExternalSecret github-mirrors-forgejo did not sync from forgejo/repo-config
+              - The repo-config bot lost admin on a repository (push_mirrors needs repository admin)
+              - The App key was never stored, or was rotated without updating OpenBao
+
+              First actions:
+              - kubectl -n github-config get externalsecret github-mirrors-forgejo
+              - kubectl -n github-config logs job/<latest github-mirrors job>
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"
+
+        - alert: GitHubMirrorReconcilerFailing
+          expr: |
+            (
+              max by (cronjob) (kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-mirrors"})
+              > on (cronjob)
+              max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-mirrors"})
+            )
+            or
+            (
+              max by (cronjob) (kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-mirrors"})
+              unless on (cronjob)
+              max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-mirrors"})
+            )
+          for: 45m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-mirrors
+          annotations:
+            summary: "The GitHub mirror reconciler keeps failing (github-config/github-mirrors)"
+            description: |
+              What's happening:
+              - The CronJob github-config/github-mirrors runs every 15 minutes and its latest run has not succeeded for 45 minutes, or it never succeeded.
+              - A run fails when it cannot read a tracked mirror on Forgejo or GitHub; missing credentials are not a failure.
+
+              Impact/risk:
+              - Mirror metrics go stale, so GitHubMirrorStale and GitHubReleasesNotMirrored stop reflecting reality, and no release is copied.
+
+              Likely causes:
+              - A modelled mirror no longer exists on GitHub or Forgejo (renamed or deleted)
+              - OpenBao denied the github-mirrors role (policy or role missing from the bootstrap config)
+              - GitHub refused the App JWT (key rotated or App deleted)
+              - Egress to api.github.com or forgejo-http blocked by a network policy
+
+              First actions:
+              - kubectl -n github-config logs job/<latest github-mirrors job>; the log names the failing repository and call
+              - Fix the cause, then kubectl -n github-config create job --from=cronjob/github-mirrors github-mirrors-manual
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"
+
+        - alert: GitHubMirrorReconcilerStale
+          expr: |
+            time() - max by (cronjob) (kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-mirrors"}) > 2 * 3600
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: github-mirrors
+          annotations:
+            summary: "The GitHub mirror reconciler has not succeeded in over two hours (github-config/github-mirrors)"
+            description: |-
+              What's happening:
+              - The CronJob github-config/github-mirrors last succeeded more than two hours ago.
+
+              Impact/risk:
+              - Nothing watches the GitHub push mirrors: the 2026-07-25 silent stop could repeat unnoticed.
+
+              Likely causes:
+              - The CronJob is suspended, deleted, or cannot schedule a pod on the worker pool
+              - Every run fails; GitHubMirrorReconcilerFailing names the reason
+
+              First actions:
+              - kubectl -n github-config get cronjob github-mirrors
+              - kubectl -n github-config get jobs --sort-by=.status.startTime
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"

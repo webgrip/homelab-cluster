@@ -1,0 +1,201 @@
+---
+rule_files:
+  - rules/platform-github-mirrors.yaml
+evaluation_interval: 1m
+tests:
+  - name: a head mismatch fires after 30 minutes, a matching head does not
+    interval: 15m
+    input_series:
+      - series: 'github_mirror_head_match{job="github-mirrors", repository="homelab-cluster"}'
+        values: "1 1 0 0 0 0 0"
+      - series: 'github_mirror_head_match{job="github-mirrors", repository="renovate-config"}'
+        values: "1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 45m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorStale
+        exp_alerts: []
+      - eval_time: 75m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorStale
+        exp_alerts:
+          - exp_labels:
+              job: github-mirrors
+              repository: homelab-cluster
+              severity: warning
+              owner: platform
+              service: github-mirrors
+            exp_annotations:
+              summary: "The GitHub copy of homelab-cluster is behind Forgejo (github-mirrors/homelab-cluster)"
+
+  - name: a sync older than its 8h interval plus an hour fires, a quiet repository inside its interval does not
+    interval: 15m
+    input_series:
+      - series: 'github_mirror_head_match{job="github-mirrors", repository="workflows"}'
+        values: "1x60"
+      - series: 'github_mirror_last_update_timestamp_seconds{job="github-mirrors", repository="workflows"}'
+        values: "0x60"
+      - series: 'github_mirror_interval_seconds{job="github-mirrors", repository="workflows"}'
+        values: "28800x60"
+    alert_rule_test:
+      - eval_time: 8h
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorStale
+        exp_alerts: []
+      - eval_time: 9h40m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorStale
+        exp_alerts:
+          - exp_labels:
+              job: github-mirrors
+              repository: workflows
+              severity: warning
+              owner: platform
+              service: github-mirrors
+            exp_annotations:
+              summary: "The GitHub copy of workflows is behind Forgejo (github-mirrors/workflows)"
+
+  - name: a push mirror error fires after 15 minutes
+    interval: 15m
+    input_series:
+      - series: 'github_mirror_error{job="github-mirrors", repository="unfold"}'
+        values: "0 0 1 1 1"
+    alert_rule_test:
+      - eval_time: 30m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorError
+        exp_alerts: []
+      - eval_time: 50m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorError
+        exp_alerts:
+          - exp_labels:
+              job: github-mirrors
+              repository: unfold
+              severity: warning
+              owner: platform
+              service: github-mirrors
+            exp_annotations:
+              summary: "The Forgejo push mirror of unfold reports an error (github-mirrors/unfold)"
+
+  - name: releases missing for two hours fire, a backfill that finishes in time and extra GitHub releases do not
+    interval: 15m
+    input_series:
+      - series: 'github_mirror_releases_missing{job="github-mirrors", repository="ai-skills"}'
+        values: "134 109 84 59 34 9 0 0 0 0 0 0"
+      - series: 'github_mirror_releases_missing{job="github-mirrors", repository="infrastructure"}'
+        values: "3x12"
+      - series: 'github_mirror_releases_extra{job="github-mirrors", repository="telemetry-service"}'
+        values: "10x12"
+      - series: 'github_mirror_releases_missing{job="github-mirrors", repository="telemetry-service"}'
+        values: "0x12"
+    alert_rule_test:
+      - eval_time: 165m
+        groupname: platform.github-mirrors
+        alertname: GitHubReleasesNotMirrored
+        exp_alerts:
+          - exp_labels:
+              job: github-mirrors
+              repository: infrastructure
+              severity: warning
+              owner: platform
+              service: github-mirrors
+            exp_annotations:
+              summary: "3 Forgejo release(s) of infrastructure are missing on GitHub (github-mirrors/infrastructure)"
+
+  - name: a GitHub copy outside the model is info, a modelled one is quiet
+    interval: 15m
+    input_series:
+      - series: 'github_mirror_model_drift{job="github-mirrors", forge="github", repository="discord-moon"}'
+        values: "1x6"
+      - series: 'github_mirror_model_drift{job="github-mirrors", forge="github", repository="unfold"}'
+        values: "0x6"
+    alert_rule_test:
+      - eval_time: 60m
+        groupname: platform.github-mirrors
+        alertname: MirrorModelDrift
+        exp_alerts:
+          - exp_labels:
+              job: github-mirrors
+              forge: github
+              repository: discord-moon
+              severity: info
+              owner: platform
+              service: github-mirrors
+            exp_annotations:
+              summary: "discord-moon has a GitHub copy the repo-config model does not list (github/discord-moon)"
+
+  - name: a repository outside the App installation fires after an hour
+    interval: 15m
+    input_series:
+      - series: 'github_mirror_app_access{job="github-mirrors", repository="twente.dev"}'
+        values: "0x8"
+      - series: 'github_mirror_app_access{job="github-mirrors", repository="unfold"}'
+        values: "1x8"
+    alert_rule_test:
+      - eval_time: 90m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorAppAccessMissing
+        exp_alerts:
+          - exp_labels:
+              job: github-mirrors
+              repository: twente.dev
+              severity: warning
+              owner: platform
+              service: github-mirrors
+            exp_annotations:
+              summary: "The webgrip-gitops App cannot write webgrip/twente.dev (github-mirrors/twente.dev)"
+
+  - name: a missing credential is info, present credentials are quiet
+    interval: 15m
+    input_series:
+      - series: 'github_mirror_credentials_present{job="github-mirrors", credential="github_app"}'
+        values: "1x8"
+      - series: 'github_mirror_credentials_present{job="github-mirrors", credential="forgejo_token"}'
+        values: "0x8"
+      - series: 'github_mirror_push_status_known{job="github-mirrors", repository="unfold"}'
+        values: "0x8"
+    alert_rule_test:
+      - eval_time: 90m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorStatusUnknown
+        exp_alerts:
+          - exp_labels:
+              job: github-mirrors
+              credential: forgejo_token
+              severity: info
+              owner: platform
+              service: github-mirrors
+            exp_annotations:
+              summary: "The GitHub mirror reconciler runs without a credential it needs (github-mirrors/reconciler)"
+          - exp_labels:
+              job: github-mirrors
+              severity: info
+              owner: platform
+              service: github-mirrors
+            exp_annotations:
+              summary: "The GitHub mirror reconciler runs without a credential it needs (github-mirrors/reconciler)"
+
+  - name: a failing reconciler fires after 45 minutes, a recovered one does not
+    interval: 1m
+    input_series:
+      - series: 'kube_cronjob_status_last_schedule_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-mirrors"}'
+        values: "900x29 1800x59 6300x20"
+      - series: 'kube_cronjob_status_last_successful_time{job="kube-state-metrics", exported_namespace="github-config", cronjob="github-mirrors"}'
+        values: "900x89 6300x20"
+    alert_rule_test:
+      - eval_time: 80m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorReconcilerFailing
+        exp_alerts:
+          - exp_labels:
+              cronjob: github-mirrors
+              severity: warning
+              owner: platform
+              service: github-mirrors
+            exp_annotations:
+              summary: "The GitHub mirror reconciler keeps failing (github-config/github-mirrors)"
+      - eval_time: 95m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorReconcilerFailing
+        exp_alerts: []

@@ -12,6 +12,7 @@ release paths are dead, and one GitHub-leading fork. [ADR-0078](../adr/adr-0078-
 | Terraform object | `kubernetes/apps/github-config/webgrip/app/terraform.yaml`: `Terraform/webgrip` in namespace `github-config`, `vars.github_owner: webgrip`, **`suspend: true`** |
 | OpenBao | policy `github-config-webgrip` (read `secret/data/github/webgrip-app`), Kubernetes role `github-config-webgrip` bound to ServiceAccount `github-config/github-config-webgrip-runner`; written by the `openbao-config` CronJob |
 | Alert | `GitHubConfigWebgripNotReady` (warning, 3h) |
+| Also used by | CronJob `github-config/github-mirrors`, which copies Forgejo releases to the ten tracked push mirrors with a `contents: write` token per repository ([GitHub mirrors](github-mirrors.md)); it needs **Contents: Read and write** and those ten repositories in the installation |
 
 ## What the model archives
 
@@ -106,6 +107,12 @@ An agent can do the rest.
    `approvePlan: auto` so a hand unarchive is reverted within the hour.
 
 ## Adding a repository
+
+An active push mirror is tracked, not managed: `webgrip/<name>` with `mirror_of` and no
+`settings` imports nothing into this Terraform object
+([ADR-0085](../adr/adr-0085-github-push-mirrors-are-tracked-in-the-model-and-reconciled-for-drift-and-releases.md),
+procedure in [GitHub mirrors](github-mirrors.md#adding-or-retiring-a-mirror)). The steps below are
+for an archived mirror, a fork, or a GitHub-leading repository.
 
 1. Add the entry to `repos.yaml` (`webgrip/<name>`, `forge: github`, a profile, `mirror_of` when
    it is a push mirror of a Forgejo repository).
