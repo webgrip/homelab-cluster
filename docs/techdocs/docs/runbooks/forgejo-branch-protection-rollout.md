@@ -26,25 +26,44 @@ applied by a separate module (since 2026-10-24, VIK-2320): see
 | **Merge whitelist** | Identities allowed to merge PRs into the branch. `merge` in the model; absent means no whitelist. |
 | **Status checks** | `status_checks` in the model: contexts that must be green before a merge. Forgejo reads each entry as a glob pattern, so a literal `[` or `]` must be escaped (`"\\[Workflow\\] On Pull Request / checks (pull_request)"` in YAML). Unescaped, `[Workflow]` is a character class, the context never matches, and "merge when checks succeed" waits forever; the schema refuses it. |
 
-The rules owned since 2026-10-26 (ADR-0083):
+The rules owned since 2026-10-26 (ADR-0083). A Forgejo repository in `repos.yaml` never names a profile: it states its `kind` and up to three facts, and the profile follows ([ADR-0085](../adr/adr-0085-a-repository-states-what-it-is-and-its-protection-follows.md)):
 
-| Profile | Repositories | Push | Merge | Approvals | Tags |
+| The repository says | Profile | Push | Merge | Approvals | Tags |
 | --- | --- | --- | --- | --- | --- |
-| `protected-core` | agent-standards, workflows, renovate-config, homelab-cluster, unfold-cluster | nobody | `ryangr0`, `yon`, `renovate` (unfold-cluster: `ryangr0` only) | 1 | `webgrip-ci` only |
-| `protected` | every other active Forgejo repository | nobody | `ryangr0`, `yon`, `renovate` (unfold `development` adds `ploeg-release`) | 0 | `webgrip-ci` only |
-| `baseline` | archived repositories | unchanged | unchanged | 0 | none |
+| `core: true` | `protected-core` | nobody | `ryangr0`, `yon`, `renovate` (unfold-cluster: `ryangr0` only) | 1 | `webgrip-ci` only |
+| nothing more | `protected` | nobody | `ryangr0`, `yon`, `renovate` | 0 | `webgrip-ci` only |
+| `writer: <account>` | `workspace` | that account, `main` only | `ryangr0` | 0 | none |
+| `settings.archived: true` | `baseline` | unchanged | unchanged | 0 | none |
 
-Required contexts stay per repository: homelab-cluster `main` the four `e2e / … (pull_request)` jobs, unfold `development` and `main` only `* / gate (pull_request)`, the job that waits for all the others ([ADR-0084](../adr/adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md)), unfold-cluster `main` its seven checks, talos-kata-extension `main` its source-change check; every other repository none, because a required context that never reports blocks every merge.
+`staged: true` adds the `staged` layer from `profiles.yaml` on top of the profile: a `development` rule (nobody pushes; `ryangr0`, `yon`, `renovate` merge; unfold adds `ploeg-release`), fast-forward merges on, and the branch kept after a merge so a promotion never deletes `development`. A repository rule can add to all of this and tighten it, never loosen it: the validator refuses a rule that lowers `required_approvals` or turns off a review guard its profile sets.
 
-Private repositories are in the model with `settings.private: true`, so tofu keeps them private: compyutah, erfbeeld, omnigraph-explorer, ploeg-bench, ploeg-bench-world and talos-kata-extension. ploeg-bench-world's default branch is `bench/void`, which the bench harness resets, so only its unused `main` carries the rule. Two private repositories stay outside the model on purpose, because a protected `main` would break how they are written: `obsidian-vault`, which the Obsidian git plugin pushes straight to `main`, and `previews`, which `agent-builder` publishes to by pushing `main`. Either joins the model once its writer delivers through a pull request.
+| Repository | kind | core | staged | writer |
+| --- | --- | --- | --- | --- |
+| homelab-cluster, unfold-cluster | config | yes | | |
+| agent-standards, workflows, renovate-config, semantic-release-config, ai-skills, frontend-toolkit, action-typescript-template | package | yes | | |
+| infrastructure | image-set | yes | | |
+| unfold, erfbeeld | service | | yes | |
+| twente.dev | site | | yes | |
+| seekframe | package | | yes | |
+| compyutah | none | | yes | |
+| obsidian-vault | none | | | `ryangr0` (the Obsidian git plugin) |
+| previews | none | | | `agent-builder` |
+| every other active repository | its kind | | | |
+
+Required contexts stay per repository, and only contexts the repository reports on pull requests: the validator refuses a context that does not end in `(pull_request)` or `(pull_request_target)`, because a check reported on `push` never reaches a pull request and blocks every merge. homelab-cluster `main` the four `e2e / … (pull_request)` jobs; unfold `development` and `main` only `* / gate (pull_request)`, the job that waits for all the others ([ADR-0084](../adr/adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md)); unfold-cluster `main` its seven checks; talos-kata-extension `main` its source-change check; agent-standards, ai-skills, renovate-config, semantic-release-config and omnigraph-explorer the contexts they reported on each of their last 12 pull requests. Every other repository requires none.
+
+Private repositories are in the model with `settings.private: true`, so tofu keeps them private: compyutah, erfbeeld, obsidian-vault, omnigraph-explorer, ploeg-bench, ploeg-bench-world, previews and talos-kata-extension. ploeg-bench-world's default branch is `bench/void`, which the bench harness resets, so only its unused `main` carries the rule.
+
+The `every_active_repo_is_modelled` check lists every Forgejo repository that is neither archived nor a mirror and is missing from the model. It reads the organisation anonymously, so it sees public repositories only; a new private repository has to be added by hand.
 
 `agent-builder` is deliberately in **no** list anywhere: the agent fleet delivers via PRs
 (ADR-0048) and never merges its own work.
 
 ## Changing a rule
 
-1. Edit `profiles.yaml` (a profile's `branches` or `tags`) or `repos.yaml` (a repo's `branches`
-   or `tags`, which add to and override the profile's rule field by field). A rule that does not exist live yet needs no import;
+1. Edit `profiles.yaml` (a profile's `branches` or `tags`, the `staged` layer, a kind's Renovate
+   default) or `repos.yaml` (a repo's `kind`, `core`, `staged`, `writer`, `branches` or `tags`;
+   a repo's rule adds to and overrides the derived rule field by field, and may only tighten it). A rule that does not exist live yet needs no import;
    a rule that already exists by hand must be added to `branch_protections_live_before_tofu` in
    `tofu/imports.tf` first, or the create fails.
 2. `./scripts/validate-repo-config-model.sh` (pre-commit runs it with the mutation cases).
