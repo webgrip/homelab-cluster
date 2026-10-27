@@ -182,6 +182,16 @@ jobs:
           docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
             sh -ec "pip install --quiet cryptography==46.0.3 pyyaml==6.0.3 && sh scripts/test-github-mirrors.sh"
 
+      - name: Test the repo-config inventory against a fake Forgejo and vmagent (with mutations)
+        run: |
+          ws="$(mktemp -d)"
+          mkdir -p "$ws/kubernetes/apps/repo-config/repo-config/inventory" "$ws/kubernetes/apps/repo-config/repo-config/model"
+          rsync -a "$GITHUB_WORKSPACE/scripts" "$ws/"
+          cp "$GITHUB_WORKSPACE/kubernetes/apps/repo-config/repo-config/inventory/repo_config_inventory.py" "$ws/kubernetes/apps/repo-config/repo-config/inventory/"
+          cp "$GITHUB_WORKSPACE/kubernetes/apps/repo-config/repo-config/model/repos.yaml" "$ws/kubernetes/apps/repo-config/repo-config/model/"
+          docker run --rm -v "$ws":/data -w /data harbor.webgrip.dev/dockerhub/library/python:3.12-slim \
+            sh -ec "pip install --quiet pyyaml==6.0.3 && sh scripts/test-repo-config-inventory.sh"
+
       - name: Test the ploeg-hq Renovate token minter against a fake GitHub, OpenBao and apiserver (with mutations)
         run: |
           ws="$(mktemp -d)"

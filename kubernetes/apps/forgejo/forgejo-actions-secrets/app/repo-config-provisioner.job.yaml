@@ -32,6 +32,9 @@ spec:
             - {name: TOKEN_SECRET, value: repo-config-token}
             - {name: TOKEN_NAME, value: webgrip-repo-config}
             - {name: TOKEN_SCOPES, value: '["write:organization","write:repository"]'}
+            - {name: READ_TOKEN_SECRET, value: repo-config-inventory-token}
+            - {name: READ_TOKEN_NAME, value: webgrip-repo-config-inventory}
+            - {name: READ_TOKEN_SCOPES, value: '["read:organization","read:repository"]'}
             - {name: BOT_USERNAME, value: webgrip-repo-config}
             - {name: BOT_EMAIL, value: webgrip-repo-config@webgrip.dev}
             - {name: TEAM_NAME, value: repo-config}
@@ -60,24 +63,30 @@ spec:
                 echo "unexpected status probing bot user: $code" >&2; exit 1
               fi
 
-              tok="$(kubectl -n "$NAMESPACE" get secret "$TOKEN_SECRET" -o jsonpath='{.data.FORGEJO_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
-              wanted_scopes="$(printf '%s' "$TOKEN_SCOPES" | jq -c 'sort')"
-              minted_scopes="$(curl -fsS -u "$bot" "$api/users/${BOT_USERNAME}/tokens" 2>/dev/null | jq -c --arg n "$TOKEN_NAME" '[.[] | select(.name == $n) | .scopes[]] | sort' 2>/dev/null || true)"
-              if [ -n "$tok" ] && [ "$minted_scopes" = "$wanted_scopes" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api/orgs/${ORG}/teams"; then
-                echo "existing token still valid with scopes ${wanted_scopes} - no change"
-              else
-                echo "minting a fresh token (scopes held: ${minted_scopes:-unknown}, wanted: ${wanted_scopes})"
+              ensure_token() {
+                secret="$1"; name="$2"; scopes="$3"; probe="$4"
+                tok="$(kubectl -n "$NAMESPACE" get secret "$secret" -o jsonpath='{.data.FORGEJO_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+                wanted_scopes="$(printf '%s' "$scopes" | jq -c 'sort')"
+                minted_scopes="$(curl -fsS -u "$bot" "$api/users/${BOT_USERNAME}/tokens" 2>/dev/null | jq -c --arg n "$name" '[.[] | select(.name == $n) | .scopes[]] | sort' 2>/dev/null || true)"
+                if [ -n "$tok" ] && [ "$minted_scopes" = "$wanted_scopes" ] && curl -fsS -o /dev/null -H "Authorization: token $tok" "$api$probe"; then
+                  echo "token ${name} still valid with scopes ${wanted_scopes} - no change"
+                  return 0
+                fi
+                echo "minting token ${name} (scopes held: ${minted_scopes:-unknown}, wanted: ${wanted_scopes})"
                 curl -fsS -u "$admin" -H 'Content-Type: application/json' -X PATCH "$api/admin/users/${BOT_USERNAME}" \
                   -d "{\"login_name\":\"${BOT_USERNAME}\",\"source_id\":0,\"password\":\"${BOT_PASSWORD}\",\"must_change_password\":false}" >/dev/null
-                curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${TOKEN_NAME}" || true
+                curl -sS -o /dev/null -u "$bot" -X DELETE "$api/users/${BOT_USERNAME}/tokens/${name}" || true
                 tok="$(curl -fsS -u "$bot" -H 'Content-Type: application/json' -X POST "$api/users/${BOT_USERNAME}/tokens" \
-                  -d "{\"name\":\"${TOKEN_NAME}\",\"scopes\":${TOKEN_SCOPES}}" | jq -r '.sha1')"
-                [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed" >&2; exit 1; }
-                kubectl -n "$NAMESPACE" create secret generic "$TOKEN_SECRET" \
+                  -d "{\"name\":\"${name}\",\"scopes\":${scopes}}" | jq -r '.sha1')"
+                [ -n "$tok" ] && [ "$tok" != "null" ] || { echo "token mint failed for ${name}" >&2; exit 1; }
+                kubectl -n "$NAMESPACE" create secret generic "$secret" \
                   --from-literal="FORGEJO_TOKEN=$tok" \
                   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-                echo "wrote Secret $TOKEN_SECRET"
-              fi
+                echo "wrote Secret ${secret}"
+              }
+
+              ensure_token "$TOKEN_SECRET" "$TOKEN_NAME" "$TOKEN_SCOPES" "/orgs/${ORG}/teams"
+              ensure_token "$READ_TOKEN_SECRET" "$READ_TOKEN_NAME" "$READ_TOKEN_SCOPES" "/orgs/${ORG}/repos?limit=1"
 
               team="{\"name\":\"${TEAM_NAME}\",\"description\":\"${TEAM_DESCRIPTION}\",\"permission\":\"${TEAM_PERMISSION}\",\"includes_all_repositories\":true,\"can_create_org_repo\":true,\"units\":${TEAM_UNITS}}"
               tid="$(curl -fsS -u "$admin" "$api/orgs/${ORG}/teams" | jq -r --arg n "$TEAM_NAME" '.[] | select(.name==$n) | .id' | head -1)"
