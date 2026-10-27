@@ -46,6 +46,7 @@ github_settings_required_when_active = [
     "can_approve_pull_request_reviews",
 ]
 fields_an_archived_github_repo_cannot_apply = ["rulesets", "release_consumers"]
+fields_a_tracked_mirror_leaves_to_github = ["settings", "rulesets", "release_consumers"]
 
 
 def forgejo_archived(repo):
@@ -88,7 +89,14 @@ for name, repo in sorted(repos.items()):
     if owner not in github_owners:
         errors.append(f"{name}: GitHub owner {owner} is not listed under github.owners, so no Terraform object holds its credentials")
     settings = {**profile["github"]["settings"], **repo.get("settings", {})}
-    if settings.get("archived", False):
+    if "mirror_of" in repo and not settings.get("archived", False):
+        managed = [field for field in fields_a_tracked_mirror_leaves_to_github if field in repo]
+        if managed:
+            errors.append(
+                f"{name}: an active push mirror is tracked, not managed (ADR-0085), so tofu-github never applies"
+                f" its {', '.join(managed)}; drop them"
+            )
+    elif settings.get("archived", False):
         carried = [field for field in fields_an_archived_github_repo_cannot_apply if field in repo]
         if carried:
             errors.append(f"{name}: archived on GitHub but carries {', '.join(carried)}; an archived repository is read-only, so they would never apply")
