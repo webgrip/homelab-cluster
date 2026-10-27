@@ -56,9 +56,12 @@ def forgejo_archived(repo):
     return repo.get("settings", {}).get("archived", False)
 
 
+github_profile = "baseline"
+
+
 def profile_name(repo):
-    if repo["forge"] != "forgejo":
-        return repo["profile"]
+    if repo["forge"] == "github":
+        return github_profile
     if forgejo_archived(repo):
         return "baseline"
     if "writer" in repo:

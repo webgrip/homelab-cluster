@@ -13,8 +13,8 @@ and an `--all --only protect` sweep locked the owner out of homelab-cluster on 2
 Nothing scheduled ever ran the script.
 
 Every entry in `repos.yaml` names its `forge`. Forgejo entries are keyed by repository name and
-read the `forgejo` block of their profile; GitHub entries are keyed `<owner>/<name>` and are
-applied by a separate module (since 2026-10-24, VIK-2320): see
+read the `forgejo` block of their derived profile; GitHub entries are keyed `<owner>/<name>`, never
+name a profile either (they all take `baseline`'s `github` block), and are applied by a separate module (since 2026-10-24, VIK-2320): see
 [github-app-ploeg-hq](github-app-ploeg-hq.md#one-model-for-both-forges-since-2026-10-24) and
 [github-app-webgrip](github-app-webgrip.md).
 
