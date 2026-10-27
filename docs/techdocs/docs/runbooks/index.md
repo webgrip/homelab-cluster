@@ -33,6 +33,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [The ploeg-hq GitHub App: rulesets, settings and Actions secrets from git](github-app-ploeg-hq.md)
 - [The wellhead-dev Renovate GitHub App](github-app-wellhead-dev.md)
 - [The webgrip GitHub App: archive the dead GitHub mirrors from git](github-app-webgrip.md)
+- [GitHub mirrors: drift, release copies, and what to do when one stops](github-mirrors.md)
 - [Level 4 — short-lived: OIDC roles, dynamic credentials, per-run tokens](secrets-level-4-short-lived.md)
 - [Level 5 — a person: read the vault, cache by name, never an original](secrets-level-5-person.md)
 

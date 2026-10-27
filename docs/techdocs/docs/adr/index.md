@@ -110,11 +110,12 @@ How change reaches the cluster — the forge, the Flux source, and the escape ha
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
 | [0011](adr-0011-flux-source-forgejo.md) | Make Forgejo the authoritative GitOps source for Flux | accepted | 2026-10-04 |
-| [0012](adr-0012-external-bootstrap-fallback-source.md) | External mirror as cold-bootstrap + break-glass source | accepted | 2026-10-04 |
+| [0012](adr-0012-external-bootstrap-fallback-source.md) | External mirror as cold-bootstrap + break-glass source | accepted | 2026-10-27 |
 | [0013](adr-0013-forgejo-leading-application-repos.md) | Forgejo-authoritative application repos (de-mirror) | accepted | 2026-10-04 |
 | [0014](adr-0014-codeberg-offsite-push-mirror.md) | Codeberg as a second off-site push-mirror | rejected | 2026-10-04 |
 | [0069](adr-0069-one-delivery-contract.md) | One delivery contract: forges produce, registries carry, clusters consume | accepted | 2026-10-17 |
 | [0082](adr-0082-a-failed-change-is-a-flux-reported-failure-or-a-declared-revert.md) | A failed change is a Flux-reported failure or a declared revert, counted per deployment | accepted | 2026-10-25 |
+| [0085](adr-0085-github-push-mirrors-are-tracked-in-the-model-and-reconciled-for-drift-and-releases.md) | GitHub push mirrors are tracked in the model, watched for drift, and get their releases copied | accepted | 2026-10-27 |
 
 ### 5. Secrets
 
