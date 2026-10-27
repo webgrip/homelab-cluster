@@ -40,7 +40,11 @@ visibility) and populate it in step 2 with `git push origin --all && git push or
    `scripts/forgejo-sync.sh --repo <name>` (dry-run first, then `--apply`): enables the Actions +
    PRs + Releases units and adds the Forgejo→GitHub push-mirror. Merge defaults and branch
    protection are NOT the script's: add the repo to the repo-config model
-   (`kubernetes/apps/repo-config/repo-config/model/repos.yaml`, a profile plus optional `branches`);
+   (`kubernetes/apps/repo-config/repo-config/model/repos.yaml`) as `forge: forgejo` plus its
+   `kind` (`service`, `image-set`, `package`, `site`, `config` or `none`) and only the facts that
+   hold: `core: true`, `staged: true`, `writer: <account>`. **Never name a `profile`** on a Forgejo
+   entry — the validator refuses it; the profile and the default Renovate policy are derived from
+   these (ADR-0086). Optional `branches` may only tighten the derived rule;
    `--only protect` and `--only settings` refuse →
    [branch-protection runbook](../../../docs/techdocs/docs/runbooks/forgejo-branch-protection-rollout.md).
    Token env (`~/.config/webgrip/forgejo.env`) lives **on the operator machine**, not in the repo → reference.md.
@@ -65,4 +69,5 @@ visibility) and populate it in step 2 with `git push origin --all && git push or
   If a repo seems skipped, first confirm it appears in the resolved list.
 - **Never copy GitHub `status_check_contexts` into Forgejo branch protection** — they're GitHub job
   names; Forgejo's checks differ, so requiring them deadlocks every merge. Add `status_checks` to the
-  repo's model entry under Forgejo check names only after CI has run once.
+  repo's model entry under Forgejo check names only after CI has run once, and only contexts ending in
+  `(pull_request)` or `(pull_request_target)` — the validator refuses a `push` context.
