@@ -78,8 +78,8 @@
       "properties": {
         "homelab-cluster": {
           "properties": {
-            "profile": {
-              "const": "protected-core"
+            "kind": {
+              "const": "gitops"
             },
             "branches": {
               "properties": {
@@ -102,6 +102,11 @@
                 "required": [
                   "tags"
                 ]
+              },
+              {
+                "required": [
+                  "profile"
+                ]
               }
             ]
           }
@@ -119,11 +124,14 @@
       "additionalProperties": false,
       "required": [
         "forge",
-        "profile"
+        "kind"
       ],
       "properties": {
         "forge": {
           "const": "forgejo"
+        },
+        "kind": {
+          "$ref": "#/$defs/profileName"
         },
         "profile": {
           "$ref": "#/$defs/profileName"
@@ -139,7 +147,19 @@
         },
         "tags": {
           "$ref": "tag-protection.schema.json"
+        },
+        "profile_reason": {
+          "type": "string",
+          "minLength": 10
         }
+      },
+      "dependentRequired": {
+        "profile": [
+          "profile_reason"
+        ],
+        "profile_reason": [
+          "profile"
+        ]
       }
     },
     "githubRepo": {

@@ -28,11 +28,16 @@ applied by a separate module (since 2026-10-24, VIK-2320): see
 
 The rules owned since 2026-10-26 (ADR-0083):
 
-| Profile | Repositories | Push | Merge | Approvals | Tags |
-| --- | --- | --- | --- | --- | --- |
-| `protected-core` | agent-standards, workflows, renovate-config, homelab-cluster, unfold-cluster | nobody | `ryangr0`, `yon`, `renovate` (unfold-cluster: `ryangr0` only) | 1 | `webgrip-ci` only |
-| `protected` | every other active Forgejo repository | nobody | `ryangr0`, `yon`, `renovate` (unfold `development` adds `ploeg-release`) | 0 | `webgrip-ci` only |
-| `baseline` | archived repositories | unchanged | unchanged | 0 | none |
+Every Forgejo repository names a `kind` in `repos.yaml`; the kind picks the profile and adds its own rules ([ADR-0084](../adr/adr-0084-a-repository-kind-decides-its-protection.md)). The kinds live next to the profiles in `profiles.yaml`.
+
+| Kind | Profile | Push | Merge | Approvals | Tags | Adds |
+| --- | --- | --- | --- | --- | --- | --- |
+| `gitops` | `protected-core` | nobody | `ryangr0`, `yon`, `renovate` (unfold-cluster: `ryangr0` only) | 1 | `webgrip-ci` only | — |
+| `supply-chain` | `protected-core` | nobody | `ryangr0`, `yon`, `renovate` | 1 | `webgrip-ci` only | — |
+| `app-promoted` | `protected` | nobody | `ryangr0`, `yon`, `renovate` (unfold `development` adds `ploeg-release`) | 0 | `webgrip-ci` only | `development` rule, delete-branch-after-merge off |
+| `app`, `infra`, `bench`, `profile` | `protected` | nobody | `ryangr0`, `yon`, `renovate` | 0 | `webgrip-ci` only | — |
+| `workspace` | `workspace` | the named writer only | `ryangr0` | 0 | none | — |
+| `archived` | `baseline` | unchanged | unchanged | 0 | none | — |
 
 Required contexts stay per repository: homelab-cluster `main` the four `e2e / … (pull_request)` jobs, unfold `development` and `main` their `[Workflow] On Pull Request` jobs, unfold-cluster `main` its seven checks, talos-kata-extension `main` its source-change check; every other repository none, because a required context that never reports blocks every merge.
 

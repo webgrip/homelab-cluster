@@ -62,3 +62,4 @@ Archived repositories stay on `baseline`: they are read-only already. A reposito
 
 - Amends [ADR-0050](adr-0050-per-repo-delivery-contract.md) points 1 and 2: the owner's trunk push and the release bot's push whitelist are gone; the server-enforced contract, the janitor and the harness guard stay.
 - 2026-10-26 — decided by Ryan Grippeling: core repositories need one approval, elsewhere none; releases only tag; signed commits for the GitOps repositories follow in their own change.
+- 2026-10-27 — amended by [ADR-0084](adr-0084-a-repository-kind-decides-its-protection.md): the core repositories are the `gitops` and `supply-chain` kinds, five more repositories joined them, and promoted applications protect `development`.

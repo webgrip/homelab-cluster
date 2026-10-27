@@ -1,6 +1,7 @@
 locals {
   model_dir = var.model_dir != "" ? var.model_dir : "${path.module}/../model"
   profiles  = yamldecode(file("${local.model_dir}/profiles.yaml")).profiles
+  kinds     = yamldecode(file("${local.model_dir}/profiles.yaml")).kinds
   model     = yamldecode(file("${local.model_dir}/repos.yaml"))
   owner     = local.model.forgejo.owner
 
@@ -9,12 +10,16 @@ locals {
   ])
 
   forgejo_repos = {
-    for name, repo in local.model.repos : name => repo if repo.forge == "forgejo"
+    for name, repo in local.model.repos : name => merge(repo, {
+      profile  = try(repo.profile, local.kinds[repo.kind].profile)
+      renovate = try(repo.renovate, local.kinds[repo.kind].renovate, null)
+    }) if repo.forge == "forgejo"
   }
 
   repos = {
     for name, repo in local.forgejo_repos : name => merge(
       local.profiles[repo.profile].forgejo.settings,
+      try(local.kinds[repo.kind].settings, {}),
       try(repo.settings, {}),
     )
   }
@@ -23,9 +28,11 @@ locals {
     for name, repo in local.forgejo_repos : {
       for branch in setunion(
         keys(try(local.profiles[repo.profile].forgejo.branches, {})),
+        keys(try(local.kinds[repo.kind].branches, {})),
         keys(try(repo.branches, {})),
         ) : "${name}/${branch}" => merge(
         try(local.profiles[repo.profile].forgejo.branches[branch], {}),
+        try(local.kinds[repo.kind].branches[branch], {}),
         try(repo.branches[branch], {}),
         { repo = name, branch = branch },
       )

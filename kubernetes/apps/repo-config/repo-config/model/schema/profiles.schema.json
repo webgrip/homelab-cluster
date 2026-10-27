@@ -6,7 +6,8 @@
   "required": [
     "apiVersion",
     "kind",
-    "profiles"
+    "profiles",
+    "kinds"
   ],
   "properties": {
     "apiVersion": {
@@ -123,6 +124,49 @@
           }
         }
       }
+    },
+    "kinds": {
+      "type": "object",
+      "required": [
+        "gitops",
+        "supply-chain",
+        "app-promoted",
+        "app",
+        "infra",
+        "bench",
+        "workspace",
+        "profile",
+        "archived"
+      ],
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/kind"
+      },
+      "properties": {
+        "gitops": {
+          "properties": {
+            "profile": {
+              "const": "protected-core"
+            }
+          }
+        },
+        "supply-chain": {
+          "properties": {
+            "profile": {
+              "const": "protected-core"
+            }
+          }
+        },
+        "archived": {
+          "properties": {
+            "profile": {
+              "const": "baseline"
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -188,6 +232,31 @@
           }
         }
       }
+    },
+    "kind": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile"
+      ],
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/profileName"
+        },
+        "settings": {
+          "$ref": "settings.schema.json"
+        },
+        "branches": {
+          "$ref": "branch-protection.schema.json"
+        },
+        "renovate": {
+          "$ref": "renovate.schema.json"
+        }
+      }
+    },
+    "profileName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
     }
   }
 }
