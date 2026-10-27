@@ -39,6 +39,7 @@ bao policy write github-config-ploeg-hq /scripts/github-config-ploeg-hq.hcl
 bao policy write github-config-webgrip /scripts/github-config-webgrip.hcl
 bao policy write github-secrets-bridge /scripts/github-secrets-bridge.hcl
 bao policy write renovate-github-app-token-ploeg-hq /scripts/renovate-github-app-token-ploeg-hq.hcl
+bao policy write renovate-github-app-token-wellhead-dev /scripts/renovate-github-app-token-wellhead-dev.hcl
 bao policy write homelab-etcd-age-keygen /scripts/homelab-etcd-age-keygen.hcl
 
 echo "==> kubernetes roles"
@@ -76,6 +77,9 @@ bao write auth/kubernetes/role/github-secrets-bridge \
 bao write auth/kubernetes/role/renovate-github-app-token-ploeg-hq \
   bound_service_account_names=renovate-github-app-token-ploeg-hq bound_service_account_namespaces=renovate \
   policies=renovate-github-app-token-ploeg-hq ttl=10m >/dev/null
+bao write auth/kubernetes/role/renovate-github-app-token-wellhead-dev \
+  bound_service_account_names=renovate-github-app-token-wellhead-dev bound_service_account_namespaces=renovate \
+  policies=renovate-github-app-token-wellhead-dev ttl=10m >/dev/null
 bao write auth/kubernetes/role/homelab-etcd-age-keygen \
   bound_service_account_names=homelab-etcd-age-keygen bound_service_account_namespaces=backup \
   policies=homelab-etcd-age-keygen ttl=5m >/dev/null
