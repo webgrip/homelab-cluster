@@ -137,6 +137,22 @@ if platform_automerge_gate not in homelab_main_checks:
         " when no required check matches, so this check is what holds an untested release pair out of main."
     )
 
+gate_check = "* / gate (pull_request)"
+platform_automerge_presets = {"local>webgrip/renovate-config:platform-automerge"}
+for name, repo in sorted(repos.items()):
+    if repo["forge"] != "forgejo" or forgejo_archived(repo):
+        continue
+    if not platform_automerge_presets & set(repo.get("renovate", {}).get("presets", [])):
+        continue
+    branches = set(profiles.get(repo["profile"], {}).get("forgejo", {}).get("branches", {})) | set(repo.get("branches", {}))
+    ungated = sorted(branch for branch in branches if gate_check not in branch_rule(name, branch).get("status_checks", []))
+    if not branches or ungated:
+        errors.append(
+            f"{name}: its Renovate presets let Forgejo merge on green, so every protected branch must require"
+            f" '{gate_check}' (ADR-0084); {', '.join(ungated) or 'no branch rule'} does not. Forgejo's"
+            " merge-when-checks-succeed merges at once when no required check matches."
+        )
+
 unfold_production_deployers = {"ryangr0"}
 unfold_main = repos.get("unfold-cluster", {}).get("branches", {}).get("main")
 if unfold_main is None:
