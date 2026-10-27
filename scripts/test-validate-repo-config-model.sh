@@ -78,6 +78,10 @@ run_case fail github-mirror-carries-renovate-policy "printf '  webgrip/renovate-
 run_case pass renovate-explicit-absent "sed -i '0,/^      profile: profile-site$/s//      absent: true/' repos.yaml"
 run_case pass renovate-presets-swapped-for-profile "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"      presets:\n        - \\\"local>webgrip/renovate-config:profile-app\\\"\n        - \\\"local>webgrip/renovate-config:apm\\\"\n\", \"      profile: profile-app\n\", 1))'"
 
+run_case pass platform-automerge-behind-the-gate "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"        - \\\"local>webgrip/renovate-config:automerge-non-major\\\"\\n\", \"        - \\\"local>webgrip/renovate-config:automerge-non-major\\\"\\n        - \\\"local>webgrip/renovate-config:platform-automerge\\\"\\n\", 1))'"
+run_case fail platform-automerge-without-a-gate "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"  seekframe:\\n    forge: forgejo\\n    profile: protected\\n    renovate:\\n      presets:\\n\", \"  seekframe:\\n    forge: forgejo\\n    profile: protected\\n    renovate:\\n      presets:\\n        - \\\"local>webgrip/renovate-config:platform-automerge\\\"\\n\", 1))'"
+run_case fail platform-automerge-with-one-branch-ungated "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); s=p.read_text().replace(\"        - \\\"local>webgrip/renovate-config:automerge-non-major\\\"\\n\", \"        - \\\"local>webgrip/renovate-config:automerge-non-major\\\"\\n        - \\\"local>webgrip/renovate-config:platform-automerge\\\"\\n\", 1); i=s.index(\"  unfold:\"); p.write_text(s[:i] + s[i:].replace(\"          - \\\"* / gate (pull_request)\\\"\\n\", \"          - \\\"\\\\\\\\[Workflow\\\\\\\\] On Pull Request / checks (pull_request)\\\"\\n\", 1))'"
+
 if [ "$failures" -ne 0 ]; then
   echo "test-validate-repo-config-model: ${failures} case(s) wrong"
   exit 1
