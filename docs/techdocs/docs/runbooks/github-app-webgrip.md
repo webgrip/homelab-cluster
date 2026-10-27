@@ -116,12 +116,12 @@ for an archived mirror, a fork, or a GitHub-leading repository. An archived entr
 is not in the installation yet carries `managed: false`, which keeps it out of this Terraform
 object; remove the line once the repository is added.
 
-1. Add the entry to `repos.yaml` (`webgrip/<name>`, `forge: github`, a profile, `mirror_of` when
+1. Add the entry to `repos.yaml` (`webgrip/<name>`, `forge: github`, `mirror_of` when
    it is a push mirror of a Forgejo repository).
 2. Add the repository to the App installation (**Settings → GitHub Apps → webgrip-gitops →
    Configure → Repository access**). Without it the import fails with `404 Not Found`.
 3. An active (not archived) repository is managed in full: its settings need `default_branch` and
-   every key of the profile's `github.settings`, and the App needs the same permissions as
+   every key of `baseline`'s `github.settings`, and the App needs the same permissions as
    `ploeg-hq-gitops` (Administration, Variables) before the plan can read Actions permissions.
 4. `./scripts/validate-repo-config-model.sh`, push, read the plan.
 

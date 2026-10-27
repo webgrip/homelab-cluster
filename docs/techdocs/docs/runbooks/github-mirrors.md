@@ -168,7 +168,7 @@ blocked (`app/networkpolicy.yaml`, `forgejo/networkpolicy.yaml`, `security/netpo
 ## Adding or retiring a mirror
 
 1. Create the push mirror (`forgejo-sync.sh --repo <name> --only mirror --apply`).
-2. Add `webgrip/<name>: {forge: github, profile: baseline, mirror_of: <name>}` to `repos.yaml`.
+2. Add `webgrip/<name>: {forge: github, mirror_of: <name>}` to `repos.yaml`.
    Leave out `settings`, `kind` and `renovate`; the validator refuses them on an active mirror.
 3. Add the repository to the `webgrip-gitops` installation.
 4. Retiring: set `settings.archived: true` on both the Forgejo source and the GitHub entry
