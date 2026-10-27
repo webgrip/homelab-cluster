@@ -112,7 +112,9 @@ An active push mirror is tracked, not managed: `webgrip/<name>` with `mirror_of`
 `settings` imports nothing into this Terraform object
 ([ADR-0085](../adr/adr-0085-github-push-mirrors-are-tracked-in-the-model-and-reconciled-for-drift-and-releases.md),
 procedure in [GitHub mirrors](github-mirrors.md#adding-or-retiring-a-mirror)). The steps below are
-for an archived mirror, a fork, or a GitHub-leading repository.
+for an archived mirror, a fork, or a GitHub-leading repository. An archived entry whose repository
+is not in the installation yet carries `managed: false`, which keeps it out of this Terraform
+object; remove the line once the repository is added.
 
 1. Add the entry to `repos.yaml` (`webgrip/<name>`, `forge: github`, a profile, `mirror_of` when
    it is a push mirror of a Forgejo repository).

@@ -46,7 +46,7 @@ github_settings_required_when_active = [
     "can_approve_pull_request_reviews",
 ]
 fields_an_archived_github_repo_cannot_apply = ["rulesets", "release_consumers"]
-fields_a_tracked_mirror_leaves_to_github = ["settings", "rulesets", "release_consumers"]
+fields_a_tracked_mirror_leaves_to_github = ["settings", "rulesets", "release_consumers", "managed"]
 
 
 def forgejo_archived(repo):
@@ -96,6 +96,11 @@ for name, repo in sorted(repos.items()):
                 f"{name}: an active push mirror is tracked, not managed (ADR-0085), so tofu-github never applies"
                 f" its {', '.join(managed)}; drop them"
             )
+    elif "managed" in repo and not settings.get("archived", False):
+        errors.append(
+            f"{name}: managed: false only keeps an archived repository out of tofu-github (one the App installation"
+            " does not cover yet); an active repository is either managed or a tracked mirror"
+        )
     elif settings.get("archived", False):
         carried = [field for field in fields_an_archived_github_repo_cannot_apply if field in repo]
         if carried:
