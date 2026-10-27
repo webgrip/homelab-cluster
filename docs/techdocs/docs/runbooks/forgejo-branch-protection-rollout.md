@@ -26,7 +26,7 @@ applied by a separate module (since 2026-10-24, VIK-2320): see
 | **Merge whitelist** | Identities allowed to merge PRs into the branch. `merge` in the model; absent means no whitelist. |
 | **Status checks** | `status_checks` in the model: contexts that must be green before a merge. Forgejo reads each entry as a glob pattern, so a literal `[` or `]` must be escaped (`"\\[Workflow\\] On Pull Request / checks (pull_request)"` in YAML). Unescaped, `[Workflow]` is a character class, the context never matches, and "merge when checks succeed" waits forever; the schema refuses it. |
 
-The rules owned since 2026-10-26 (ADR-0083). A Forgejo repository in `repos.yaml` never names a profile: it states its `kind` and up to three facts, and the profile follows ([ADR-0085](../adr/adr-0085-a-repository-states-what-it-is-and-its-protection-follows.md)):
+The rules owned since 2026-10-26 (ADR-0083). A Forgejo repository in `repos.yaml` never names a profile: it states its `kind` and up to three facts, and the profile follows ([ADR-0086](../adr/adr-0086-a-repository-states-what-it-is-and-its-protection-follows.md)):
 
 | The repository says | Profile | Push | Merge | Approvals | Tags |
 | --- | --- | --- | --- | --- | --- |

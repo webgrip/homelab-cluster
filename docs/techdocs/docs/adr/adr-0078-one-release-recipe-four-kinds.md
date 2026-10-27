@@ -136,6 +136,6 @@ promising but pre-1.0 with one maintainer and is piloted separately
   push mirror takes the kind of its source. Branch shape per kind is not checked yet: it lands
   repository by repository, as the gate of [ADR-0084](adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md)
   does.
-* 2026-10-27 — Amended by [ADR-0085](adr-0085-a-repository-states-what-it-is-and-its-protection-follows.md):
+* 2026-10-27 — Amended by [ADR-0086](adr-0086-a-repository-states-what-it-is-and-its-protection-follows.md):
   the kind is the one classification a repository states. It carries the default Renovate profile,
   and a repository protects its staged branch shape by saying `staged: true`.

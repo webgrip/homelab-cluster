@@ -1,0 +1,1193 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: platform-github-mirrors
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  allowCrossNamespaceImport: false
+  folderRef: platform
+  json: |-
+    {
+      "schemaVersion": 39,
+      "title": "GitHub Mirrors / Drift",
+      "uid": "platform-github-mirrors",
+      "timezone": "browser",
+      "tags": [
+        "github",
+        "forgejo",
+        "mirrors",
+        "repo-config"
+      ],
+      "editable": false,
+      "graphTooltip": 0,
+      "refresh": "5m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "templating": {
+        "list": []
+      },
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "stat",
+          "title": "Tracked mirrors",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "last_over_time(github_mirror_model_tracked_mirrors{job=\"github-mirrors\"}[1h])",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "noValue": "0"
+            },
+            "overrides": []
+          },
+          "description": "Active GitHub push mirrors in the repo-config model (webgrip/<name> with mirror_of, not archived)."
+        },
+        {
+          "id": 2,
+          "type": "stat",
+          "title": "Mirrors behind Forgejo",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 4,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(last_over_time(github_mirror_head_match{job=\"github-mirrors\"}[1h]) == 0) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "noValue": "0"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 3,
+          "type": "stat",
+          "title": "Push mirror errors",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(last_over_time(github_mirror_error{job=\"github-mirrors\"}[1h])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 1
+                  }
+                ]
+              },
+              "noValue": "0"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 4,
+          "type": "stat",
+          "title": "Releases missing on GitHub",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(last_over_time(github_mirror_releases_missing{job=\"github-mirrors\"}[1h])) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              },
+              "noValue": "0"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 5,
+          "type": "stat",
+          "title": "Copies outside the model",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 16,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(last_over_time(github_mirror_model_drift{job=\"github-mirrors\"}[1h]) == 1) or vector(0)",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 1
+                  }
+                ]
+              },
+              "noValue": "0"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 6,
+          "type": "stat",
+          "title": "Reconciler last success",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 20,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "time() - max(last_over_time(github_mirror_reconciler_last_success_timestamp_seconds{job=\"github-mirrors\"}[3h]))",
+              "instant": true
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "colorMode": "background",
+            "graphMode": "none",
+            "textMode": "value"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 3600
+                  },
+                  {
+                    "color": "red",
+                    "value": 7200
+                  }
+                ]
+              },
+              "noValue": "0",
+              "unit": "s"
+            },
+            "overrides": []
+          }
+        },
+        {
+          "id": 7,
+          "type": "table",
+          "title": "Tracked mirrors: Forgejo → GitHub",
+          "gridPos": {
+            "h": 11,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "last_over_time(github_mirror_head_match{job=\"github-mirrors\"}[1h])",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "time() - last_over_time(github_mirror_last_update_timestamp_seconds{job=\"github-mirrors\"}[1h])",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "last_over_time(github_mirror_error{job=\"github-mirrors\"}[1h])",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "D",
+              "expr": "last_over_time(github_mirror_tags_missing{job=\"github-mirrors\"}[1h])",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "E",
+              "expr": "last_over_time(github_mirror_releases_missing{job=\"github-mirrors\"}[1h])",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "F",
+              "expr": "last_over_time(github_mirror_releases_extra{job=\"github-mirrors\"}[1h])",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "G",
+              "expr": "sum by (repository) (sum_over_time(github_mirror_releases_copied{job=\"github-mirrors\"}[24h]))",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "H",
+              "expr": "last_over_time(github_mirror_app_access{job=\"github-mirrors\"}[1h])",
+              "instant": true,
+              "format": "table"
+            },
+            {
+              "refId": "I",
+              "expr": "last_over_time(github_mirror_push_status_known{job=\"github-mirrors\"}[1h])",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "job": true,
+                  "__name__": true
+                },
+                "renameByName": {
+                  "repository": "Repository",
+                  "Value #A": "Head matches",
+                  "Value #B": "Since last mirror sync",
+                  "Value #C": "Mirror error",
+                  "Value #D": "Tags missing",
+                  "Value #E": "Releases missing",
+                  "Value #F": "Releases only on GitHub",
+                  "Value #G": "Releases copied (24h)",
+                  "Value #H": "App can write",
+                  "Value #I": "Mirror status readable"
+                },
+                "indexByName": {
+                  "repository": 0,
+                  "Value #A": 1,
+                  "Value #B": 2,
+                  "Value #C": 3,
+                  "Value #D": 4,
+                  "Value #E": 5,
+                  "Value #F": 6,
+                  "Value #G": 7,
+                  "Value #H": 8,
+                  "Value #I": 9
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": [
+              {
+                "displayName": "Head matches",
+                "desc": false
+              }
+            ]
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Head matches"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "basic"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "green",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "no"
+                          },
+                          "1": {
+                            "text": "yes"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mirror error"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "basic"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "red",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "no"
+                          },
+                          "1": {
+                            "text": "yes"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Since last mirror sync"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "basic"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 28800
+                        },
+                        {
+                          "color": "red",
+                          "value": 32400
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Tags missing"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "basic"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Releases missing"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "basic"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "App can write"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "basic"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "green",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "no"
+                          },
+                          "1": {
+                            "text": "yes"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Mirror status readable"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "basic"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "green",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "no"
+                          },
+                          "1": {
+                            "text": "yes"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "description": "One row per active push mirror in the model. Since last mirror sync is Forgejo's last push attempt; mirrors run on commit and every 8h. Releases only on GitHub are counted, never changed."
+        },
+        {
+          "id": 8,
+          "type": "table",
+          "title": "Copies outside the model",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "last_over_time(github_mirror_model_drift{job=\"github-mirrors\"}[1h]) == 1",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "job": true,
+                  "__name__": true,
+                  "Value": true
+                },
+                "renameByName": {
+                  "forge": "Seen on",
+                  "repository": "Repository"
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": []
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "description": "github: a public GitHub repository with a Forgejo namesake and no webgrip/<name> model entry. forgejo: a Forgejo push mirror to GitHub that no model entry names in mirror_of."
+        },
+        {
+          "id": 9,
+          "type": "table",
+          "title": "Reconciler credentials",
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 12,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "last_over_time(github_mirror_credentials_present{job=\"github-mirrors\"}[1h])",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "job": true,
+                  "__name__": true
+                },
+                "renameByName": {
+                  "credential": "Credential",
+                  "Value": "Present"
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": []
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Present"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "basic"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "green",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "no"
+                          },
+                          "1": {
+                            "text": "yes"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 10,
+          "type": "table",
+          "title": "Model drift check coverage",
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 18,
+            "y": 15
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "last_over_time(github_mirror_model_drift_known{job=\"github-mirrors\"}[1h])",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "job": true,
+                  "__name__": true
+                },
+                "renameByName": {
+                  "forge": "Forge",
+                  "Value": "Drift check ran"
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": []
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Drift check ran"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background",
+                      "mode": "basic"
+                    }
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "green",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "no"
+                          },
+                          "1": {
+                            "text": "yes"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": 11,
+          "type": "timeseries",
+          "title": "Reconciler runs (CronJob github-config/github-mirrors)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 23
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "time() - max(kube_cronjob_status_last_successful_time{job=\"kube-state-metrics\", exported_namespace=\"github-config\", cronjob=\"github-mirrors\"})",
+              "legendFormat": "since last successful run"
+            },
+            {
+              "refId": "B",
+              "expr": "time() - max(kube_cronjob_status_last_schedule_time{job=\"kube-state-metrics\", exported_namespace=\"github-config\", cronjob=\"github-mirrors\"})",
+              "legendFormat": "since last scheduled run"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 1,
+                "fillOpacity": 0
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 12,
+          "type": "table",
+          "title": "Repo-config tofu drift signal",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 23
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (terraform_namespace, terraform_name, status, reason) (tofu_terraform_status_condition{terraform_namespace=~\"repo-config|github-config\", type=\"Ready\"}) == 1",
+              "instant": true,
+              "format": "table"
+            }
+          ],
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "__name__": true,
+                  "job": true,
+                  "instance": true,
+                  "type": true,
+                  "Value": true,
+                  "pod": true,
+                  "namespace": true,
+                  "endpoint": true,
+                  "service": true,
+                  "container": true
+                },
+                "renameByName": {
+                  "terraform_namespace": "Namespace",
+                  "terraform_name": "Terraform",
+                  "status": "Ready",
+                  "reason": "Reason"
+                }
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "sortBy": []
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "description": "Ready condition of the repo-config and github-config Terraform objects. Reason TerraformAppliedSucceed means the last hourly run applied a non-empty plan: a model change, or tofu reverted a hand edit (ForgejoRepoConfigApplyChangedSomething)."
+        }
+      ]
+    }
