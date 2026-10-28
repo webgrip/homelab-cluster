@@ -57,3 +57,11 @@ path "secret/data/unfold-cluster/disk-kms" {
 path "secret/data/authentik/unfold-headscale-oidc" {
   capabilities = ["read"]
 }
+
+path "secret/data/cloudflare/unfold-tunnel" {
+  capabilities = ["read"]
+}
+
+path "secret/data/unfold-main/staging/cloudflare-tunnel" {
+  capabilities = ["create", "read", "update"]
+}

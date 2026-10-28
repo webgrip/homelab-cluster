@@ -231,3 +231,10 @@ picks up the rest.
   (`ACME_DNS_ZONES`) and pushed by a PushSecret of its own to
   `secret/unfold-main/cert-manager/cloudflare-dns01`, which the Unfold cluster's External Secrets
   reads for its Let's Encrypt issuers. It renews on the same 90-day, 30-day-early cycle.
+* 2026-10-28 — a fourth operation, `edge-<zone>`, for the Cloudflare Tunnel of Unfold staging
+  (unfold-cluster ADR 0017). It is the first minted token with an account-level policy: Cloudflare
+  Tunnel Write, Access: Apps and Policies Write and Access: Organizations, Identity Providers, and
+  Groups Write on the account, plus Zone Read and DNS Write on `unfoldhq.dev` only (`EDGE_ZONES`).
+  The PushSecret `cloudflare-edge-tokens` writes it with the account and zone ids to
+  `secret/cloudflare/unfold-tunnel`, which only the `ci-unfold-cluster` role reads. Permission
+  group names are now separated by `|`, because the Access group's own name contains commas.

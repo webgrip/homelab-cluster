@@ -40,6 +40,8 @@ spec:
                   value: "unfoldhq.dev=730f65dd5d92e4e063ea7c5ac9b61f26 twente.dev=3abdfa38d565cec8f954e278cc60e968 webgrip.nl=0c372e0f74e791cdf3099a298ed03988"
                 - name: ACME_DNS_ZONES
                   value: "unfoldhq.dev=730f65dd5d92e4e063ea7c5ac9b61f26"
+                - name: EDGE_ZONES
+                  value: "unfoldhq.dev=730f65dd5d92e4e063ea7c5ac9b61f26"
                 - name: TOKEN_SECRET
                   value: cloudflare-dns-tokens
                 - name: LIFETIME_DAYS
@@ -61,11 +63,12 @@ spec:
 
                   groups_json="$(curl -sSf -H "Authorization: Bearer ${CLOUDFLARE_MANAGER_TOKEN}" "${api}/tokens/permission_groups")"
                   group_ids() {
-                    echo "${groups_json}" | jq -c --arg names "$1" '($names | split(",")) as $want | [.result[] | select(.name as $n | $want | index($n)) | {id}]'
+                    echo "${groups_json}" | jq -c --arg names "$1" '($names | split("|")) as $want | [.result[] | select(.name as $n | $want | index($n)) | {id}]'
                   }
-                  ro_groups="$(group_ids "Zone Read,DNS Read,Dynamic URL Redirects Read")"
-                  rw_groups="$(group_ids "Zone Read,DNS Write,Dynamic URL Redirects Write")"
-                  acme_groups="$(group_ids "Zone Read,DNS Write")"
+                  ro_groups="$(group_ids "Zone Read|DNS Read|Dynamic URL Redirects Read")"
+                  rw_groups="$(group_ids "Zone Read|DNS Write|Dynamic URL Redirects Write")"
+                  acme_groups="$(group_ids "Zone Read|DNS Write")"
+                  edge_account_groups="$(group_ids "Cloudflare Tunnel Write|Access: Apps and Policies Write|Access: Organizations, Identity Providers, and Groups Write")"
                   if [ "$(echo "${ro_groups}" | jq length)" != 3 ] || [ "$(echo "${rw_groups}" | jq length)" != 3 ] || [ "$(echo "${acme_groups}" | jq length)" != 2 ]; then
                     log "ERROR: Cloudflare permission groups not found by name; nothing minted"
                     exit 1
@@ -92,16 +95,26 @@ spec:
                   }
 
                   failed=0
+                  zone_policies() {
+                    jq -nc --arg zone "com.cloudflare.api.account.zone.$1" --argjson groups "$2" \
+                      '[{effect: "allow", resources: {($zone): "*"}, permission_groups: $groups}]'
+                  }
+                  edge_policies() {
+                    jq -nc --arg account "com.cloudflare.api.account.${CLOUDFLARE_ACCOUNT_ID}" \
+                      --arg zone "com.cloudflare.api.account.zone.$1" \
+                      --argjson account_groups "${edge_account_groups}" --argjson zone_groups "${acme_groups}" \
+                      '[{effect: "allow", resources: {($account): "*"}, permission_groups: $account_groups},
+                        {effect: "allow", resources: {($zone): "*"}, permission_groups: $zone_groups}]'
+                  }
                   mint() {
-                    key="$1"; token_name="$2"; zone_id="$3"; groups="$4"
+                    key="$1"; token_name="$2"; policies="$3"
                     if ! needs_mint "$(current_token "${key}")"; then
                       log "${key}: current token is active and not near expiry"
                       return 0
                     fi
                     expires_on="$(date -u -d "@$(( $(date +%s) + LIFETIME_DAYS * 86400 ))" +%Y-%m-%dT%H:%M:%SZ)"
-                    body="$(jq -nc --arg name "${token_name}" --arg zone "com.cloudflare.api.account.zone.${zone_id}" \
-                      --arg exp "${expires_on}" --argjson groups "${groups}" \
-                      '{name: $name, expires_on: $exp, policies: [{effect: "allow", resources: {($zone): "*"}, permission_groups: $groups}]}')"
+                    body="$(jq -nc --arg name "${token_name}" --arg exp "${expires_on}" --argjson policies "${policies}" \
+                      '{name: $name, expires_on: $exp, policies: $policies}')"
                     created="$(curl -sS -X POST -H "Authorization: Bearer ${CLOUDFLARE_MANAGER_TOKEN}" \
                       -H 'Content-Type: application/json' --data "${body}" "${api}/tokens")" || created='{}'
                     value="$(echo "${created}" | jq -r 'select(.success == true) | .result.value // empty')"
@@ -122,14 +135,27 @@ spec:
                     zone="${entry%%=*}"
                     zone_id="${entry#*=}"
                     slug="$(echo "${zone}" | tr . -)"
-                    mint "${slug}-ro" "dns-ro-${slug}" "${zone_id}" "${ro_groups}"
-                    mint "${slug}-rw" "dns-rw-${slug}" "${zone_id}" "${rw_groups}"
+                    mint "${slug}-ro" "dns-ro-${slug}" "$(zone_policies "${zone_id}" "${ro_groups}")"
+                    mint "${slug}-rw" "dns-rw-${slug}" "$(zone_policies "${zone_id}" "${rw_groups}")"
                   done
                   for entry in ${ACME_DNS_ZONES}; do
                     zone="${entry%%=*}"
                     zone_id="${entry#*=}"
                     slug="$(echo "${zone}" | tr . -)"
-                    mint "${slug}-acme" "dns-acme-${slug}" "${zone_id}" "${acme_groups}"
+                    mint "${slug}-acme" "dns-acme-${slug}" "$(zone_policies "${zone_id}" "${acme_groups}")"
+                  done
+                  if [ "$(echo "${edge_account_groups}" | jq length)" != 3 ]; then
+                    log "ERROR: the tunnel and Access permission groups were not all found by name; no edge token minted"
+                    failed=1
+                    EDGE_ZONES=""
+                  fi
+                  for entry in ${EDGE_ZONES}; do
+                    zone="${entry%%=*}"
+                    zone_id="${entry#*=}"
+                    slug="$(echo "${zone}" | tr . -)"
+                    kubectl -n forgejo patch secret "${TOKEN_SECRET}" --type merge \
+                      -p "$(jq -nc --arg k "${slug}-zone-id" --arg v "${zone_id}" '{stringData: {($k): $v}}')" >/dev/null
+                    mint "${slug}-edge" "edge-${slug}" "$(edge_policies "${zone_id}")"
                   done
                   exit "${failed}"
               resources:
