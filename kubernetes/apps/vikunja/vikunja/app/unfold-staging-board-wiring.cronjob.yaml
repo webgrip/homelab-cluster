@@ -1,0 +1,111 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: unfold-staging-board-wiring
+  labels:
+    app.kubernetes.io/name: unfold-staging-board-wiring
+spec:
+  schedule: "7-59/15 * * * *"
+  startingDeadlineSeconds: 300
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: unfold-staging-board-wiring
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          nodeSelector:
+            node.webgrip.io/pool: worker
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: wire
+              image: harbor.webgrip.dev/dockerhub/alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4
+              imagePullPolicy: IfNotPresent
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: VIKUNJA_URL, value: 'http://vikunja:3456/api/v1'}
+                - {name: PROJECT_ID, value: "154"}
+                - {name: BOT_USERNAME, value: bot-ploeg}
+                - {name: TARGET_URL, value: 'https://staging-app.unfoldhq.dev/webhooks/tracker/vikunja'}
+                - {name: EVENTS, value: '["task.assignee.created","task.assignee.deleted","task.updated"]'}
+                - name: OWNER_TOKEN
+                  valueFrom: {secretKeyRef: {name: mcp-vikunja-token, key: VIKUNJA_API_TOKEN, optional: true}}
+                - name: WEBHOOK_SECRET
+                  valueFrom: {secretKeyRef: {name: unfold-staging-vikunja-webhook, key: webhook-secret, optional: true}}
+              command:
+                - /bin/sh
+                - -ceu
+                - |
+                  log() { echo "[unfold-staging-board-wiring] $*"; }
+                  [ -n "$OWNER_TOKEN" ] || { log "owner token not present yet; retry next tick"; exit 0; }
+                  [ -n "$WEBHOOK_SECRET" ] || { log "webhook secret not generated yet; retry next tick"; exit 0; }
+                  auth="Authorization: Bearer $OWNER_TOKEN"
+                  json="Content-Type: application/json"
+                  failed=0
+
+                  if ! curl -fsS -H "$auth" "$VIKUNJA_URL/projects/$PROJECT_ID/users?per_page=250" > /tmp/shared.raw; then
+                    log "project=$PROJECT_ID shared users could not be read"
+                    exit 1
+                  fi
+                  share="$(jq -r --arg n "$BOT_USERNAME" '[(. // [])[] | select(.username == $n)][0].permission // empty' /tmp/shared.raw)"
+                  if [ "$share" = 2 ]; then
+                    log "project=$PROJECT_ID user=$BOT_USERNAME admin"
+                  elif [ -z "$share" ]; then
+                    if jq -nc --arg n "$BOT_USERNAME" '{username: $n, permission: 2}' \
+                      | curl -fsS -X PUT -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$PROJECT_ID/users" > /dev/null; then
+                      log "project=$PROJECT_ID user=$BOT_USERNAME shared as admin"
+                    else
+                      log "project=$PROJECT_ID user=$BOT_USERNAME could not be shared"
+                      failed=1
+                    fi
+                  else
+                    if jq -nc --arg n "$BOT_USERNAME" '{username: $n, permission: 2}' \
+                      | curl -fsS -X POST -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$PROJECT_ID/users/$BOT_USERNAME" > /dev/null; then
+                      log "project=$PROJECT_ID user=$BOT_USERNAME raised to admin"
+                    else
+                      log "project=$PROJECT_ID user=$BOT_USERNAME could not be raised to admin"
+                      failed=1
+                    fi
+                  fi
+
+                  if ! curl -fsS -H "$auth" "$VIKUNJA_URL/projects/$PROJECT_ID/webhooks" > /tmp/hooks.raw; then
+                    log "project=$PROJECT_ID webhooks could not be read"
+                    exit 1
+                  fi
+                  hook="$(jq -r --arg u "$TARGET_URL" '[(. // [])[] | select(.target_url == $u)][0].id // empty' /tmp/hooks.raw)"
+                  if [ -z "$hook" ]; then
+                    if jq -nc --arg u "$TARGET_URL" --arg s "$WEBHOOK_SECRET" --argjson e "$EVENTS" '{target_url: $u, secret: $s, events: $e}' \
+                      | curl -fsS -X PUT -H "$auth" -H "$json" --data @- "$VIKUNJA_URL/projects/$PROJECT_ID/webhooks" > /dev/null; then
+                      log "project=$PROJECT_ID webhook created"
+                    else
+                      log "project=$PROJECT_ID webhook could not be created"
+                      failed=1
+                    fi
+                  else
+                    log "project=$PROJECT_ID webhook=$hook present"
+                  fi
+                  exit "$failed"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: ["ALL"]}
+              resources:
+                requests: {cpu: 25m, memory: 64Mi}
+                limits: {cpu: 200m, memory: 128Mi}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+          volumes:
+            - name: tmp
+              emptyDir: {}

@@ -88,6 +88,7 @@ Rotation = same steps; step 2's `bao kv put` overwrites version-safely.
 | --- | --- | --- | --- |
 | `vikunja/mcp` | the owner (`ryangr0`) | mcp-vikunja, theme suggestion, the Forgejo agent pool, Unfold (`agent-vikunja-token`) | 2027-09-01 |
 | `vikunja/bot-ploeg` | bot user `bot-ploeg` (id 40) | ploegd write-backs, `ploeg-tracker-wiring` (`ploeg-vikunja-bot`) | 2027-10-17 |
+| `unfold-main/staging/vikunja` | copy of `vikunja/bot-ploeg` (`api-token`), pushed by `ploeg/unfold-staging-vikunja-token`; `webhook-secret` generated in `vikunja/unfold-staging-vikunja-webhook` | Unfold staging's ploegd on unfold-cluster, board *Fixture · Ploeg Staging (unfold-cluster)* (id 154) only; `vikunja/unfold-staging-board-wiring` shares that board with `bot-ploeg` as admin and registers its webhook to `https://staging-app.unfoldhq.dev/webhooks/tracker/vikunja` | follows `vikunja/bot-ploeg` |
 
 `bot-ploeg` is a native Vikunja bot user: no password, no interactive login. Its owner mints its
 token under **Settings → Bot users** (title `ploeg`), with exactly these permissions: projects read
