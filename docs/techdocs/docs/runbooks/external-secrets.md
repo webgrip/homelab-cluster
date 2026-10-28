@@ -82,8 +82,8 @@ Forgejo Actions secret `CODEBERG_TOKEN` — used by the `techdocs-deploy-codeber
    kubectl -n forgejo get externalsecret forgejo-codeberg          # READY=True / SecretSynced
    ```
 
-4. On the next CronJob tick (`:23`), the log flips to "created/updated org secret
-   webgrip/CODEBERG_TOKEN".
+4. On the next CronJob tick (`:23`), the log shows "set repo secret
+   workflows/CODEBERG_TOKEN".
 
 ## Troubleshooting
 

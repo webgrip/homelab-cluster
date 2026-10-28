@@ -1128,6 +1128,109 @@ at or under 2Gi; node MemAvailable before and after. Monitoring: `TeiRerankerDow
 quality but misses the budget, that is the evidence VIK-1338 needs, not a reason to relax the
 budget.
 
+**A/B, prepared 2026-10-26 (not run).** Everything the bake-off needs is in git with the flag off,
+so running it is three small commits and one Job. Nothing below has run against the live brain.
+
+*What ships off.* `brain-tools` gains `BRAIN_TOOLS_RERANK` = `off` (deployed) | `on-request` (the
+A/B: a REST call with `rerank=true` reranks, MCP never does) | `on` (adopted: MCP reranks, REST may
+pass `rerank=false`). With `off` a REST `rerank=true` is refused with 400, and the harness refuses a
+reranked arm whose answer carries no rerank outcome, so an arm cannot silently score the
+unreranked pipeline. The rerank step sits after each profile's ordering and before the limit: the
+top 24 (`BRAIN_TOOLS_RERANK_CANDIDATES`, at most 32, TEI's client batch) go to LiteLLM `/rerank` as
+title plus the best 1,000-character window (`BRAIN_TOOLS_RERANK_WINDOW_CHARS`, the same
+term-centred cut as the snippet); the head is reordered by relevance, the tail keeps its fused
+order; an error, a malformed answer or 2.5 s (`BRAIN_TOOLS_RERANK_TIMEOUT_SECONDS`, refused at or
+above the 8 s deadline) keeps the fused order and says `reranked: no`. New series:
+`brain_tools_reranks_total{outcome}`, `brain_tools_rerank_seconds`; new alert
+`BrainToolsRerankFallbackHigh`. The suite gained 8 tests and the mutation test 9 mutants
+(31 in all, every one killed).
+
+*The serving side, dormant.* `kubernetes/apps/ai/tei-reranker/` (TEI `cpu-1.9.4`, the digest
+`tei-embeddings` runs, `--max-batch-tokens 2048 --max-client-batch-size 32`, request 1Gi, limit
+2Gi, its own 2Gi Longhorn volume, `TeiRerankerDown`) exists but is **not** listed in
+`kubernetes/apps/ai/kustomization.yaml`, so Flux does not apply it. LiteLLM already carries the
+inert model `rerank-gte-multilingual-base` (`huggingface/` provider, `mode: rerank`, cost 0) with
+the alias `rerank-default`, its egress to `tei-reranker:8080`, and the `brain-tools` key lists both
+names. The harness has the arms `p0r` (`p0` plus rerank) and `p2` (`p1` plus rerank), the metrics
+`ndcg_at_3` and `recall_at_3`, a gate flag for the primary metric and one for the latency budget,
+a rerank-fallback guardrail, and the suspended CronJob `omnigraph-brain-eval-gate-rerank`.
+
+*Model.* `gte-multilingual-reranker-base` (306M parameters, 70+ languages, 8k context; TEI lists it
+as a supported reranker) as int8 ONNX from `onnx-community/gte-multilingual-reranker-base` at
+revision `ee64367e`: `onnx/model_int8.onnx` (340,858,200 bytes) is fetched and verified against its
+sha256 and stored as `onnx/model.onnx`, the path TEI's ONNX Runtime backend loads; the manifest's
+optional third column names the source file. It was the fastest of the multilingual candidates in
+P0 (0.8 s for 20 candidates of 800 characters on a 4-core Ryzen, against 1.7 s for
+`bge-reranker-v2-m3` int8, whose 568M parameters also need about twice the memory). The order of
+section P5 stands: mMiniLM next, bge-m3 only if both are clearly beaten.
+
+*Placement.* The worker-pool component, then preferences: `ram=high` (worker-1, 24 GB), not
+`fringe-workstation` (Omnigraph's node, decision D8), and not the node `tei-embeddings` runs on, so
+a rerank burst does not queue question embeddings behind it. worker-1 is the slowest worker per
+core (i5-4670K, 4 threads, no VNNI). Scaling P0's Ryzen figure by tokens (24 candidates of about
+1,050 characters is about 1.6 times the P0 load) and by the estimated 2–3 times slower Haswell gives
+roughly 2.5–4 s per rerank there, over the 2.5 s timeout. The plan therefore expects to measure
+that first and has a cheaper second setting ready (step 5).
+
+*Arms, all on one pinned graph commit.* `p0-rest` against `p0r` decides, because `p0` is the
+production profile. `p1` against `p2` is reported: it tells whether a reranker rescues the fused
+pipeline that lost in P4, bounded by its lower candidate recall@40 (0.609 against 0.693; a
+reranker only reorders what retrieval found).
+
+*Decision rule, fixed before the run (accepted by Ryan, 2026-10-26).* On the dev split, adopt the reranker (flag `on`) only if
+`p0-rest` → `p0r` gives:
+
+1. a paired mean delta of nDCG@3 of at least +0.05 (the top three is what a chat answer actually
+   reads; nDCG@8, MRR@8, Hit@1 and Recall@3/5/8 are reported beside it);
+2. at least 3 net per-case wins (sign-test p reported);
+3. no category losing more than one case;
+4. the guardrails: eval-measured search p95 at most **2.0 s**, answers at most 6,000 characters,
+   rerank fallbacks at most 5% of the reranked cases.
+
+The holdout direction is reported; when it disagrees with dev, Ryan decides. A tie keeps the
+pipeline without a reranker. Items 1 to 4 are what `gate --compare=p0-rest:p0r
+--primary-metric=ndcg_at_3 --search-p95-budget-seconds=2.0` computes.
+
+*Why 2.0 s and not the 3.0 s above.* That budget was set before P4 measured search at 0.48 s p95
+on MCP and 0.95 s on REST. A reranker that quadruples the wait of every brain question for the
+same answers is a cost, 2.0 s keeps 6 s of headroom to the deadline, and the rerank stage's own
+p95 (`histogram_quantile(0.95, sum by (le) (rate(brain_tools_rerank_seconds_bucket[1h])))`) is
+read beside it; at 1.5 s or more the stage alone eats the budget.
+
+*Running it (Ryan; each step is a commit or a read, none is done).*
+
+1. Push this change. `brain-tools` restarts with `brain_tools_build_info{rerank="off"}`, LiteLLM
+   restarts with the new model and alias, the `brain-tools` key Job re-runs with the two rerank
+   names. Nothing calls the reranker.
+2. Add `- ./tei-reranker/ks.yaml` to `kubernetes/apps/ai/kustomization.yaml`. Check:
+   `kubectl -n ai logs deploy/tei-reranker -c fetch-model` ends with `fetched onnx/model_int8.onnx
+   as onnx/model.onnx`; the pod is Ready on worker-1 (`kubectl -n ai get pod -l
+   app.kubernetes.io/name=tei-reranker -o wide`); `container_memory_working_set_bytes` stays
+   under 2Gi; a smoke call through LiteLLM with the `brain-tools` key and three documents answers
+   three distinct indices.
+3. Set `BRAIN_TOOLS_RERANK` to `on-request`. Check `brain_tools_build_info{rerank="on-request"}`
+   and one REST search with `rerank=true` answering `rerank.outcome: reranked`.
+4. `kubectl -n ai create job --from=cronjob/omnigraph-brain-eval-gate-rerank
+   omnigraph-brain-eval-gate-rerank-1`. The verdict is `decisions["p0-rest:p0r"]` in the gate
+   file of the private repo; the scores are `brain_eval_score{metric="ndcg_at_3"}` per profile and
+   the latency `brain_eval_latency_seconds{stage="case",profile="p0r"}`.
+5. If only the latency or fallback guardrail failed: set `BRAIN_TOOLS_RERANK_CANDIDATES=12` and
+   `BRAIN_TOOLS_RERANK_WINDOW_CHARS=600` (about a third of the tokens) and run the gate once more.
+   Not a third time: with 28 dev cases every extra try is another chance at a lucky pass.
+6. Decision commit. Adopted: `BRAIN_TOOLS_RERANK=on`, the outcome written here. Rejected: the
+   flag back to `off`, the `tei-reranker` line out of the namespace list (Flux prunes the app and
+   its volume), then the app directory, the LiteLLM model and alias and the key's rerank names
+   removed, the outcome written here. If the reranker wins on quality but misses the latency, that
+   is the VIK-1338 evidence named above, not a reason to relax the budget.
+
+Rollback at any point is the flag back to `off`, one line; the reranker then idles.
+
+*Not verified before the run:* that TEI `cpu-1.9.4` loads the `onnx-community` int8 export (its
+`config.json` names `NewForSequenceClassification`) on the ONNX Runtime backend; that LiteLLM's
+`huggingface/` rerank route reaches TEI's `/rerank` with this `api_base` (P0 measured that route
+with mMiniLM, not this model); that a key listing the alias `rerank-default` may call it; and the
+latency on worker-1. Steps 2 and 3 are those checks, in that order.
+
 ### P6 Agent surfaces
 
 - `brain-tools` v0.2: `about`, `connect`, `recent`, `open_items`, `remember`; `/mcp/read`; the

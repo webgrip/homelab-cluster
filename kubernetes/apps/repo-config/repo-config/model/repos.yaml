@@ -13,35 +13,50 @@ github:
 repos:
   ".profile":
     forge: forgejo
-    profile: baseline
+    kind: none
     renovate:
       presets:
         - "local>webgrip/renovate-config"
   action-typescript-template:
     forge: forgejo
-    profile: baseline
+    kind: package
+    core: true
     renovate:
       presets:
         - "local>webgrip/renovate-config"
         - "local>webgrip/renovate-config:apm"
+  agent-standards:
+    forge: forgejo
+    kind: package
+    core: true
+    renovate:
+      presets:
+        - "local>webgrip/renovate-config:profile-library"
+        - "local>webgrip/renovate-config:apm"
+    settings:
+      default_delete_branch_after_merge: false
+    branches:
+      main:
+        status_checks:
+          - "CI / Packages install, compile and audit (pull_request)"
   ai-skills:
     forge: forgejo
-    profile: baseline
-    renovate:
-      profile: profile-library
+    kind: package
+    core: true
+    branches:
+      main:
+        status_checks:
+          - "CI / Manifests, dist & plugin tests (pull_request)"
   application-template:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
   backstage-application:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
   claude-config:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
       has_releases: false
@@ -50,32 +65,49 @@ repos:
         status_checks: []
   cloudflare:
     forge: forgejo
-    profile: baseline
+    kind: config
     renovate:
       presets:
         - "local>webgrip/renovate-config"
         - "local>webgrip/renovate-config:safe-automerge"
         - "local>webgrip/renovate-config:apm"
+  compyutah:
+    forge: forgejo
+    kind: none
+    staged: true
+    renovate:
+      absent: true
+    settings:
+      private: true
   common-charts:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
   counterscale:
     forge: forgejo
-    profile: baseline
+    kind: site
     renovate:
       presets:
         - "local>webgrip/renovate-config"
         - "local>webgrip/renovate-config:apm"
+  discord-moon:
+    forge: forgejo
+    settings:
+      archived: true
+  erfbeeld:
+    forge: forgejo
+    kind: service
+    staged: true
+    settings:
+      private: true
   freshrss-application:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
   frontend-toolkit:
     forge: forgejo
-    profile: baseline
+    kind: package
+    core: true
     renovate:
       presets:
         - "local>webgrip/renovate-config"
@@ -83,7 +115,8 @@ repos:
         - "local>webgrip/renovate-config:apm"
   homelab-cluster:
     forge: forgejo
-    profile: homelab
+    kind: config
+    core: true
     renovate:
       config_file: ".renovaterc.json5"
       presets:
@@ -92,53 +125,106 @@ repos:
         - "local>webgrip/renovate-config:apm"
         - "docker:enableMajor"
         - ":automergePr"
+    branches:
+      main:
+        status_checks:
+          - "e2e / Lint & static validation (pull_request)"
+          - "e2e / Flux-local render (pull_request)"
+          - "e2e / Kyverno Chainsaw (KinD) (pull_request)"
+          - "e2e / Validate Renovate config (pull_request)"
   infrastructure:
     forge: forgejo
-    profile: baseline
-    renovate:
-      profile: profile-image-set
+    kind: image-set
+    core: true
   invoiceninja-application:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
   ledgerflow:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
   monitoring-platform:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
+  obsidian-vault:
+    forge: forgejo
+    kind: none
+    writer: ryangr0
+    renovate:
+      absent: true
+    settings:
+      private: true
+      default_delete_branch_after_merge: false
+  omnigraph-explorer:
+    forge: forgejo
+    kind: service
+    renovate:
+      presets:
+        - "local>webgrip/renovate-config:profile-app"
+        - "local>webgrip/renovate-config:apm"
+    settings:
+      private: true
+    branches:
+      main:
+        status_checks:
+          - "On Pull Request / checks (pull_request)"
+  ploeg-bench:
+    forge: forgejo
+    kind: none
+    renovate:
+      absent: true
+    settings:
+      private: true
+  ploeg-bench-world:
+    forge: forgejo
+    kind: none
+    renovate:
+      absent: true
+    settings:
+      private: true
+  previews:
+    forge: forgejo
+    kind: none
+    writer: agent-builder
+    renovate:
+      absent: true
+    settings:
+      private: true
   renovate-config:
     forge: forgejo
-    profile: baseline
-    renovate:
-      profile: profile-library
+    kind: package
+    core: true
+    branches:
+      main:
+        status_checks:
+          - "Validate Renovate presets / validate all presets (pull_request)"
+          - "Validate Renovate presets / presets are generated and behave (pull_request)"
   searxng-application:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
   seekframe:
     forge: forgejo
-    profile: baseline
+    kind: package
+    staged: true
     renovate:
       presets:
         - "local>webgrip/renovate-config"
         - "local>webgrip/renovate-config:apm"
-    settings:
-      default_delete_branch_after_merge: false
   semantic-release-config:
     forge: forgejo
-    profile: baseline
-    renovate:
-      profile: profile-library
+    kind: package
+    core: true
+    branches:
+      main:
+        status_checks:
+          - "Test / test (pull_request)"
+          - "Test / image (pull_request)"
   talos-kata-extension:
     forge: forgejo
-    profile: baseline
+    kind: image-set
     renovate:
       presets:
         - "local>webgrip/renovate-config:apm"
@@ -146,58 +232,61 @@ repos:
       private: true
     branches:
       main:
-        push:
-          - ryangr0
-        merge:
-          - ryangr0
-          - renovate
         status_checks:
           - "\\[Workflow\\] On Source Change / checks (pull_request)"
+  techdocs-builder:
+    forge: forgejo
+    settings:
+      archived: true
+  techdocs-runner:
+    forge: forgejo
+    settings:
+      archived: true
   telemetry-service:
     forge: forgejo
-    profile: baseline
+    kind: package
     renovate:
       presets:
         - "local>webgrip/renovate-config:profile-app"
         - "local>webgrip/renovate-config:apm"
   traefik-local-development:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
   twente.dev:
     forge: forgejo
-    profile: baseline
-    renovate:
-      presets:
-        - "local>webgrip/renovate-config"
-        - "local>webgrip/renovate-config:safe-automerge"
+    kind: site
+    staged: true
     settings:
       allow_squash_merge: false
   unfold:
     forge: forgejo
-    profile: baseline
+    kind: service
+    staged: true
     renovate:
       presets:
         - "local>webgrip/renovate-config"
         - "local>webgrip/renovate-config:automerge-non-major"
+        - "local>webgrip/renovate-config:first-party"
         - "local>webgrip/renovate-config:apm"
+        - "local>webgrip/renovate-config:platform-automerge"
     branches:
       main:
         status_checks:
-          - "\\[Workflow\\] On Pull Request / checks (pull_request)"
-          - "\\[Workflow\\] On Pull Request / release-policy (pull_request)"
-          - "\\[Workflow\\] On Pull Request / ploeg-pin (pull_request)"
+          - "* / gate (pull_request)"
       development:
         push: []
+        merge:
+          - ryangr0
+          - yon
+          - renovate
+          - ploeg-release
         status_checks:
-          - "\\[Workflow\\] On Pull Request / checks (pull_request)"
-          - "\\[Workflow\\] On Pull Request / release-policy (pull_request)"
-          - "\\[Workflow\\] On Pull Request / ploeg-pin (pull_request)"
-          - "\\[Workflow\\] On Pull Request / ploeg-docs (pull_request)"
+          - "* / gate (pull_request)"
   unfold-cluster:
     forge: forgejo
-    profile: baseline
+    kind: config
+    core: true
     renovate:
       presets:
         - "local>webgrip/renovate-config"
@@ -206,8 +295,7 @@ repos:
         - "local>webgrip/renovate-config:apm"
     branches:
       main:
-        push:
-          - ryangr0
+        push: []
         merge:
           - ryangr0
         status_checks:
@@ -220,25 +308,25 @@ repos:
           - "supply-chain-check / trivy-report-shipper (pull_request)"
   webgrip.nl:
     forge: forgejo
-    profile: baseline
+    kind: site
     renovate:
-      profile: profile-site
+      presets:
+        - "local>webgrip/renovate-config:profile-site"
+        - "local>webgrip/renovate-config:apm"
   whisperx-application:
     forge: forgejo
-    profile: baseline
     settings:
       archived: true
   workflows:
     forge: forgejo
-    profile: baseline
-    renovate:
-      profile: profile-library
+    kind: package
+    core: true
     branches:
       main:
         status_checks: []
   ploeg-hq/ploeg:
     forge: github
-    profile: baseline
+    kind: service
     renovate:
       config_file: renovate.json5
       presets:
@@ -304,68 +392,110 @@ repos:
         bypass_repository_role_ids: []
     release_consumers: >-
       [{"forge":"forgejo","url":"https://forgejo.webgrip.dev","repo":"webgrip/unfold","base":"development","recipe":"scripts/consume-ploeg-release.sh","message":"fix(ploeg): update Ploeg to {version}"}]
+  webgrip/action-typescript-template:
+    forge: github
+    mirror_of: action-typescript-template
+  webgrip/ai-skills:
+    forge: github
+    mirror_of: ai-skills
   webgrip/application-template:
     forge: github
-    profile: baseline
     mirror_of: application-template
     settings:
       archived: true
   webgrip/backstage-application:
     forge: github
-    profile: baseline
     mirror_of: backstage-application
     settings:
       archived: true
   webgrip/common-charts:
     forge: github
-    profile: baseline
     mirror_of: common-charts
+    settings:
+      archived: true
+  webgrip/discord-moon:
+    forge: github
+    managed: false
+    mirror_of: discord-moon
     settings:
       archived: true
   webgrip/freshrss-application:
     forge: github
-    profile: baseline
     mirror_of: freshrss-application
     settings:
       archived: true
+  webgrip/homelab-cluster:
+    forge: github
+    mirror_of: homelab-cluster
+  webgrip/infrastructure:
+    forge: github
+    mirror_of: infrastructure
   webgrip/invoiceninja-application:
     forge: github
-    profile: baseline
     mirror_of: invoiceninja-application
     settings:
       archived: true
   webgrip/ledgerflow:
     forge: github
-    profile: baseline
     mirror_of: ledgerflow
     settings:
       archived: true
   webgrip/monitoring-platform:
     forge: github
-    profile: baseline
     mirror_of: monitoring-platform
     settings:
       archived: true
+  webgrip/renovate-config:
+    forge: github
+    mirror_of: renovate-config
   webgrip/searxng-application:
     forge: github
-    profile: baseline
     mirror_of: searxng-application
     settings:
       archived: true
+  webgrip/techdocs-builder:
+    forge: github
+    managed: false
+    mirror_of: techdocs-builder
+    settings:
+      archived: true
+  webgrip/techdocs-runner:
+    forge: github
+    managed: false
+    mirror_of: techdocs-runner
+    settings:
+      archived: true
+  webgrip/telemetry-service:
+    forge: github
+    mirror_of: telemetry-service
   webgrip/traefik-local-development:
     forge: github
-    profile: baseline
     mirror_of: traefik-local-development
     settings:
       archived: true
+  webgrip/twente.dev:
+    forge: github
+    mirror_of: twente.dev
   webgrip/twitch_exporter:
     forge: github
-    profile: baseline
+    settings:
+      archived: true
+  webgrip/unfold:
+    forge: github
+    mirror_of: unfold
+  webgrip/unfold-cluster:
+    forge: github
+    mirror_of: unfold-cluster
+  webgrip/webgrip.nl:
+    forge: github
+    managed: false
     settings:
       archived: true
   webgrip/whisperx-application:
     forge: github
-    profile: baseline
     mirror_of: whisperx-application
     settings:
       archived: true
+  webgrip/workflows:
+    forge: github
+    mirror_of: workflows

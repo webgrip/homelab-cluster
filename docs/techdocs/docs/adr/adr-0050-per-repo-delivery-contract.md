@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-04
+date: 2026-10-26
 ---
 
 # Per-repo delivery contract, server-enforced
@@ -130,3 +130,4 @@ deployed system where the owner iterates at trunk speed; product repos gate rele
 - 2026-07-26 — `sync_protect` writes merge whitelist `ryangr0,renovate`, not `ryangr0` alone (780ee533)
 - 2026-08-04 — four required `e2e /` status checks added to protection (1c472de6)
 - 2026-08-05 — homelab-cluster `main` protection live (push `ryangr0`, merge `ryangr0`+`renovate`); the same day an `--all --only protect` sweep overwrote it and locked the owner out until the runbook override re-ran (d79eb41c). The Confirmation's `push == merge == ["ryangr0"]` is superseded by that rule (logged in audit 2026-10-04)
+- 2026-10-26 — points 1 and 2 amended by [ADR-0083](adr-0083-nobody-pushes-to-main-and-core-repositories-need-a-second-person.md): nobody pushes to `main` any more, the owner included; the core repositories need one approval; only the release bot creates tags, and releases no longer commit to the branch

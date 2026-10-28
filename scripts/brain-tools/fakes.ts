@@ -2,13 +2,13 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Caches } from '../../kubernetes/apps/ai/brain-tools/app/server/caches.ts';
-import type { Profile } from '../../kubernetes/apps/ai/brain-tools/app/server/config.ts';
+import type { Profile, RerankMode } from '../../kubernetes/apps/ai/brain-tools/app/server/config.ts';
 import { createMcpHandler } from '../../kubernetes/apps/ai/brain-tools/app/server/mcp.ts';
 import { MetricRegistry, declareMetrics } from '../../kubernetes/apps/ai/brain-tools/app/server/metrics.ts';
 import { createRestHandler } from '../../kubernetes/apps/ai/brain-tools/app/server/rest.ts';
 import { REQUIRED_QUERIES } from '../../kubernetes/apps/ai/brain-tools/app/server/search.ts';
 import { BrainService } from '../../kubernetes/apps/ai/brain-tools/app/server/service.ts';
-import { Embedder, Omnigraph } from '../../kubernetes/apps/ai/brain-tools/app/server/upstream.ts';
+import { Embedder, Omnigraph, Reranker } from '../../kubernetes/apps/ai/brain-tools/app/server/upstream.ts';
 
 export type Row = Record<string, unknown>;
 
@@ -100,17 +100,53 @@ export class FakeOmnigraph {
   }
 }
 
+export interface RerankCall {
+  model: string;
+  query: string;
+  documents: string[];
+  topN: number | null;
+}
+
+export type RerankAnswer = (documents: readonly string[]) => unknown;
+
+export const scoreByMention = (word: string): RerankAnswer => (documents) => ({
+  results: documents.map((document, index) => ({ index, relevance_score: document.includes(word) ? 0.9 : 0.1 })).reverse(),
+});
+
 export class FakeLiteLLM {
   inputs: string[] = [];
   failWith: number | null = null;
   vector: number[] = Array.from({ length: 384 }, (_, index) => (index % 7) - 3);
+  rerankCalls: RerankCall[] = [];
+  rerankAnswer: RerankAnswer = scoreByMention('rerank-me');
+  rerankFailWith: number | null = null;
+  rerankDelayMs = 0;
   private server: Server | null = null;
+
+  private answerRerank(body: string, response: ServerResponse): void {
+    const parsed = JSON.parse(body || '{}') as { model?: string; query?: string; documents?: string[]; top_n?: number };
+    const documents = parsed.documents ?? [];
+    this.rerankCalls.push({ model: parsed.model ?? '', query: parsed.query ?? '', documents, topN: parsed.top_n ?? null });
+    setTimeout(() => {
+      if (this.rerankFailWith !== null) {
+        response.writeHead(this.rerankFailWith, { 'Content-Type': 'application/json' });
+        response.end('{"error":{"type":"failing"}}');
+        return;
+      }
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify(this.rerankAnswer(documents)));
+    }, this.rerankDelayMs);
+  }
 
   async start(): Promise<string> {
     this.server = createServer((request, response) => {
       const chunks: Buffer[] = [];
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
       request.on('end', () => {
+        if (request.url === '/rerank') {
+          this.answerRerank(Buffer.concat(chunks).toString('utf8'), response);
+          return;
+        }
         const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}') as { input?: string[] };
         this.inputs.push(...(parsed.input ?? []));
         if (this.failWith !== null) {
@@ -127,6 +163,7 @@ export class FakeLiteLLM {
   }
 
   async stop(): Promise<void> {
+    this.server?.closeAllConnections();
     await new Promise<void>((resolve) => this.server?.close(() => resolve()));
   }
 }
@@ -147,6 +184,9 @@ export interface RigOptions {
   deadlineMs?: number;
   contractModel?: string;
   explorerUrl?: string | null;
+  rerank?: RerankMode;
+  rerankCandidates?: number;
+  rerankTimeoutMs?: number;
 }
 
 export async function rig(options: RigOptions = {}): Promise<Rig> {
@@ -162,6 +202,14 @@ export async function rig(options: RigOptions = {}): Promise<Rig> {
   const embedder = new Embedder({ baseUrl: litellmUrl, key: 'sk-test', model: contract.model, dimensions: 384, record });
   const logs: string[] = [];
   const deadlineMs = options.deadlineMs ?? 4000;
+  const rerank = {
+    mode: options.rerank ?? 'off',
+    model: 'rerank-default',
+    candidates: options.rerankCandidates ?? 24,
+    windowChars: 1000,
+    timeoutMs: options.rerankTimeoutMs ?? 1500,
+  };
+  const reranker = rerank.mode === 'off' ? null : new Reranker({ baseUrl: litellmUrl, key: 'sk-test', model: rerank.model, record });
   const service = new BrainService({
     omnigraph: client,
     embedder,
@@ -170,6 +218,8 @@ export async function rig(options: RigOptions = {}): Promise<Rig> {
     registry,
     explorerUrl: options.explorerUrl === undefined ? 'https://graph.example.test' : options.explorerUrl,
     defaultProfile: options.profile ?? 'p1',
+    rerank,
+    reranker,
     deadlineMs,
     log: (event) => logs.push(JSON.stringify(event)),
   });

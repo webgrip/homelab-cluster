@@ -8,7 +8,7 @@ waits for it.
 
 | Mechanism | Path | Owns | Runs |
 | --- | --- | --- | --- |
-| GitHub module | model: entry `ploeg-hq/ploeg` in `kubernetes/apps/repo-config/repo-config/model/repos.yaml` plus the `github` block of its profile; module: `kubernetes/apps/repo-config/repo-config/tofu-github/`; object: `kubernetes/apps/github-config/ploeg-hq/` (namespace `github-config`, `vars.github_owner: ploeg-hq`) | the three rulesets, repository settings, default branch, Actions permissions, the `RELEASE_CONSUMERS` variable | tofu-controller `Terraform/ploeg-hq`, hourly, `approvePlan: auto` |
+| GitHub module | model: entry `ploeg-hq/ploeg` in `kubernetes/apps/repo-config/repo-config/model/repos.yaml` plus the `github` block of the `baseline` profile; module: `kubernetes/apps/repo-config/repo-config/tofu-github/`; object: `kubernetes/apps/github-config/ploeg-hq/` (namespace `github-config`, `vars.github_owner: ploeg-hq`) | the three rulesets, repository settings, default branch, Actions permissions, the `RELEASE_CONSUMERS` variable | tofu-controller `Terraform/ploeg-hq`, hourly, `approvePlan: auto` |
 | GitHub secrets bridge | `kubernetes/apps/github-secrets-bridge/` (namespace `github-secrets-bridge`) | Actions secret `RELEASE_CONSUMER_TOKEN_FORGEJO` | CronJob `github-secrets-bridge`, hourly at :41 |
 
 They sit in separate namespaces on purpose: the tf-runner Role may read Secrets in its own
@@ -23,7 +23,7 @@ sealed box) and keeps only a SHA-256 fingerprint of the source in ConfigMap
 
 GitHub repositories are entries in the same repo-config model as the Forgejo ones
 ([ADR-0078](../adr/adr-0078-one-release-recipe-four-kinds.md), VIK-2320). An entry's key is
-`<owner>/<name>` and it carries `forge: github`; its profile's `github.settings` block supplies the
+`<owner>/<name>` and it carries `forge: github` and names no profile; `baseline`'s `github.settings` block supplies the
 defaults and the entry adds `default_branch`, `rulesets` and `release_consumers`. The module
 `tofu-github` serves one GitHub owner per Terraform object, chosen by the `github_owner` variable;
 the owner's App key path is `github.owners.<owner>.app_secret_path` in `repos.yaml`, and the

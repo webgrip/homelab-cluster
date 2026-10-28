@@ -110,11 +110,12 @@ How change reaches the cluster — the forge, the Flux source, and the escape ha
 | ADR | Decision | Status | Last updated |
 | --- | -------- | ------ | ------------ |
 | [0011](adr-0011-flux-source-forgejo.md) | Make Forgejo the authoritative GitOps source for Flux | accepted | 2026-10-04 |
-| [0012](adr-0012-external-bootstrap-fallback-source.md) | External mirror as cold-bootstrap + break-glass source | accepted | 2026-10-04 |
+| [0012](adr-0012-external-bootstrap-fallback-source.md) | External mirror as cold-bootstrap + break-glass source | accepted | 2026-10-27 |
 | [0013](adr-0013-forgejo-leading-application-repos.md) | Forgejo-authoritative application repos (de-mirror) | accepted | 2026-10-04 |
 | [0014](adr-0014-codeberg-offsite-push-mirror.md) | Codeberg as a second off-site push-mirror | rejected | 2026-10-04 |
 | [0069](adr-0069-one-delivery-contract.md) | One delivery contract: forges produce, registries carry, clusters consume | accepted | 2026-10-17 |
 | [0082](adr-0082-a-failed-change-is-a-flux-reported-failure-or-a-declared-revert.md) | A failed change is a Flux-reported failure or a declared revert, counted per deployment | accepted | 2026-10-25 |
+| [0085](adr-0085-github-push-mirrors-are-tracked-in-the-model-and-reconciled-for-drift-and-releases.md) | GitHub push mirrors are tracked in the model, watched for drift, and get their releases copied | accepted | 2026-10-27 |
 
 ### 5. Secrets
 
@@ -200,7 +201,10 @@ Tenant apps the platform hosts — decisions about *what* runs, not how the plat
 | [0047](adr-0047-openhands-agent-runtime.md) | OpenHands is the agent runtime, superseding opencode | superseded by 0051 | 2026-07-29 |
 | [0048](adr-0048-dark-factory-execution-layer.md) | Dark-factory agents run on a dedicated Forgejo Actions pool, poll-dispatched, as two role bots | deprecated | 2026-10-04 |
 | [0049](adr-0049-dark-factory-failure-states.md) | Dark-factory failure-state management under permanent scarcity | accepted | 2026-10-04 |
-| [0050](adr-0050-per-repo-delivery-contract.md) | Per-repo delivery contract, server-enforced via branch protection | accepted | 2026-10-04 |
+| [0050](adr-0050-per-repo-delivery-contract.md) | Per-repo delivery contract, server-enforced via branch protection | accepted | 2026-10-26 |
+| [0083](adr-0083-nobody-pushes-to-main-and-core-repositories-need-a-second-person.md) | Nobody pushes to main, and the core repositories need a second person | accepted | 2026-10-26 |
+| [0084](adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md) | A branch rule requires one gate check, and Forgejo merges Renovate's pull requests on it | accepted | 2026-10-27 |
+| [0086](adr-0086-a-repository-states-what-it-is-and-its-protection-follows.md) | A repository states what it is, and its protection follows | accepted | 2026-10-27 |
 | [0051](adr-0051-harness-plurality-acp.md) | Agent harnesses are plural behind ACP; OpenHands stays the default | accepted | 2026-10-04 |
 | [0053](adr-0053-daemonless-agent-plane.md) | The agent plane is daemonless: dind stays false everywhere, gates run in CI | accepted | 2026-10-04 |
 

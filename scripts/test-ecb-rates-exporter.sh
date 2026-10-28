@@ -8,7 +8,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 echo "==> unmutated exporter must pass"
-EXPORTER_SCRIPT="$script" "$python" "$suite" 2>"$work/clean.log" || { cat "$work/clean.log" >&2; exit 1; }
+TZ=UTC-14 EXPORTER_SCRIPT="$script" "$python" "$suite" 2>"$work/clean.log" || { cat "$work/clean.log" >&2; exit 1; }
 
 mutate() {
   name="$1"
@@ -24,7 +24,7 @@ if find not in text:
     sys.exit(f"mutation anchor not found: {find!r}")
 open(target, "w").write(text.replace(find, replace, 1))
 PY
-  if EXPORTER_SCRIPT="$copy" "$python" "$suite" "$test_name" >"$work/$name.log" 2>&1; then
+  if TZ=UTC-14 EXPORTER_SCRIPT="$copy" "$python" "$suite" "$test_name" >"$work/$name.log" 2>&1; then
     echo "MUTATION SURVIVED: $name ($test_name passed against the mutant)" >&2
     exit 1
   fi

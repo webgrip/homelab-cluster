@@ -1,20 +1,23 @@
 locals {
-  model_dir    = var.model_dir != "" ? var.model_dir : "${path.module}/../model"
-  profiles     = yamldecode(file("${local.model_dir}/profiles.yaml")).profiles
-  model        = yamldecode(file("${local.model_dir}/repos.yaml"))
-  github_owner = local.model.github.owners[var.github_owner]
+  model_dir      = var.model_dir != "" ? var.model_dir : "${path.module}/../model"
+  profiles       = yamldecode(file("${local.model_dir}/profiles.yaml")).profiles
+  model          = yamldecode(file("${local.model_dir}/repos.yaml"))
+  github_owner   = local.model.github.owners[var.github_owner]
+  github_profile = "baseline"
 
   repos = {
     for key, repo in local.model.repos : key => {
       name              = split("/", key)[1]
-      settings          = merge(local.profiles[repo.profile].github.settings, try(repo.settings, {}))
+      settings          = merge(local.profiles[local.github_profile].github.settings, try(repo.settings, {}))
       rulesets          = try(repo.rulesets, {})
       release_consumers = try(repo.release_consumers, null)
+      mirror_of         = try(repo.mirror_of, null)
+      managed           = try(repo.managed, true)
     } if repo.forge == "github" && split("/", key)[0] == var.github_owner
   }
 
-  active_repos   = { for key, repo in local.repos : key => repo if !try(repo.settings.archived, false) }
-  archived_repos = { for key, repo in local.repos : key => repo if try(repo.settings.archived, false) }
+  active_repos   = { for key, repo in local.repos : key => repo if repo.managed && !try(repo.settings.archived, false) && repo.mirror_of == null }
+  archived_repos = { for key, repo in local.repos : key => repo if repo.managed && try(repo.settings.archived, false) }
 
   rulesets = merge([
     for key, repo in local.active_repos : {

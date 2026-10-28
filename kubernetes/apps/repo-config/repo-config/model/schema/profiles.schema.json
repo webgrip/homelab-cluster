@@ -6,7 +6,9 @@
   "required": [
     "apiVersion",
     "kind",
-    "profiles"
+    "profiles",
+    "staged",
+    "kinds"
   ],
   "properties": {
     "apiVersion": {
@@ -19,7 +21,9 @@
       "type": "object",
       "required": [
         "baseline",
-        "homelab"
+        "protected",
+        "protected-core",
+        "workspace"
       ],
       "propertyNames": {
         "pattern": "^[a-z][a-z0-9-]*$"
@@ -35,7 +39,93 @@
             "github"
           ]
         },
-        "homelab": {
+        "protected": {
+          "$ref": "#/$defs/profile",
+          "required": [
+            "forgejo"
+          ],
+          "properties": {
+            "forgejo": {
+              "required": [
+                "branches",
+                "tags"
+              ],
+              "properties": {
+                "branches": {
+                  "required": [
+                    "main"
+                  ],
+                  "properties": {
+                    "main": {
+                      "required": [
+                        "push",
+                        "merge",
+                        "required_approvals"
+                      ],
+                      "properties": {
+                        "push": {
+                          "maxItems": 0
+                        },
+                        "merge": {
+                          "contains": {
+                            "const": "ryangr0"
+                          }
+                        },
+                        "required_approvals": {
+                          "minimum": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "protected-core": {
+          "$ref": "#/$defs/profile",
+          "required": [
+            "forgejo"
+          ],
+          "properties": {
+            "forgejo": {
+              "required": [
+                "branches",
+                "tags"
+              ],
+              "properties": {
+                "branches": {
+                  "required": [
+                    "main"
+                  ],
+                  "properties": {
+                    "main": {
+                      "required": [
+                        "push",
+                        "merge",
+                        "required_approvals"
+                      ],
+                      "properties": {
+                        "push": {
+                          "maxItems": 0
+                        },
+                        "merge": {
+                          "contains": {
+                            "const": "ryangr0"
+                          }
+                        },
+                        "required_approvals": {
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "workspace": {
           "$ref": "#/$defs/profile",
           "required": [
             "forgejo"
@@ -52,23 +142,91 @@
                   ],
                   "properties": {
                     "main": {
-                      "properties": {
-                        "push": {
-                          "contains": {
-                            "const": "ryangr0"
-                          }
-                        }
-                      },
                       "required": [
                         "push",
                         "merge"
-                      ]
+                      ],
+                      "properties": {
+                        "push": {
+                          "maxItems": 0
+                        }
+                      }
                     }
                   }
                 }
               }
             }
           }
+        }
+      }
+    },
+    "staged": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "settings",
+        "branches"
+      ],
+      "properties": {
+        "settings": {
+          "$ref": "settings.schema.json"
+        },
+        "branches": {
+          "allOf": [
+            {
+              "$ref": "branch-protection.schema.json"
+            },
+            {
+              "required": [
+                "development"
+              ],
+              "properties": {
+                "development": {
+                  "required": [
+                    "push",
+                    "merge"
+                  ],
+                  "properties": {
+                    "push": {
+                      "maxItems": 0
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "kinds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service",
+        "image-set",
+        "package",
+        "site",
+        "config",
+        "none"
+      ],
+      "properties": {
+        "service": {
+          "$ref": "#/$defs/kindDefaults"
+        },
+        "image-set": {
+          "$ref": "#/$defs/kindDefaults"
+        },
+        "package": {
+          "$ref": "#/$defs/kindDefaults"
+        },
+        "site": {
+          "$ref": "#/$defs/kindDefaults"
+        },
+        "config": {
+          "$ref": "#/$defs/kindDefaults"
+        },
+        "none": {
+          "$ref": "#/$defs/kindDefaults"
         }
       }
     }
@@ -114,6 +272,9 @@
         },
         "branches": {
           "$ref": "branch-protection.schema.json"
+        },
+        "tags": {
+          "$ref": "tag-protection.schema.json"
         }
       }
     },
@@ -131,6 +292,15 @@
               "default_branch"
             ]
           }
+        }
+      }
+    },
+    "kindDefaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "renovate": {
+          "$ref": "renovate.schema.json"
         }
       }
     }

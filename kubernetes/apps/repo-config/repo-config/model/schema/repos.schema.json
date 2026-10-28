@@ -78,46 +78,73 @@
       "properties": {
         "homelab-cluster": {
           "properties": {
-            "profile": {
-              "const": "homelab"
+            "core": {
+              "const": true
+            },
+            "branches": {
+              "properties": {
+                "main": {
+                  "propertyNames": {
+                    "const": "status_checks"
+                  }
+                }
+              }
             }
           },
           "not": {
             "anyOf": [
               {
                 "required": [
-                  "branches"
+                  "settings"
                 ]
               },
               {
                 "required": [
-                  "settings"
+                  "tags"
                 ]
               }
             ]
-          }
+          },
+          "required": [
+            "core"
+          ]
         }
       }
     }
   },
   "$defs": {
-    "profileName": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9-]*$"
+    "repoKind": {
+      "enum": [
+        "service",
+        "image-set",
+        "package",
+        "site",
+        "config",
+        "none"
+      ]
     },
     "forgejoRepo": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "forge",
-        "profile"
+        "forge"
       ],
       "properties": {
         "forge": {
           "const": "forgejo"
         },
-        "profile": {
-          "$ref": "#/$defs/profileName"
+        "kind": {
+          "$ref": "#/$defs/repoKind"
+        },
+        "core": {
+          "const": true
+        },
+        "staged": {
+          "const": true
+        },
+        "writer": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$"
         },
         "settings": {
           "$ref": "settings.schema.json"
@@ -127,6 +154,9 @@
         },
         "renovate": {
           "$ref": "renovate.schema.json"
+        },
+        "tags": {
+          "$ref": "tag-protection.schema.json"
         }
       }
     },
@@ -134,19 +164,21 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "forge",
-        "profile"
+        "forge"
       ],
       "properties": {
         "forge": {
           "const": "github"
         },
-        "profile": {
-          "$ref": "#/$defs/profileName"
+        "kind": {
+          "$ref": "#/$defs/repoKind"
         },
         "mirror_of": {
           "type": "string",
           "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "managed": {
+          "const": false
         },
         "settings": {
           "$ref": "github-settings.schema.json"

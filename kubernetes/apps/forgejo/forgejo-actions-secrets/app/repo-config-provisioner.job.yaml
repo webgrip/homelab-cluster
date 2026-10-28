@@ -18,6 +18,7 @@ spec:
         runAsNonRoot: true
         runAsUser: 65534
         runAsGroup: 65534
+        fsGroup: 65534
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: provision
@@ -37,16 +38,15 @@ spec:
             - {name: TEAM_DESCRIPTION, value: 'repository settings reconciler (kubernetes/apps/repo-config) - admin, all repos, creates the repos its model declares'}
             - {name: TEAM_PERMISSION, value: admin}
             - {name: TEAM_UNITS, value: '["repo.code","repo.issues","repo.pulls","repo.releases","repo.wiki","repo.projects","repo.packages","repo.actions"]'}
-            - name: ADMIN_USERNAME
-              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: username}}
-            - name: ADMIN_PASSWORD
-              valueFrom: {secretKeyRef: {name: forgejo-admin-secret, key: password}}
-            - name: BOT_PASSWORD
-              valueFrom: {secretKeyRef: {name: repo-config-password, key: password}}
+            - {name: ADMIN_CREDENTIALS_DIR, value: /secrets/forgejo-admin}
+            - {name: BOT_CREDENTIALS_DIR, value: /secrets/repo-config-bot}
           command:
             - /bin/sh
             - -ceu
             - |
+              ADMIN_USERNAME="$(cat "${ADMIN_CREDENTIALS_DIR}/username")"
+              ADMIN_PASSWORD="$(cat "${ADMIN_CREDENTIALS_DIR}/password")"
+              BOT_PASSWORD="$(cat "${BOT_CREDENTIALS_DIR}/password")"
               api="${FORGEJO_URL}/api/v1"
               admin="${ADMIN_USERNAME}:${ADMIN_PASSWORD}"
               bot="${BOT_USERNAME}:${BOT_PASSWORD}"
@@ -104,6 +104,21 @@ spec:
             limits: {memory: 256Mi}
           volumeMounts:
             - {name: tmp, mountPath: /tmp}
+            - {name: forgejo-admin, mountPath: /secrets/forgejo-admin, readOnly: true}
+            - {name: repo-config-bot, mountPath: /secrets/repo-config-bot, readOnly: true}
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: forgejo-admin
+          secret:
+            secretName: forgejo-admin-secret
+            defaultMode: 0440
+            items:
+              - {key: username, path: username}
+              - {key: password, path: password}
+        - name: repo-config-bot
+          secret:
+            secretName: repo-config-password
+            defaultMode: 0440
+            items:
+              - {key: password, path: password}

@@ -1,6 +1,6 @@
 import type { BotIndex } from './caches.ts';
 import type { Profile } from './config.ts';
-import { guessLanguage, keywordTerms, mentionsAny, textHash } from './text.ts';
+import { guessLanguage, keywordTerms, mentionsAny, snippet, textHash } from './text.ts';
 import type { Language } from './text.ts';
 import { UpstreamError } from './upstream.ts';
 import type { QueryResult, Row } from './upstream.ts';
@@ -26,6 +26,7 @@ export interface Source {
   similar: number;
   bot: boolean;
   legRanks: Record<string, number>;
+  rerankScore?: number;
 }
 
 export interface Related {
@@ -43,6 +44,17 @@ export interface LegReport {
   failed: string | null;
 }
 
+export type RerankOutcome = 'not_asked' | 'reranked' | 'fallback';
+
+export interface RerankReport {
+  outcome: RerankOutcome;
+  candidates: number;
+  seconds: number;
+  reason: string | null;
+}
+
+export const NOT_RERANKED: RerankReport = { outcome: 'not_asked', candidates: 0, seconds: 0, reason: null };
+
 export interface SearchResult {
   profile: Profile;
   sources: Source[];
@@ -55,6 +67,7 @@ export interface SearchResult {
   embedSeconds: number;
   legSeconds: number[];
   legs: Record<string, LegReport>;
+  rerank: RerankReport;
 }
 
 export interface SearchRequest {
@@ -63,6 +76,14 @@ export interface SearchRequest {
   limit: number;
   profile: Profile;
   snapshot: string | null;
+  rerank: boolean;
+}
+
+export interface RerankPlan {
+  candidates: number;
+  windowChars: number;
+  timeoutMs: number;
+  rerank: (query: string, documents: readonly string[], signal: AbortSignal) => Promise<number[]>;
 }
 
 export interface SearchDeps {
@@ -70,6 +91,7 @@ export interface SearchDeps {
   embed: (text: string, signal: AbortSignal) => Promise<number[]>;
   bots: (snapshot: string | null, signal: AbortSignal) => Promise<BotIndex>;
   contractOk: () => boolean;
+  reranker: RerankPlan | null;
 }
 
 export const RRF_K = 60;
@@ -321,7 +343,7 @@ async function runP0(request: SearchRequest, deps: SearchDeps, signal: AbortSign
   });
   return {
     profile: 'p0',
-    sources: p0Sources(notes!.rows, passages!.rows, topics!.rows).slice(0, request.limit),
+    sources: p0Sources(notes!.rows, passages!.rows, topics!.rows),
     related: [],
     graphCommit: pickCommit([notes!, passages!, topics!]),
     degraded: null,
@@ -331,6 +353,7 @@ async function runP0(request: SearchRequest, deps: SearchDeps, signal: AbortSign
     embedSeconds: 0,
     legSeconds: [notes!.seconds, passages!.seconds, topics!.seconds],
     legs,
+    rerank: NOT_RERANKED,
   };
 }
 
@@ -406,7 +429,7 @@ async function runP1(request: SearchRequest, deps: SearchDeps, signal: AbortSign
   const mode = vector !== null && terms.length > 0 ? 'fused' : vector !== null ? 'meaning_only' : terms.length > 0 ? 'keyword_only' : 'none';
   return {
     profile: 'p1',
-    sources: collapsed.slice(0, request.limit),
+    sources: collapsed,
     related: relatedTopics(legResults),
     graphCommit: pickCommit(fulfilled),
     degraded,
@@ -416,9 +439,42 @@ async function runP1(request: SearchRequest, deps: SearchDeps, signal: AbortSign
     embedSeconds,
     legSeconds: fulfilled.map((result) => result.seconds),
     legs,
+    rerank: NOT_RERANKED,
   };
 }
 
+export function rerankDocument(source: Source, terms: readonly string[], windowChars: number): string {
+  const window = snippet(source.text, terms, windowChars);
+  return source.title.length > 0 ? `${source.title}\n${window}` : window;
+}
+
+export function byRelevance(head: readonly Source[], scores: readonly number[]): Source[] {
+  return head
+    .map((source, position) => ({ source: { ...source, rerankScore: scores[position]! }, position }))
+    .sort((left, right) => right.source.rerankScore! - left.source.rerankScore! || left.position - right.position)
+    .map((entry) => entry.source);
+}
+
+async function reranked(result: SearchResult, question: string, plan: RerankPlan | null, signal: AbortSignal): Promise<SearchResult> {
+  if (plan === null) return { ...result, rerank: { outcome: 'fallback', candidates: 0, seconds: 0, reason: 'no reranker configured' } };
+  const head = result.sources.slice(0, plan.candidates);
+  if (head.length < 2) return { ...result, rerank: { outcome: 'reranked', candidates: head.length, seconds: 0, reason: null } };
+  const started = performance.now();
+  const documents = head.map((source) => rerankDocument(source, result.terms, plan.windowChars));
+  try {
+    const scores = await plan.rerank(question, documents, AbortSignal.any([signal, AbortSignal.timeout(plan.timeoutMs)]));
+    const seconds = (performance.now() - started) / 1000;
+    return { ...result, sources: [...byRelevance(head, scores), ...result.sources.slice(head.length)], rerank: { outcome: 'reranked', candidates: head.length, seconds, reason: null } };
+  } catch (error) {
+    if (signal.aborted) throw error;
+    const seconds = (performance.now() - started) / 1000;
+    const reason = error instanceof UpstreamError ? error.outcome : error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'error';
+    return { ...result, rerank: { outcome: 'fallback', candidates: head.length, seconds, reason } };
+  }
+}
+
 export async function search(request: SearchRequest, deps: SearchDeps, signal: AbortSignal): Promise<SearchResult> {
-  return request.profile === 'p0' ? runP0(request, deps, signal) : runP1(request, deps, signal);
+  const fused = request.profile === 'p0' ? await runP0(request, deps, signal) : await runP1(request, deps, signal);
+  const ordered = request.rerank ? await reranked(fused, request.question, deps.reranker, signal) : fused;
+  return { ...ordered, sources: ordered.sources.slice(0, request.limit) };
 }

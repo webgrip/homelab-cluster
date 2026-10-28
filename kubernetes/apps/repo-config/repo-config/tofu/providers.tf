@@ -24,3 +24,13 @@ provider "forgejo" {
   host      = var.forgejo_url
   api_token = ephemeral.vault_kv_secret_v2.forgejo_token.data["FORGEJO_TOKEN"]
 }
+
+provider "restapi" {
+  uri                  = "${var.forgejo_url}/api/v1"
+  write_returns_object = true
+  update_method        = "PATCH"
+  headers = {
+    Authorization = "token ${ephemeral.vault_kv_secret_v2.forgejo_token.data["FORGEJO_TOKEN"]}"
+    Content-Type  = "application/json"
+  }
+}

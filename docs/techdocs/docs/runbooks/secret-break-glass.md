@@ -93,10 +93,10 @@ bao kv put secret/s3/cnpg-backup       S3_ACCESS_KEY_ID=<new> S3_SECRET_ACCESS_K
 kubectl -n <ns> annotate externalsecret <name> force-sync="$(date +%s)" --overwrite
 ```
 
-!!! warning "Forgejo org Actions secrets are reconciled — never edit them in the UI"
+!!! warning "Forgejo Actions secrets are reconciled — never edit them in the UI"
     `GHCR_USERNAME` / `GHCR_TOKEN` / `GH_RELEASE_TOKEN`, `HARBOR_ROBOT_*`,
-    `WEBGRIP_CI_TOKEN`, `DT_API_KEY` and `TECHDOCS_S3_*` are published onto the `webgrip`
-    org by the hourly `forgejo-actions-secrets` CronJob (`23 * * * *`) from OpenBao via
+    `WEBGRIP_CI_TOKEN`, `DT_API_KEY` and `TECHDOCS_S3_*` are published onto the repositories
+    that use them by the hourly `forgejo-actions-secrets` CronJob (`23 * * * *`) from OpenBao via
     ESO. A value typed into the Forgejo UI works until the next tick and is then silently
     overwritten — on 2026-08-25 that cost most of a day, because CI kept passing for four
     runs and then reverted to the dead token.

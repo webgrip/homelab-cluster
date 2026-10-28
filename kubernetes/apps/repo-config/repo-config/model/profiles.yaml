@@ -35,7 +35,7 @@ profiles:
         allowed_actions: all
         default_workflow_permissions: read
         can_approve_pull_request_reviews: false
-  homelab:
+  protected:
     forgejo:
       settings:
         has_actions: true
@@ -47,13 +47,83 @@ profiles:
         allow_squash_merge: true
       branches:
         main:
-          push:
-            - ryangr0
+          push: []
           merge:
             - ryangr0
+            - yon
             - renovate
-          status_checks:
-            - "e2e / Lint & static validation (pull_request)"
-            - "e2e / Flux-local render (pull_request)"
-            - "e2e / Kyverno Chainsaw (KinD) (pull_request)"
-            - "e2e / Validate Renovate config (pull_request)"
+          required_approvals: 0
+          status_checks: []
+      tags:
+        "*":
+          - webgrip-ci
+  protected-core:
+    forgejo:
+      settings:
+        has_actions: true
+        has_pull_requests: true
+        has_releases: true
+        default_merge_style: merge
+        default_delete_branch_after_merge: true
+        allow_fast_forward_only_merge: false
+        allow_squash_merge: true
+        allow_rebase: false
+      branches:
+        main:
+          push: []
+          merge:
+            - ryangr0
+            - yon
+            - renovate
+          required_approvals: 1
+          dismiss_stale_approvals: true
+          block_on_rejected_reviews: true
+          block_on_outdated_branch: true
+          status_checks: []
+      tags:
+        "*":
+          - webgrip-ci
+  workspace:
+    forgejo:
+      settings:
+        has_actions: true
+        has_pull_requests: true
+        has_releases: true
+        default_merge_style: merge
+        default_delete_branch_after_merge: true
+        allow_fast_forward_only_merge: true
+        allow_squash_merge: true
+      branches:
+        main:
+          push: []
+          merge:
+            - ryangr0
+          required_approvals: 0
+          status_checks: []
+staged:
+  settings:
+    allow_fast_forward_only_merge: true
+    default_delete_branch_after_merge: false
+  branches:
+    development:
+      push: []
+      merge:
+        - ryangr0
+        - yon
+        - renovate
+      status_checks: []
+kinds:
+  service:
+    renovate:
+      profile: profile-app
+  image-set:
+    renovate:
+      profile: profile-image-set
+  package:
+    renovate:
+      profile: profile-library
+  site:
+    renovate:
+      profile: profile-site
+  config: {}
+  none: {}
