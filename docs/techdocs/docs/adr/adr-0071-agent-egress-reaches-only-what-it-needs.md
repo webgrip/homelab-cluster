@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-29
+date: 2026-10-18
 decision-makers: Ryan Grippeling
 ---
 
@@ -134,6 +134,3 @@ reaching the forge in the cluster removes the only reason a gateway was open to 
   rewrite and the removal of the `network` rule once an Unfold release with `workspaceGitRewrites`
   is pinned.
 * 2026-10-18 — accepted by Ryan Grippeling as part of the agent-plane hardening.
-* 2026-10-29 — the claude-runner with its envoy-external egress, the residual risk above, and team
-  pewter's Anthropic egress are removed by
-  [ADR-0088](adr-0088-no-stored-personal-claude-logins-in-the-cluster.md).

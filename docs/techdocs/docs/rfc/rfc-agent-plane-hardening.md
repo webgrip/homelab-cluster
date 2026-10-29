@@ -22,7 +22,7 @@ read-only review of the live cluster said no:
 | Nothing watched what agent processes did at run time | Falco and Tetragon off since 2026-06-19 |
 | The API audit log raised no alert for the agent namespaces | vmalert-audit |
 | Admin sign-ins accepted any second factor and lasted until the browser closed | Google, Authentik, OpenBao |
-| A stored, signed-out personal Claude login sat on a volume in `ploeg` | team pewter, retired by ADR-0088 |
+| A stored, signed-out personal Claude login sat on a volume in `ploeg` | team pewter |
 
 ## Decisions
 
@@ -35,7 +35,6 @@ read-only review of the live cluster said no:
 | [0074](../adr/adr-0074-audit-to-deny-exec-secrets-seccomp-tokens.md) | Exec and Secret-read grants, seccomp and token opt-outs are denied |
 | [0076](../adr/adr-0076-kubernetes-audit-trail-watches-the-agent-plane.md) | The API audit trail watches the agent plane and pages |
 | [0077](../adr/adr-0077-admins-prove-a-security-key-at-google-and-sessions-end-in-twelve-hours.md) | Admins prove a security key at Google; sessions end in twelve hours |
-| [0088](../adr/adr-0088-no-stored-personal-claude-logins-in-the-cluster.md) | The cluster holds no personal Claude login: team pewter and its runner are retired |
 
 Upstream halves: Ploeg ADR-0120 (restricted harness container), ADR-0126 (a recurring attack drill
 against every harness) and signed Ploeg releases; Unfold's pod `runtimeClassName` and git URL
@@ -47,6 +46,8 @@ OpenCode with project configuration disabled.
 
 ## Still open
 
+* **Stored Claude login.** Team pewter's runner still reads a personal Claude login from a volume
+  in `ploeg`. Retiring it (PR #824) waits on the owner, since pewter is still being built on.
 * **CVE budget at admission.** Stays Audit until the conditions in ADR-0073 hold: images meet their
   budgets, the largest SBOM fits Kyverno's context limit, and the sweep covers the verdict.
 * **Ploeg image signatures at admission.** Promote `image-verify-ploeg-hq-audit` once a signed Ploeg
