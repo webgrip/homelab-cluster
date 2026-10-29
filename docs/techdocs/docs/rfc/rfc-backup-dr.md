@@ -131,7 +131,7 @@ dataset, and how often it runs.
 | Unfold etcd, Unfold OpenTofu state | etcd / state | T2 | garage-fsn1 until Unfold delivery step 3, then RFC 0001 targets | 6 h / per apply | 1 day | Unfold's daily `etcd-backup-check` |
 | Immich photos (garage-fsn1 `/srv/immich`) | host | T1 (personal) | **none today** | n/a | n/a | Phase 2: restic to the Storage Box |
 | observability/vmsingle-vmsingle, vlsingle-victorialogs, vtsingle-victoriatraces | longhorn | **T3** | unenrolled 2026-10-25 | n/a | rebuild | none |
-| Harbor proxy cache, forgejo-cache-server-data, trivy DBs, harbor-redis, searxng, tei models, unfold-workspaces, pewter-claude-login | various | T3 | none | n/a | rebuild | none |
+| Harbor proxy cache, forgejo-cache-server-data, trivy DBs, harbor-redis, searxng, tei models, unfold-workspaces | various | T3 | none | n/a | rebuild | none |
 | Headscale state (Unfold) | host | T2 | **none today**; Unfold's to fix | n/a | 1 day | Unfold ticket |
 
 Harbor's own `webgrip/*` images sit inside data-garage-0 next to the proxy cache. They are

@@ -3,17 +3,17 @@
 [Ploeg](https://github.com/ploeg-hq/ploeg) turns Vikunja assignment webhooks
 into leased, audited agent runs — the event-driven replacement for ADR-0048's poll dispatcher.
 It runs inside the Unfold Helm release: homelab pins only the Unfold chart, and that chart brings
-the Ploeg chart and the ploegd and claude-runner image digests it was tested with.
+the Ploeg chart and the ploegd image digest it was tested with.
 
 ## Releases
 
 Ploeg runs inside the Unfold Helm release (Unfold ADR-0043): the Unfold chart
 (`unfold/app/ocirepository.yaml`) carries the Ploeg chart it was tested with as its `ploeg`
-subchart, and that chart defaults the ploegd and claude-runner images to their release digests.
+subchart, and that chart defaults the ploegd image to its release digest.
 `unfold/app/helmrelease.yaml` holds Ploeg's values under `ploeg:`, with `fullnameOverride` and
 `instanceOverride` set to `ploeg` so every object keeps the name and selector labels it had under the
-standalone release. ploeg-mcp, claude-runner and the `pewter-claude-login` PersistentVolumeClaim are
-rendered by the chart; their route, network policies and Secrets stay in `ploeg/app/`.
+standalone release. ploeg-mcp is rendered by the chart; its route, network policies and Secrets stay
+in `ploeg/app/`.
 
 Renovate moves the Unfold chart, image and workspace image in one `renovate/ploeg-unfold-release`
 PR that merges itself: Forgejo merges it once `main`'s required `e2e /` checks pass. Renovate finds a
@@ -61,7 +61,7 @@ on 4000, the Forgejo pods on 3000 and Alloy on 4318, through `ploeg-worker-egres
 ([ADR-0071](../../../docs/techdocs/docs/adr/adr-0071-agent-egress-reaches-only-what-it-needs.md)).
 It has no route to the database, Unfold, ploeg-mcp or any other pod in `ploeg`, to Vikunja or
 Omnigraph, to the public gateway, the LAN or the internet: `ploeg-allow-egress` leaves out
-`ploeg-worker`, `ploeg-sandbox-launcher` and `claude-runner`, and `allow-gateway-egress` (from
+`ploeg-worker` and `ploeg-sandbox-launcher`, and `allow-gateway-egress` (from
 `components/gateway-egress`, patched in `unfold/app/kustomization.yaml`) selects only `unfold`
 and `ploeg` (ploegd). A sandbox launcher reaches only ploegd and the API server.
 `worker-egress-probe` checks both halves as a worker-labelled Job; rerun it by changing its
@@ -80,8 +80,6 @@ seven days after it finishes and Flux recreates it, so both rerun about weekly; 
   forge broker uses, proves it works, revokes it, and replays it five times against the API and git
   discovery; every replay must answer 401. The password stays in the pod's environment and the token is
   never printed; an exit trap revokes the token if the probe stops early.
-
-The Claude runner (`app.kubernetes.io/name: claude-runner`, Kata) is left out of `ploeg-allow-egress`. It reaches only DNS, `api.anthropic.com:443`, ploegd on 8080 (the checkout and post-session hooks), the public gateway on 10443 (it clones `https://forgejo.<domain>`), and Alloy on 4318: no LiteLLM, no database, no other pod in `ploeg`.
 
 - Workers clone, push and call the PR API through `ploeg.executor.forgejo.url`, the in-cluster
   service. ploegd keeps the public `https://forgejo.<domain>` through a post-render env patch in
@@ -136,11 +134,6 @@ without comments. This section keeps the reasons, by key path. Ploeg ADRs are in
 
 ### ploegd's environment
 
-- `PLOEG_CLAUDE_ENVIRONMENTS=true`, set by the post-render patch in
-  [`unfold/app/kustomization.yaml`](unfold/app/kustomization.yaml), turns on the routes team
-  pewter's runner uses to exchange its session token for the Run's push credential and to report
-  the session's end
-  ([Ploeg ADR-0084](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md)).
 - `ploeg.env.PLOEG_DEFAULT_TEAM: copper`: an assignee no team lists falls through to the default
   team. copper's exec harness makes no model call, opens no pull request, prints nothing and ends
   `stuck` with "copper only runs canary items", so a person assigned by mistake on a board with the
@@ -229,10 +222,6 @@ KEDA operator keeps 5432 from the `keda` namespace, the CNPG operator 5432 and 8
 - `bronze` and `silver` `forgeFollowUps`: a person's "request changes" on their pull request sends
   the Work Item back for a fix Round, and a failed check queues a bounded repair Follow-Up
   (`maxRepairs: 2`). Forgejo cannot deliver check events yet (Glide #1280).
-- `copper` has no assignees because it lends its tracker user to `pewter` for the self-hosted
-  Claude Runs (since 2026-10-17). Hand it back once team labels route pewter's work without a user
-  of its own
-  ([Ploeg ADR-0095](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0095-work-is-handed-to-ploeg-by-assigning-one-ploeg-user-and-a-team-label-picks-the-team.md)).
 
 ### `ploeg.tracker`
 
@@ -338,13 +327,3 @@ For a ticket titled `[canary]` it writes a `ploeg-canary-note`
 Work Item Note, records whether earlier notes were briefed to it, and stops the Run as `stuck` so
 the stop note is written. copper has no `plan`, so its `budget` is a per-Run ceiling, not a pool;
 its `model` only scopes the key.
-
-### `ploeg.executor.teams[pewter]`
-
-pewter Runs execute as Claude Code sessions
-([Ploeg ADR-0084](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md)).
-The worker only signs in as a WebGrip Team member, dispatches the Run to the self-hosted
-environment `unfold-spike` and waits; the session runs on claude-runner (`ploeg.claudeRunner`)
-and is paid by the Team plan. `model` and `budget` only scope the gateway key every Run still
-mints, and spend stays 0 until a plan-paid cost status exists. There is no `plan`: one writer per
-Work Item.
