@@ -9,20 +9,20 @@ Secrets live in **ESO** (engine) + **OpenBao** KV v2 (backend, ns `security`); t
 migration is complete except `zomboid` (+ the SOPS floor). Background + ops/DR:
 `docs/techdocs/docs/runbooks/external-secrets.md`.
 
-## Stores + generator (cluster-scoped)
-- `ClusterSecretStore/openbao` — **READ** (apps source secrets here). Vault provider, mount `secret`, v2, k8s-auth role `external-secrets`.
-- `ClusterSecretStore/openbao-push` — **WRITE, migration only** (PushSecret seeds existing Secrets in). Remove after migration.
+## Stores + generator
+- Per namespace (ADR-0087): `SecretStore/openbao` (**READ**, mount `secret`, v2), `SecretStore/openbao-db`
+  (dynamic DB creds, mount `database`, v1) and `SecretStore/openbao-push` (**WRITE**, PushSecret/rollers).
+  They log in as roles `eso-read-<ns>` / `eso-push-<ns>`, whose policies list only the paths in
+  `kubernetes/apps/security/openbao/bootstrap/eso-grants.txt`. There are **no** OpenBao ClusterSecretStores;
+  the gate refuses `kind: ClusterSecretStore`.
 - `ClusterGenerator/password-generator` — random entropy (len 64). Length-exact variants
   `password-generator-16` / `password-generator-32` for secrets that demand a precise length
   (e.g. Harbor `secretKey`=16, `CSRF_KEY`=32). All in `…/external-secrets/stores/clustergenerator.yaml`.
 - KV path convention `secret/<app>/<purpose>`; `remoteRef.key` omits the mount → `<app>/<purpose>`.
-- **Per-namespace stores (ADR-0087, rollout in progress):** every namespace with secrets has its own
-  `SecretStore/openbao` (+ `openbao-db`, `openbao-push`) logging in as role `eso-read-<ns>` /
-  `eso-push-<ns>`, whose policy lists only the paths in `kubernetes/apps/security/openbao/bootstrap/eso-grants.txt`.
-  New ExternalSecrets use `{kind: SecretStore, name: openbao}`. After adding or changing any
-  ExternalSecret/PushSecret path run `mise exec -- python3 scripts/eso_grants.py --write` and commit
-  `eso-grants.txt` + `stores.generated.yaml` with it; the lefthook/e2e gate fails otherwise. Moving a
-  namespace off the ClusterSecretStores: `--move <ns>`. Runbook: `docs/techdocs/docs/runbooks/external-secrets-per-namespace.md`.
+- **Grants:** ExternalSecrets use `{kind: SecretStore, name: openbao}`, PushSecrets `{kind: SecretStore, name: openbao-push}`.
+  After adding or changing any ExternalSecret/PushSecret path run `mise exec -- python3 scripts/eso_grants.py --write`
+  and commit `eso-grants.txt` + `stores.generated.yaml` with it; the lefthook/e2e gate fails otherwise. A new
+  namespace gets its stores from the same command. Runbook: `docs/techdocs/docs/runbooks/external-secrets-per-namespace.md`.
 
 ## Add a NEW secret
 
@@ -46,7 +46,7 @@ OpenBao. The agent has no `bao` CLI/token and cannot write OpenBao — so a desi
     it in OpenBao once instead of generating.)
 - **Provided/external value** (token/password/key from outside): put it in OpenBao
   (`openbao.${SECRET_DOMAIN}` UI via Authentik OIDC, or `bao kv put secret/<app>/<name> k=v` — a human
-  step, not the agent's), then `ExternalSecret` (store `openbao`, `creationPolicy: Owner`): per-key
+  step, not the agent's), then `ExternalSecret` (`SecretStore/openbao`, `creationPolicy: Owner`): per-key
   `data[].remoteRef{key,property}`, or `dataFrom: [{extract: {key: <app>/<name>}}]` for all keys.
 
 ## CLI access (`bao`)
@@ -62,7 +62,7 @@ doesn't export it); and `read -rs VAR` can silently capture nothing — echo `${
 the `bao kv put`.
 
 ## Migrate a SOPS secret (proven recipe — value-preserving, reversible)
-1. **Seed:** add a `PushSecret` (`external-secrets.io/v1alpha1`, store `openbao-push`) with one `data[].match` per key → `secret/<app>/<name>`. Wait for `True/Synced`. (No "push all" shorthand — list every key.)
+1. **Seed:** add a `PushSecret` (`external-secrets.io/v1alpha1`, `SecretStore/openbao-push`) with one `data[].match` per key → `secret/<app>/<name>`. Wait for `True/Synced`. (No "push all" shorthand — list every key.)
 2. **Swap (one commit):** swap the `.sops.yaml` ref in the kustomization for an `ExternalSecret` (use `dataFrom.extract` for multi-key), `git rm` the sops file. Verify Secret `ownerReferences→ExternalSecret`, key count exact, app healthy.
 - **Adopt** a live-but-unmanaged Secret (unwired SOPS): same swap; `creationPolicy: Owner` takes over the existing Secret in place (no delete-gap).
 - **Component secrets** (`cnpg-backup`, `*-s3`): put PushSecret+ExternalSecret **in the component** (no `namespace:` → rendered per-ns; ESO adopts each copy). `cnpg-backup` fans out to ~8 namespaces.

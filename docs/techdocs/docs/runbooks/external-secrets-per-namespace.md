@@ -37,7 +37,7 @@ The rollout runs in three stages. Each stage is its own PR and can stop there.
     3. `mise exec -- python3 scripts/eso_grants.py --summary` shows `files-on-cluster-store=0` for the namespace.
 Before merging any stage PR, bring it onto the current `main`: rebase, run `--write` (main may have gained or dropped ExternalSecrets), and for a stage 2 PR re-run its `--move` batch so files added since are moved too. The gate in that PR's `e2e` run then proves the grants match.
 
-3. **Remove the broad roles.** When the summary shows 0 for every namespace: delete the `openbao`, `openbao-db` and `openbao-push` ClusterSecretStores, the `external-secrets` and `external-secrets-push` roles and their policies, and make the gate refuse any `ClusterSecretStore` named `openbao*`.
+3. **Remove the broad roles.** When the summary shows 0 for every namespace: delete the `openbao`, `openbao-db` and `openbao-push` ClusterSecretStores, the `external-secrets` and `external-secrets-push` roles and their policies, and make the gate refuse any `ClusterSecretStore` named `openbao*`. Done: `openbao-config` deletes the two retired roles and policies on every run, and the gate refuses `kind: ClusterSecretStore`.
 
 ## A store is not ready
 

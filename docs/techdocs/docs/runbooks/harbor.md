@@ -158,7 +158,7 @@ run. Caveats:
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| HelmRelease stuck `not ready`; `harbor-admin`/`harbor-s3` not `SecretSynced` | OpenBao path missing or sealed | `kubectl -n harbor get externalsecret`; populate `secret/harbor/s3` (`just harbor-s3-cred`); check `ClusterSecretStore/openbao` Ready |
+| HelmRelease stuck `not ready`; `harbor-admin`/`harbor-s3` not `SecretSynced` | OpenBao path missing or sealed | `kubectl -n harbor get externalsecret`; populate `secret/harbor/s3` (`just harbor-s3-cred`); check `kubectl -n harbor get secretstore openbao` Ready |
 | PVC `Pending` | no default StorageClass | every PVC must set `storageClass` (`longhorn-general`) — already pinned in the HelmRelease |
 | `registry` pod errors talking to S3 / redirect loops | Garage path-style not honored | `disableredirect: true` + `secure: false` + HTTP `regionendpoint` are mandatory (set already); check the in-cluster Garage at `http://garage-s3.garage.svc.cluster.local:3900` |
 | Registry 5xx / blob I/O failing | Garage down | Garage is a hard dependency (ADR-0018 / [CNPG ↔ Garage](cnpg-backups.md)); restore Garage |

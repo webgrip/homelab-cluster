@@ -14,9 +14,9 @@ from the vault or from a generator · **Model:**
 | Origin | Shape | Example by path |
 | --- | --- | --- |
 | Entropy no human needs (admin password, session or CSRF key, robot password) | `ExternalSecret` with `dataFrom.sourceRef.generatorRef` → `password-generator` (or `-16`, `-32` for exact lengths), `refreshInterval: "0"`, `target.deletionPolicy: Retain` | `kubernetes/apps/harbor/harbor/app/harbor-admin.externalsecret.yaml` |
-| A value the vault holds (L1) | `ExternalSecret` with `secretStoreRef: {kind: ClusterSecretStore, name: openbao}`, `creationPolicy: Owner`, `data[].remoteRef` per key or `dataFrom: [{extract: {key: <provider>/<purpose>}}]` for all keys | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/cloudflare-deploy.externalsecret.yaml` |
-| A credential minted per lease (L4) | `ExternalSecret` against `ClusterSecretStore/openbao-db` | [dynamic-db-credentials](dynamic-db-credentials.md) |
-| A value a roller produced in-cluster that must become the L1 original | `PushSecret` to `ClusterSecretStore/openbao-push`, one `data[].match` per key | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/cloudflare-deploy-rolled.pushsecret.yaml` |
+| A value the vault holds (L1) | `ExternalSecret` with `secretStoreRef: {kind: SecretStore, name: openbao}` (then `python3 scripts/eso_grants.py --write`, see [per-namespace stores](external-secrets-per-namespace.md)), `creationPolicy: Owner`, `data[].remoteRef` per key or `dataFrom: [{extract: {key: <provider>/<purpose>}}]` for all keys | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/cloudflare-deploy.externalsecret.yaml` |
+| A credential minted per lease (L4) | `ExternalSecret` against `SecretStore/openbao-db` | [dynamic-db-credentials](dynamic-db-credentials.md) |
+| A value a roller produced in-cluster that must become the L1 original | `PushSecret` to `SecretStore/openbao-push`, one `data[].match` per key | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/cloudflare-deploy-rolled.pushsecret.yaml` |
 
 Consume with `existingSecret`, `envFrom`, or `extraEnvFrom`. A workload that must pick up a
 rotated value carries `reloader.stakater.com/auto: "true"`; a workload holding an at-rest key

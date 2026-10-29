@@ -90,3 +90,4 @@ ESO 2.11 supports it for the Vault provider: a ClusterSecretStore whose `service
 * Ticket: [VIK-2384](https://vikunja.webgrip.dev/tasks/2384).
 * Refines [ADR-0055](adr-0055-one-secrets-model-six-levels.md) (level 2, and its `openbao-push` narrowing) and [ADR-0016](adr-0016-openbao-dynamic-postgres-credentials.md) (`database/creds/*` is now granted per namespace).
 * 2026-10-25 — Proposed with stage 1.
+* 2026-10-25 — Stages 2 and 3 prepared as stacked PRs: every reachable ExternalSecret and PushSecret names its namespace's SecretStore, the ClusterSecretStores and the `external-secrets`, `external-secrets-push` roles are removed, and the gate refuses `kind: ClusterSecretStore`.

@@ -21,9 +21,7 @@ done
 
 echo "==> policies"
 bao policy write admins /scripts/admins.hcl
-bao policy write external-secrets /scripts/external-secrets.hcl
 bao policy write snapshot /scripts/snapshot.hcl
-bao policy write external-secrets-push /scripts/push.hcl
 bao policy write config-admin /scripts/config-admin.hcl
 bao policy write cosign-signer /scripts/cosign-signer.hcl
 bao policy write cosign-pub-reader /scripts/cosign-pub-reader.hcl
@@ -44,12 +42,10 @@ bao policy write renovate-github-app-token-wellhead-dev /scripts/renovate-github
 bao policy write homelab-etcd-age-keygen /scripts/homelab-etcd-age-keygen.hcl
 
 echo "==> kubernetes roles"
-bao write auth/kubernetes/role/external-secrets \
-  bound_service_account_names=external-secrets bound_service_account_namespaces=security \
-  policies=external-secrets ttl=1h >/dev/null
-bao write auth/kubernetes/role/external-secrets-push \
-  bound_service_account_names=external-secrets bound_service_account_namespaces=security \
-  policies=external-secrets-push ttl=1h >/dev/null
+for retired in external-secrets external-secrets-push; do
+  bao delete "auth/kubernetes/role/$retired" >/dev/null 2>&1
+  bao policy delete "$retired" >/dev/null 2>&1
+done
 bao write auth/kubernetes/role/openbao-snapshot \
   bound_service_account_names=openbao-snapshot bound_service_account_namespaces=security \
   policies=snapshot ttl=10m >/dev/null

@@ -11,7 +11,7 @@ into a pod by External Secrets · **Model:** [ADR-0015 — Secret rotation model
 > bao kv put secret/<app>/<name>      ← you change the value (human, OIDC-authed)
 >      │
 >      ▼
-> OpenBao KV v2  ──(ESO ClusterSecretStore/openbao, k8s-auth role external-secrets)
+> OpenBao KV v2  ──(ESO SecretStore/openbao in the namespace, k8s-auth role eso-read-<ns>)
 >      │
 >      ▼
 > ExternalSecret  ── re-reads within refreshInterval (default 1h) OR on force-sync
@@ -36,7 +36,7 @@ data.
 
 | Class | How to recognise it | Rotate via this runbook? |
 | --- | --- | --- |
-| **Provided / external** — a value that originates *outside* the cluster (provider API token, OIDC client secret you set, Garage S3 key, a DB password you chose). Lives in OpenBao; its `ExternalSecret` uses `ClusterSecretStore/openbao` and `refreshInterval: 1h`. | `kubectl get es <name> -n <ns> -o yaml` shows `secretStoreRef.name: openbao` and `data[].remoteRef` / `dataFrom.extract`. | **✅ Yes — §3 (planned) / §4 (urgent).** |
+| **Provided / external** — a value that originates *outside* the cluster (provider API token, OIDC client secret you set, Garage S3 key, a DB password you chose). Lives in OpenBao; its `ExternalSecret` uses `SecretStore/openbao` and `refreshInterval: 1h`. | `kubectl get es <name> -n <ns> -o yaml` shows `secretStoreRef.name: openbao` and `data[].remoteRef` / `dataFrom.extract`. | **✅ Yes — §3 (planned) / §4 (urgent).** |
 | **Generated entropy** — random in-cluster value no human ever knows (admin pw, session/CSRF key). `ExternalSecret` uses `generatorRef: password-generator*` with `refreshInterval: "0"` (generate-once). | The ExternalSecret has `dataFrom.sourceRef.generatorRef` and `refreshInterval: "0"`. | **⚠️ Not "rotated" — regenerated.** See §5.3. Safe **only** before the app stores data. |
 | **At-rest encryption key** — decrypts data already on disk (`AUTHENTIK_SECRET_KEY`, Dependency-Track `secret.key`, any `*_ENCRYPTION_KEY`, Harbor `secretKey`). | Generate-once **and** the consumer has **no** auto-reload annotation. | **❌ NEVER.** Regenerating corrupts every row encrypted with the old key. Out of scope by [ADR-0015](../adr/adr-0015-secret-rotation-model.md). |
 | **Transit / cosign signing key** | OpenBao Transit, not KV. | ❌ Not here — use [cosign transit key rotation](cosign-transit-key-rotation.md). |
@@ -207,7 +207,7 @@ that's why §3.1 says **patch, not put** for multi-key paths.
 | `bao kv put` → permission denied | Using the `external-secrets` **read** role, not your admin OIDC token | `mise exec -- just bao-login` as yourself, retry. |
 | Secret didn't change after the write | ExternalSecret hasn't re-read yet | force-sync (§3.3); want `READY=True / SecretSynced`. |
 | `ExternalSecret` `SecretSyncedError` | Wrong path/key, or you typed `data/` in the path | Path is `secret/<app>/<name>` (logical, no `data/`); key/property must match `remoteRef`. |
-| `ClusterSecretStore/openbao` `READY=False` | OpenBao sealed or down | Re-unseal ([OpenBao restore](openbao-restore.md)). Running apps unaffected (cached Secret); only create/rotate blocked. |
+| `SecretStore/openbao` `READY=False` | OpenBao sealed or down, or the namespace's `eso-read-<ns>` role is missing ([per-namespace runbook](external-secrets-per-namespace.md)) | Re-unseal ([OpenBao restore](openbao-restore.md)). Running apps unaffected (cached Secret); only create/rotate blocked. |
 | Secret updated but pod still has the old value | Consumer not annotated for Reloader | `kubectl rollout restart` now; add `reloader.stakater.com/auto: "true"` and commit. |
 | Other keys vanished after rotating a multi-key path | Used `put` (replace) instead of `patch` (merge) | Roll back the version (§6); re-do with `bao kv patch`. |
 | App broke right after rotating | New value wrong, or the old one is cached without restart | Verify the value at the provider; ensure the pod actually restarted (§3.5). |
