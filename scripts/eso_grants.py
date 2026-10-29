@@ -245,6 +245,8 @@ def check(root, found):
     for reference in sorted(found, key=lambda item: (item.namespace, item.source, item.path)):
         if reference.grant() not in granted:
             problems.append(f"{reference.source}: namespace {reference.namespace} needs {reference.access} on {reference.path}, which {GRANTS_FILE} does not grant")
+    for source in sorted({reference.source for reference in found if reference.store_kind == "ClusterSecretStore"}):
+        problems.append(f"{source}: names a ClusterSecretStore; OpenBao is reached only through the namespace's own SecretStore (ADR-0087)")
     for grant in sorted(granted - needed):
         problems.append(f"{GRANTS_FILE}: '{grant.line()}' is granted but nothing in namespace {grant.namespace} uses it")
     stores = root / STORES_FILE

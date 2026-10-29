@@ -69,6 +69,10 @@ d=$(fresh push-outside)
 sed -i '0,/remoteKey: freshrss\/app/s//remoteKey: forgejo\/admin/' "$d/kubernetes/apps/freshrss/freshrss/app/freshrss-secrets.pushsecret.yaml"
 expect fail "freshrss PushSecret writes another namespace's path" "$d"
 
+d=$(fresh cluster-store)
+sed -i '0,/kind: SecretStore, name: openbao}/s//kind: ClusterSecretStore, name: openbao}/' "$d/$freshrss_secret"
+expect fail "ExternalSecret names the retired ClusterSecretStore" "$d"
+
 d=$(fresh find)
 cat >>"$d/$freshrss_secret" <<'YAML'
 ---

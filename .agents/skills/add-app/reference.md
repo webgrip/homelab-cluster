@@ -212,7 +212,7 @@ metadata:
 spec:
   refreshInterval: 1h
   secretStoreRef:
-    kind: ClusterSecretStore
+    kind: SecretStore
     name: openbao
   target:
     name: <app>-secret

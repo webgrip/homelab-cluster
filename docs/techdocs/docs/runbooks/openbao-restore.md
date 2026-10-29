@@ -1,6 +1,6 @@
 # Runbook: restore OpenBao from a Garage S3 raft snapshot
 
-OpenBao is the cluster's secrets backend (ESO `ClusterSecretStore/openbao` → 66 ExternalSecrets,
+OpenBao is the cluster's secrets backend (ESO, one `SecretStore/openbao` per namespace → ~120 ExternalSecrets,
 2026-07-02). It's a **single-node raft** instance (`openbao-0`, 3Gi `longhorn` PVC) with a nightly raft
 snapshot shipped to the **external Garage S3** (`openbao-snapshot` CronJob, `0 3 * * *`, last 14 retained
 at `s3://cnpg-backups-bucket/openbao-snapshots/openbao-<ts>.snap`). Auto-unseal is handled by the

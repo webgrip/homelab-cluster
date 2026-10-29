@@ -47,8 +47,8 @@ A multi-key path is replaced whole by `put`. To change one key on an existing pa
 | --- | --- | --- | --- |
 | A person in Authentik group `homelab-admins` | OIDC + MFA, group alias `openbao-admins` | `admins` (`path "*"`, sudo) | everything, including what the reconciler owns |
 | `openbao-config` CronJob | Kubernetes SA, role `openbao-config`, TTL 20m | `config-admin` | policies, roles, identity, OIDC config; cannot mount engines |
-| `external-secrets` SA | Kubernetes, role `external-secrets`, TTL 1h | `external-secrets` | read `secret/*` |
-| `external-secrets` SA | Kubernetes, role `external-secrets-push`, TTL 1h | `external-secrets-push` | write `secret/*` (the roller store; see the ADR on narrowing it) |
+| `<ns>/eso-openbao` SA, one per namespace | Kubernetes, role `eso-read-<ns>`, TTL 1h | `eso-read-<ns>` | read the exact paths `eso-grants.txt` lists for that namespace ([ADR-0087](../adr/adr-0087-each-namespace-reads-only-its-own-openbao-paths.md)) |
+| `<ns>/eso-openbao-push` SA, one per namespace | Kubernetes, role `eso-push-<ns>`, TTL 1h | `eso-push-<ns>` | write the exact paths that namespace's PushSecrets name |
 | `openbao-snapshot` SA | Kubernetes, role `openbao-snapshot`, TTL 10m | `snapshot` | raft snapshot |
 | A Forgejo release job | JWT at `auth/forgejo`, TTL 10m | `cosign-signer` | transit sign only, bound to listed repos and events |
 

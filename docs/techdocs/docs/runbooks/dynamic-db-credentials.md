@@ -28,7 +28,7 @@ freshrss-db-rw:5432  ◀──backend conn (rotating v-role)──  PgBouncer si
 - **`database/roles/freshrss`** — `default_ttl 1h`, `max_ttl 2h`; creation `GRANT freshrss TO
   "{{name}}"`; **defensive** revocation (`pg_terminate_backend` → `REASSIGN OWNED` → `DROP OWNED`
   → `DROP ROLE`).
-- **`ClusterSecretStore/openbao-db`** — `path: database`, **`version: v1`** (so ESO reads
+- **`SecretStore/openbao-db`** (in `freshrss`, role `eso-read-freshrss`, [ADR-0087](../adr/adr-0087-each-namespace-reads-only-its-own-openbao-paths.md)) — `path: database`, **`version: v1`** (so ESO reads
   `database/creds/freshrss` directly, not the KV `/data/` path).
 - **PgBouncer sidecar** — freshrss → `127.0.0.1:5432` (stable cred); PgBouncer → `freshrss-db-rw`
   (rotating cred). `pool_mode=transaction`, `ignore_startup_parameters=extra_float_digits` (PHP PDO).

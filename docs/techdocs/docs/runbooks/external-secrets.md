@@ -14,8 +14,8 @@ is the last app still on SOPS.** The permanent SOPS floor (age key, `cluster-sec
 Git (ExternalSecret / PushSecret) ──▶ ESO controller ──▶ writes real k8s Secret ──▶ App pod
                                           │                     ▲
                   ClusterGenerator (random) ┘                   │ (cached — no runtime dep)
-                  ClusterSecretStore: openbao   ──▶ OpenBao ───┘   (sealed until unsealed)
-                  ClusterSecretStore: kube-store ──▶ writes into authentik ns (OIDC push)
+                  SecretStore: openbao (per ns) ──▶ OpenBao ─┘   (sealed until unsealed)
+                  SecretStore: openbao-push (per ns) ──▶ OpenBao (PushSecret writes)
 ```
 
 **Cached-Secret invariant:** once ESO has written a Secret, the pod no longer needs ESO or
@@ -29,7 +29,7 @@ accordingly: a broken app is almost never "OpenBao is down" unless you just chan
 | ESO operator | `kubernetes/apps/security/external-secrets/` (namespace `security`) |
 | Random generator | `ClusterGenerator/password-generator` |
 | External backend | `kubernetes/apps/security/openbao/` (single-node raft) |
-| Stores | `ClusterSecretStore/openbao`, `ClusterSecretStore/openbao-db` (dynamic DB creds), `ClusterSecretStore/kube-store` |
+| Stores | Per namespace: `SecretStore/openbao`, `openbao-db` (dynamic DB creds), `openbao-push` ([per-namespace stores](external-secrets-per-namespace.md)) |
 | Auto-unseal | `openbao-unsealer` Deployment (`app/unsealer.yaml`) reads Secret `openbao-keys`; `bootstrap/init-cronjob.yaml` initialises a fresh vault |
 | OpenBao config reconcile | `openbao-config` CronJob (`bootstrap/config-cronjob.yaml` + `config.sh`: auth, policies, engines) |
 | UI login | Authentik OIDC — the broker module entry `openbao` in `kubernetes/apps/security/access-plane/tofu/broker/applications.tf`; `mise exec -- just bao-login` |
@@ -92,7 +92,7 @@ Use the [diagnostics](#diagnostics) below to inspect each symptom.
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | `ExternalSecret` shows `SecretSyncedError` | Remote key/property missing in OpenBao, or the store is `NotReady` | Seed the key at `secret/<name>` (KV v2); if the store is down, see the next row. |
-| `ClusterSecretStore/openbao` `READY=False` | OpenBao sealed or down, or the Kubernetes auth role/policy is missing | `openbao-0` sits `0/1` while sealed — the unsealer should clear it in ~1 min; if not, [OpenBao restore](openbao-restore.md). Verify the `external-secrets` k8s auth role + policy (`openbao-config` CronJob logs). |
+| `SecretStore/openbao` `READY=False` | OpenBao sealed or down, or the namespace's `eso-read-<ns>` role/policy is missing | `openbao-0` sits `0/1` while sealed — the unsealer should clear it in ~1 min; if not, [OpenBao restore](openbao-restore.md). Verify the `external-secrets` k8s auth role + policy (`openbao-config` CronJob logs). |
 | Generator `ExternalSecret` never creates | `generators.external-secrets.io` CRDs absent | `ClusterGenerator` needs ESO ≥ v0.12 — bump the chart or fall back to a namespaced `Generator`. |
 | `PushSecret` reports `Failed` / forbidden | ESO ServiceAccount lacks write RBAC in the target ns | Add the `Role` / `RoleBinding` for the ESO SA. |
 | App broke right after migration | ESO Secret key names differ from the old keys | Match them exactly — fix `target.template` / `data[].secretKey`. |
