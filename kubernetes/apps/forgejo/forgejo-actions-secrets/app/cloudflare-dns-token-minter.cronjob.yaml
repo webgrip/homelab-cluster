@@ -69,7 +69,7 @@ spec:
                   rw_groups="$(group_ids "Zone Read|DNS Write|Dynamic URL Redirects Write")"
                   acme_groups="$(group_ids "Zone Read|DNS Write")"
                   first_group_id() {
-                    echo "${groups_json}" | jq -c --arg names "$1" '($names | split("|")) as $want | [$want[] as $w | .result[] | select(.name == $w) | {id}] | .[:1]'
+                    echo "${groups_json}" | jq -c --arg names "$1" '($names | split("|")) as $want | [$want[] as $w | .result[] | select(.name == $w and ((.scopes // []) | index("com.cloudflare.api.account"))) | {id}] | .[:1]'
                   }
                   edge_account_groups="$(jq -nc \
                     --argjson tunnel "$(first_group_id "Cloudflare Tunnel Write|Cloudflare Tunnel Edit|Cloudflare One Connector: cloudflared Write|Cloudflare One Connector: cloudflared Edit")" \
@@ -115,7 +115,7 @@ spec:
                   }
                   mint() {
                     key="$1"; token_name="$2"; policies="$3"
-                    if ! needs_mint "$(current_token "${key}")"; then
+                    if [ "${4:-}" != rotate ] && ! needs_mint "$(current_token "${key}")"; then
                       log "${key}: current token is active and not near expiry"
                       return 0
                     fi
@@ -163,7 +163,18 @@ spec:
                     slug="$(echo "${zone}" | tr . -)"
                     kubectl -n forgejo patch secret "${TOKEN_SECRET}" --type merge \
                       -p "$(jq -nc --arg k "${slug}-zone-id" --arg v "${zone_id}" '{stringData: {($k): $v}}')" >/dev/null
-                    mint "${slug}-edge" "edge-${slug}" "$(edge_policies "${zone_id}")"
+                    edge_groups="$(echo "${edge_account_groups}" | jq -c 'map(.id) | sort')"
+                    rotate=""
+                    if [ "$(current_token "${slug}-edge-groups")" != "${edge_groups}" ]; then
+                      log "${slug}-edge: its permission groups changed; minting a new token"
+                      rotate=rotate
+                    fi
+                    failed_before="${failed}"
+                    mint "${slug}-edge" "edge-${slug}" "$(edge_policies "${zone_id}")" "${rotate}"
+                    if [ "${failed}" = "${failed_before}" ]; then
+                      kubectl -n forgejo patch secret "${TOKEN_SECRET}" --type merge \
+                        -p "$(jq -nc --arg k "${slug}-edge-groups" --arg v "${edge_groups}" '{stringData: {($k): $v}}')" >/dev/null
+                    fi
                   done
                   exit "${failed}"
               resources:
