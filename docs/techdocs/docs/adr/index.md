@@ -89,7 +89,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0070](adr-0070-agent-code-runs-restricted-and-in-its-own-kernel.md) | Agent code runs under the restricted Pod Security Standard and in a kernel of its own | accepted | 2026-10-24 |
 | [0079](adr-0079-gvisor-runs-beside-kata-on-the-workers.md) | gVisor runs beside Kata on the workers, and each agent workload takes the runtime that fits it | accepted | 2026-10-24 |
 | [0080](adr-0080-node-disks-are-encrypted-with-luks2.md) | Node disks are encrypted with LUKS2: TPM-sealed on the control planes, node-derived on the workers until their TPM is on | accepted | 2026-10-24 |
-| [0071](adr-0071-agent-egress-reaches-only-what-it-needs.md) | Agent egress reaches only what it needs: DNS, the model gateway, the forge and its own control plane | accepted | 2026-10-29 |
+| [0071](adr-0071-agent-egress-reaches-only-what-it-needs.md) | Agent egress reaches only what it needs: DNS, the model gateway, the forge and its own control plane | accepted | 2026-10-18 |
 | [0077](adr-0077-admins-prove-a-security-key-at-google-and-sessions-end-in-twelve-hours.md) | Admins prove a security key at Google, and the estate re-checks Google every twelve hours | accepted | 2026-10-18 |
 
 ### 3. Storage
@@ -207,7 +207,6 @@ Tenant apps the platform hosts — decisions about *what* runs, not how the plat
 | [0086](adr-0086-a-repository-states-what-it-is-and-its-protection-follows.md) | A repository states what it is, and its protection follows | accepted | 2026-10-27 |
 | [0051](adr-0051-harness-plurality-acp.md) | Agent harnesses are plural behind ACP; OpenHands stays the default | accepted | 2026-10-04 |
 | [0053](adr-0053-daemonless-agent-plane.md) | The agent plane is daemonless: dind stays false everywhere, gates run in CI | accepted | 2026-10-04 |
-| [0088](adr-0088-no-stored-personal-claude-logins-in-the-cluster.md) | The cluster holds no personal Claude login: team pewter and its self-hosted runner are retired | accepted | 2026-10-29 |
 
 ## Renumbering (2026-07-03)
 

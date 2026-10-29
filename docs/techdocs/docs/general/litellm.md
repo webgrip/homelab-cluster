@@ -278,7 +278,8 @@ only on 1.105.1. 1.102.4 waited for the whole stream there.
 
 Nothing here streams through `/v1/messages` or a pass-through route. The spend log has only
 `acompletion`, `aembedding` and MCP rows, and the LiteLLM logs of the last 30 days have no
-`/v1/messages` request and no stream timeout. Unfold's Ask uses `/chat/completions`. No Ploeg team on homelab uses the `claude-code`
+`/v1/messages` request and no stream timeout. Unfold's Ask uses `/chat/completions`. Pewter's
+`claude-runner` talks to Anthropic directly. No Ploeg team on homelab uses the `claude-code`
 harness, which would send `/v1/messages` here. While Claude works, Anthropic's stream keeps
 sending thinking deltas and `ping` events, so a 120-second gap would mean the stream has stalled. The setting stays as it is. If a
 `/v1/messages` client arrives and hits it, give that model its own `stream_timeout` in
