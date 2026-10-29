@@ -1,0 +1,47 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openbao-eso-grants
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: enabled
+  labels:
+    cleanup.webgrip.io/retry-failed: "true"
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    spec:
+      serviceAccountName: openbao-config
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+      containers:
+        - name: eso-grants
+          image: docker.io/openbao/openbao:2.7.0@sha256:71156a1c6623a5fa3f5e61b0c6a8ead0faf0df29a778339188443551995d1315
+          command:
+            - "/bin/sh"
+            - "/scripts/eso-grants.sh"
+          env:
+            - name: HOME
+              value: /tmp
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts}
+            - {name: tmp, mountPath: /tmp}
+            - {name: eso-grants, mountPath: /grants, readOnly: true}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 256Mi}
+      volumes:
+        - name: scripts
+          configMap: {name: openbao-bootstrap}
+        - name: tmp
+          emptyDir: {}
+        - name: eso-grants
+          configMap: {name: openbao-eso-grants}

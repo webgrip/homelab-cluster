@@ -88,6 +88,9 @@ bao write auth/kubernetes/role/homelab-etcd-age-keygen \
   bound_service_account_names=homelab-etcd-age-keygen bound_service_account_namespaces=backup \
   policies=homelab-etcd-age-keygen ttl=5m >/dev/null
 
+echo "==> per-namespace ESO roles (each namespace reads only the paths its ExternalSecrets name)"
+sh /scripts/eso-grants.sh
+
 # Forgejo Actions OIDC -> Transit signing (JWT auth). Per-workflow identity: only the
 # release-publish flows of the explicitly listed repos can mint a sign-only token — tighter
 # than a shared runner ServiceAccount, and fork PRs can't get a token at all. Adding a repo

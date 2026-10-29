@@ -89,6 +89,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0070](adr-0070-agent-code-runs-restricted-and-in-its-own-kernel.md) | Agent code runs under the restricted Pod Security Standard and in a kernel of its own | accepted | 2026-10-24 |
 | [0079](adr-0079-gvisor-runs-beside-kata-on-the-workers.md) | gVisor runs beside Kata on the workers, and each agent workload takes the runtime that fits it | accepted | 2026-10-24 |
 | [0080](adr-0080-node-disks-are-encrypted-with-luks2.md) | Node disks are encrypted with LUKS2: TPM-sealed on the control planes, node-derived on the workers until their TPM is on | accepted | 2026-10-24 |
+| [0087](adr-0087-each-namespace-reads-only-its-own-openbao-paths.md) | Each namespace reads only its own OpenBao paths | proposed | 2026-10-25 |
 | [0071](adr-0071-agent-egress-reaches-only-what-it-needs.md) | Agent egress reaches only what it needs: DNS, the model gateway, the forge and its own control plane | accepted | 2026-10-18 |
 | [0077](adr-0077-admins-prove-a-security-key-at-google-and-sessions-end-in-twelve-hours.md) | Admins prove a security key at Google, and the estate re-checks Google every twelve hours | accepted | 2026-10-18 |
 
