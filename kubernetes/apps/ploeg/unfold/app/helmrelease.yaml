@@ -62,7 +62,6 @@ spec:
               - bronze
               - silver
               - copper
-              - pewter
             execute: true
             maxBudgetUsd: 1.00
             audiences:
@@ -76,7 +75,6 @@ spec:
               - bronze
               - silver
               - copper
-              - pewter
             execute: false
             tokenSecret:
               name: ploeg-mcp-reader
@@ -87,7 +85,6 @@ spec:
               - bronze
               - silver
               - copper
-              - pewter
             execute: true
             maxBudgetUsd: 1.00
             audiences:
@@ -197,8 +194,6 @@ spec:
               reworkReviewers:
                 - ryangr0
           copper:
-            assignees: []
-          pewter:
             assignees:
               - copper
           unfold:
@@ -400,20 +395,6 @@ spec:
                 - "ploeg-canary"
                 - "{taskspec}"
               dind: false
-          - name: pewter
-            model: litellm_proxy/fireworks-deepseek-v4p1-flash
-            budget: "0.10"
-            repoOwner: webgrip
-            repoName: erfbeeld
-            baseBranch: main
-            maxReplicaCount: 1
-            harness:
-              name: claude-environment
-              dind: false
-              timeout: 100m
-              claudeEnvironment:
-                environmentId: ccpool_017SvGpGv1jLfduyvyWMRh3F
-                loginVolume: pewter-claude-login
       mcp:
         enabled: true
         name: ploeg-mcp
@@ -456,34 +437,6 @@ spec:
         envFrom:
           - secretRef:
               name: ploeg-mcp-consumers
-      claudeRunner:
-        enabled: true
-        name: claude-runner
-        image:
-          repository: harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner
-        environmentSecret:
-          name: claude-runner-environment
-        ploegUrl: http://ploeg.ploeg.svc.cluster.local:8080
-        runtimeClassName: kata
-        extraArgs:
-          - --git-host-rewrite
-          - forgejo-http.forgejo.svc.cluster.local:3000=forgejo.${SECRET_DOMAIN}
-        env:
-          DISABLE_ERROR_REPORTING: "1"
-          CLAUDE_CODE_ENABLE_TELEMETRY: "1"
-          OTEL_METRICS_EXPORTER: otlp
-          OTEL_LOGS_EXPORTER: otlp
-          OTEL_TRACES_EXPORTER: otlp
-          CLAUDE_CODE_ENHANCED_TELEMETRY_BETA: "1"
-          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-          OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy-gateway.observability.svc.cluster.local:4318
-          OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: cumulative
-          OTEL_LOG_TOOL_DETAILS: "1"
-          OTEL_RESOURCE_ATTRIBUTES: service.namespace=ai,deployment.environment=homelab,client=claude-runner,ploeg.team=pewter
-        loginVolumes:
-          - name: pewter-claude-login
-            size: 1Gi
-            storageClassName: longhorn-general
     baseUrl: https://unfold.${SECRET_DOMAIN}
     image:
       repository: harbor.webgrip.dev/webgrip/unfold
@@ -726,7 +679,6 @@ spec:
           - bronze
           - silver
           - copper
-          - pewter
       observability:
         grafanaUrl: https://grafana.${SECRET_DOMAIN}
         dashboards:
