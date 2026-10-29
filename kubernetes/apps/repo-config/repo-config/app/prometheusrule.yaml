@@ -82,3 +82,61 @@ spec:
               - git log -3 -- kubernetes/apps/repo-config/repo-config
               - kubectl -n repo-config get configmap tfplan-default-repo-config -o jsonpath='{.data}'
               - docs/techdocs/docs/general/delivery-chain-external-state.md
+        - alert: ForgejoRepositoryNotInRepoConfigModel
+          expr: |
+            last_over_time(repo_config_unmodelled_repository{job="repo-config-inventory"}[2h]) == 1
+          for: 2h
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "Forgejo repository {{ $labels.repository }} is outside the repo-config model (repo-config/{{ $labels.repository }})"
+            description: |-
+              What's happening:
+              - webgrip/{{ $labels.repository }} on Forgejo is neither archived nor a mirror, and kubernetes/apps/repo-config/repo-config/model/repos.yaml has no entry for it.
+              - The repo-config-inventory CronJob reads the organisation hourly with a read-only token, so private repositories count too.
+
+              Impact/risk:
+              - tofu gives the repository no branch protection, no tag protection and no settings: anyone with write access pushes main directly.
+
+              Likely causes:
+              - A repository was created in the Forgejo UI or by an agent without a model entry
+              - A repository was unarchived or converted from a mirror
+
+              First actions:
+              - Add the repository to repos.yaml with its kind (see the Forgejo branch protection runbook), or archive it
+              - kubectl -n repo-config logs job/<latest repo-config-inventory job>
+        - alert: ForgejoRepoInventoryStale
+          expr: |
+            (
+              time() - max(last_over_time(repo_config_inventory_last_success_timestamp_seconds{job="repo-config-inventory"}[1d]))
+              > 3 * 3600
+            )
+            or
+            absent_over_time(repo_config_inventory_last_success_timestamp_seconds{job="repo-config-inventory"}[1d])
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "The Forgejo repository inventory has not succeeded for three hours (repo-config/repo-config-inventory)"
+            description: |-
+              What's happening:
+              - The hourly CronJob repo-config/repo-config-inventory has not pushed a successful result to vmagent for more than three hours, or never did.
+
+              Impact/risk:
+              - ForgejoRepositoryNotInRepoConfigModel goes blind: a new repository outside the model gets no branch protection and nobody hears about it.
+
+              Likely causes:
+              - Secret repo-config-inventory-forgejo is empty: OpenBao has no secret/forgejo/repo-config-inventory yet (job forgejo/repo-config-provisioner mints it)
+              - The token sees no private repository (scopes or team repo-config membership lost)
+              - Forgejo or vmagent unreachable, or a network policy blocks the pod
+              - The CronJob is suspended or cannot schedule on the worker pool
+
+              First actions:
+              - kubectl -n repo-config get cronjob,jobs -l app.kubernetes.io/name=repo-config-inventory
+              - kubectl -n repo-config logs job/<latest repo-config-inventory job>
+              - kubectl -n forgejo logs job/repo-config-provisioner
+              - kubectl -n repo-config create job --from=cronjob/repo-config-inventory repo-config-inventory-manual
