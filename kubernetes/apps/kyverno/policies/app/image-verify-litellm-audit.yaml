@@ -1,0 +1,61 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/kyverno.io/clusterpolicy_v1.json
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: image-verify-litellm-audit
+  annotations:
+    pod-policies.kyverno.io/autogen-controllers: DaemonSet,Deployment,StatefulSet
+    policies.kyverno.io/title: LiteLLM Release Signatures (Audit)
+    policies.kyverno.io/category: Software Supply Chain
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    kyverno.io/kyverno-version: 1.19.1
+    policies.kyverno.io/description: >-
+      Reports LiteLLM images, pulled from GHCR directly or through the Harbor proxy, that lack
+      a cosign signature from BerriAI's release key. Upstream signs every ghcr.io/berriai image
+      since v1.83.0 and rotated the key on 2026-10-23: releases up to v1.105.3 verify against
+      cosign.pub at commit 0112e53046018d726492c814b3644b7d376029d0 (SHA-256
+      ff8869bf14ba9d10af7b64b9d479543b44daec0165e715753c43ff8a998f6dd3), releases from v1.105.4,
+      v1.104.6 and v1.103.8 against commit e82a3c646908ba0a6ee0beddc4310d7a6cac4065 (SHA-256
+      e3fe3e08c44b16407fe0b37c43b4f8b603b3a0f4ee74c29e647bc022d762c2c0). Either key passes.
+      Audit only; drop the first key once no deployed pin predates the rotation.
+spec:
+  validationFailureAction: Audit
+  background: false
+  webhookTimeoutSeconds: 30
+  failurePolicy: Ignore
+  rules:
+    - name: verify-litellm-release-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "harbor.${SECRET_DOMAIN}/ghcr/berriai/*"
+            - "ghcr.io/berriai/*"
+          required: true
+          mutateDigest: false
+          verifyDigest: true
+          useCache: true
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEKi4ivqGpE231OGH50PKbqy1Y1Kkb
+                      POJC8+i2Wko82gBOUCe3M0Vw86H/4rhUhfoYEti4gdJ9wZbYmK0I2EE96g==
+                      -----END PUBLIC KEY-----
+                    rekor:
+                      url: https://rekor.sigstore.dev
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEG06dpKM+vEDnmp2zcjyXgVCXxzRg
+                      JA5H2LnmwBKQafZGka6OOrWujCEWATQewiAgyD4WQdJ0pvU9RC4mvNAjvQ==
+                      -----END PUBLIC KEY-----
+                    rekor:
+                      url: https://rekor.sigstore.dev
