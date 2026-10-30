@@ -697,6 +697,11 @@ spec:
     config:
       maxConcurrentSessions: 1
       maxBudgetUsd: 1.00
+      # Unfold's per-address rate limits, sign-in throttles and audit source address read the client
+      # from X-Forwarded-For only when the peer is a trusted proxy. The envoy-internal data plane runs
+      # as pods, so its peer address is in the pod subnet (talos/patches/global/cluster-network.yaml).
+      trustedProxies:
+        - 10.42.0.0/16
       auth:
         oidc:
           issuer: https://authentik.${SECRET_DOMAIN}/application/o/unfold/
