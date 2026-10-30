@@ -40,17 +40,17 @@ The rules owned since 2026-10-26 (ADR-0083). A Forgejo repository in `repos.yaml
 | Repository | kind | core | staged | writer |
 | --- | --- | --- | --- | --- |
 | homelab-cluster, unfold-cluster | config | yes | | |
-| agent-standards, workflows, renovate-config, semantic-release-config, ai-skills, frontend-toolkit, action-typescript-template | package | yes | | |
-| infrastructure | image-set | yes | | |
-| unfold, erfbeeld | service | | yes | |
-| twente.dev | site | | yes | |
-| seekframe | package | | yes | |
+| agent-standards, ai-skills, frontend-toolkit | package | yes | | |
+| workflows, renovate-config, semantic-release-config | package | yes | yes | |
+| infrastructure | image-set | yes | yes | |
+| unfold, erfbeeld, fogbell, omnigraph-explorer, seekframe | service | | yes | |
+| twente.dev, webgrip.nl, counterscale | site | | yes | |
 | compyutah | none | | yes | |
 | obsidian-vault | none | | | `ryangr0` (the Obsidian git plugin) |
 | previews | none | | | `agent-builder` |
 | every other active repository | its kind | | | |
 
-Required contexts stay per repository, and only contexts the repository reports on pull requests: the validator refuses a context that does not end in `(pull_request)` or `(pull_request_target)`, because a check reported on `push` never reaches a pull request and blocks every merge. homelab-cluster `main` the four `e2e / … (pull_request)` jobs; unfold `development` and `main` only `* / gate (pull_request)`, the job that waits for all the others ([ADR-0084](../adr/adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md)); unfold-cluster `main` its seven checks; talos-kata-extension `main` its source-change check; agent-standards, ai-skills, renovate-config, semantic-release-config and omnigraph-explorer the contexts they reported on each of their last 12 pull requests. Every other repository requires none.
+Required contexts stay per repository, and only contexts the repository reports on pull requests: the validator refuses a context that does not end in `(pull_request)` or `(pull_request_target)`, because a check reported on `push` never reaches a pull request and blocks every merge. homelab-cluster `main` the four `e2e / … (pull_request)` jobs; unfold and semantic-release-config `development` and `main` only `* / gate (pull_request)`, the job that waits for all the others ([ADR-0084](../adr/adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md)); unfold-cluster `main` its seven checks; talos-kata-extension `main` its source-change check; agent-standards, ai-skills, renovate-config and omnigraph-explorer the contexts they reported on each of their last 12 pull requests. Every other repository requires none.
 
 Private repositories are in the model with `settings.private: true`, so tofu keeps them private: compyutah, erfbeeld, obsidian-vault, omnigraph-explorer, ploeg-bench, ploeg-bench-world, previews and talos-kata-extension. ploeg-bench-world's default branch is `bench/void`, which the bench harness resets, so only its unused `main` carries the rule.
 
