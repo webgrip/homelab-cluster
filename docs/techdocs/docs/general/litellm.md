@@ -156,6 +156,33 @@ Recreating a team under the same `team_id` keeps the chart value valid.
 - Nobody can switch logging off per request (`global_disable_no_log_param`), and prompts stay out
   of the spend log even if someone flips the Admin UI toggle (`store_prompts_in_spend_logs: false`).
 
+## Image supply chain
+
+LiteLLM's PyPI package was compromised on 2026-03-24: versions 1.82.7 and 1.82.8 stole
+credentials ([BerriAI/litellm#24518](https://github.com/BerriAI/litellm/issues/24518)). The proxy
+holds every provider key, so its image moves only with a person's review.
+
+- **Pinned by digest.** The HelmRelease pins `ghcr.io/berriai/litellm-database` as
+  `tag: vX.Y.Z@sha256:…`. Renovate moves the tag and the digest together.
+- **No automerge.** A Renovate rule in `.renovaterc.json5` (matching `ghcr.io/berriai/` and its
+  Harbor proxy path) opens each LiteLLM update as a PR at once and never merges it on its own:
+  not a patch, a digest-only re-push or a vulnerability fix. GHCR reports no release timestamps,
+  so `minimumReleaseAge` cannot hold these updates back; the reviewer is the soak.
+- **Signatures reported at admission.** BerriAI signs every `ghcr.io/berriai` image with cosign
+  since v1.83.0 ([Docker image security](https://docs.litellm.ai/docs/proxy/docker_image_security)).
+  [`image-verify-litellm-audit`](../../../../kubernetes/apps/kyverno/policies/app/image-verify-litellm-audit.yaml)
+  reports a LiteLLM image that no BerriAI key signed. Upstream rotated the key on 2026-10-23, so
+  the policy trusts both commit-pinned keys: `0112e53` for releases up to v1.105.3, `e82a3c6`
+  from v1.105.4. It stays in Audit.
+
+Review a LiteLLM PR by reading the release notes and verifying the new digest:
+
+```sh
+cosign verify \
+  --key https://raw.githubusercontent.com/BerriAI/litellm/e82a3c646908ba0a6ee0beddc4310d7a6cac4065/cosign.pub \
+  ghcr.io/berriai/litellm-database@sha256:<digest from the PR>
+```
+
 ## LiteLLM 1.104+ defaults
 
 LiteLLM 1.104 and 1.105 changed two defaults homelab depended on; no setting puts the old
