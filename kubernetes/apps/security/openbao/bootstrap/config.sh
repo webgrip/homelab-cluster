@@ -29,6 +29,7 @@ bao policy write access-plane /scripts/access-plane.hcl
 bao policy write ci-unfold /scripts/ci-unfold.hcl
 bao policy write ci-twente-dev /scripts/ci-twente-dev.hcl
 bao policy write ci-cloudflare /scripts/ci-cloudflare.hcl
+bao policy write ci-cloudflare-registrar /scripts/ci-cloudflare-registrar.hcl
 bao policy write ci-unfold-cluster /scripts/ci-unfold-cluster.hcl
 bao policy write ci-unfold-cluster-etcd-check /scripts/ci-unfold-cluster-etcd-check.hcl
 bao policy write unfold-main-reader /scripts/unfold-main-reader.hcl
@@ -142,6 +143,23 @@ JSON
     write_ci_read_role ci-unfold webgrip/unfold
     write_ci_read_role ci-twente-dev webgrip/twente.dev
     write_ci_read_role ci-cloudflare webgrip/cloudflare
+    if bao write auth/forgejo/role/ci-cloudflare-registrar - >/dev/null <<JSON
+{
+  "role_type": "jwt",
+  "user_claim": "sub",
+  "bound_audiences": ["openbao-ci"],
+  "bound_claims_type": "string",
+  "bound_claims": {"repository": ["webgrip/cloudflare"], "ref": ["refs/heads/main", "main"], "event_name": ["push", "workflow_dispatch"], "actor": ["ryangr0"], "run_attempt": ["1"]},
+  "token_policies": ["ci-cloudflare-registrar"],
+  "token_ttl": "10m",
+  "token_max_ttl": "10m"
+}
+JSON
+    then
+      echo "   forgejo jwt role ci-cloudflare-registrar configured for webgrip/cloudflare main"
+    else
+      echo "   WARN: forgejo jwt role ci-cloudflare-registrar write FAILED"
+    fi
     if bao write auth/forgejo/role/ci-unfold-cluster - >/dev/null <<JSON
 {
   "role_type": "jwt",
