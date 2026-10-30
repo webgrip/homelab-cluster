@@ -1,0 +1,2237 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: delivery-estate
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: boards
+  json: |-
+    {
+      "uid": "delivery-estate",
+      "title": "Delivery estate",
+      "description": "How each repository builds, releases and ships, which version of each shared package it runs, and where pull requests wait. Repository facts come from the repo-config inventory; pull requests, merges and releases from the Forgejo database.",
+      "tags": [
+        "board",
+        "delivery",
+        "renovate",
+        "forgejo"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "5m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "links": [
+        {
+          "title": "Forgejo CI",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/forgejo-ci",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Renovate operator",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/platform-renovate-operator",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Agent standard estate",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/agent-standards-estate",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Today",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/today",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Delivery estate",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/docs/techdocs/docs/general/delivery-estate.md",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "type": "dashboards",
+          "tags": [
+            "board"
+          ],
+          "title": "Boards",
+          "asDropdown": true,
+          "keepTime": true,
+          "includeVars": false,
+          "icon": "external link",
+          "targetBlank": false,
+          "tooltip": "",
+          "url": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Active repositories",
+          "description": "Repositories in the webgrip organisation on Forgejo that are neither archived nor a pull mirror, as the repo-config inventory read them within the last two hours. Each is a row in the estate table.",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count((last_over_time(repo_config_repository_info{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_repository_info{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Repositories behind a shared package",
+          "description": "Repositories whose oldest pin of workflows, renovate-config, agent-standards or semantic-release-config is older than that package's newest stable release. The estate table shows which pin and by how many releases. A large number here with few open Renovate PRs means the bumps are majors waiting for a person, or the repository has no Renovate.",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 3,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(count by (repository) ((last_over_time(repo_config_shared_pin_releases_behind{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_shared_pin_releases_behind{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)) > 0))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Unversioned shared pins",
+          "description": "Pins of a shared package with no version Renovate can read: a workflow call by SHA without a `# vX.Y.Z` comment, a branch name, or a preset without `#vX.Y.Z`. Renovate never moves these. Amber from one: add the version comment or the tag.",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 6,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count((last_over_time(repo_config_shared_pin_unversioned{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_shared_pin_unversioned{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Open PRs waiting on a person",
+          "description": "Open pull requests whose checks passed (or never ran) and that will not merge by themselves: no approval yet, approved but not merged, or no CI on pull requests at all. Renovate PRs with the automerge label are not counted; Renovate merges them on its next run. Amber from 5, vermillion from 15: review or close from the queue table below.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 9,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "forgejo-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 5
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 15
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(*) AS value FROM ( WITH open_prs AS ( SELECT r.name AS repo, i.index AS number, i.name AS title, coalesce(u.lower_name, '?') AS author, 'https://forgejo.webgrip.dev/webgrip/' || r.name || '/pulls/' || i.index AS url, extract(epoch FROM now())::bigint - i.created_unix AS age, coalesce(u.lower_name LIKE 'renovate%', false) AS renovate, EXISTS (SELECT 1 FROM issue_label il JOIN label l ON l.id = il.label_id WHERE il.issue_id = i.id AND l.name = 'automerge') AS automerge, EXISTS (SELECT 1 FROM review rv WHERE rv.issue_id = i.id AND rv.type = 1 AND rv.official AND NOT rv.dismissed) AS approved, (SELECT CASE WHEN count(*) = 0 THEN NULL WHEN bool_or(x.status = 2) THEN 'failure' WHEN bool_or(x.status IN (5, 6, 7)) THEN 'running' WHEN bool_and(x.status IN (1, 4)) THEN 'success' ELSE 'cancelled' END FROM (SELECT DISTINCT ON (ar.workflow_id) ar.status FROM action_run ar WHERE ar.repo_id = r.id AND ar.ref = 'refs/pull/' || i.index || '/head' ORDER BY ar.workflow_id, ar.status = 3, ar.id DESC) x) AS ci FROM issue i JOIN repository r ON r.id = i.repo_id LEFT JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND NOT i.is_closed AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror ) SELECT *, CASE WHEN ci = 'failure' THEN 'red checks' WHEN ci = 'running' THEN 'checks running' WHEN ci IS NULL THEN 'no checks ran' WHEN automerge AND renovate THEN 'automerge due' WHEN approved THEN 'approved, not merged' ELSE 'waiting for review' END AS waits_on FROM open_prs ) q WHERE waits_on IN ('waiting for review', 'approved, not merged', 'no checks ran')"
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Open PRs with red checks",
+          "description": "Open pull requests whose latest run of some workflow failed on the PR head. A red Renovate PR blocks its whole group branch. Amber from one, vermillion from ten.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 13,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "forgejo-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 10
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(*) AS value FROM ( WITH open_prs AS ( SELECT r.name AS repo, i.index AS number, i.name AS title, coalesce(u.lower_name, '?') AS author, 'https://forgejo.webgrip.dev/webgrip/' || r.name || '/pulls/' || i.index AS url, extract(epoch FROM now())::bigint - i.created_unix AS age, coalesce(u.lower_name LIKE 'renovate%', false) AS renovate, EXISTS (SELECT 1 FROM issue_label il JOIN label l ON l.id = il.label_id WHERE il.issue_id = i.id AND l.name = 'automerge') AS automerge, EXISTS (SELECT 1 FROM review rv WHERE rv.issue_id = i.id AND rv.type = 1 AND rv.official AND NOT rv.dismissed) AS approved, (SELECT CASE WHEN count(*) = 0 THEN NULL WHEN bool_or(x.status = 2) THEN 'failure' WHEN bool_or(x.status IN (5, 6, 7)) THEN 'running' WHEN bool_and(x.status IN (1, 4)) THEN 'success' ELSE 'cancelled' END FROM (SELECT DISTINCT ON (ar.workflow_id) ar.status FROM action_run ar WHERE ar.repo_id = r.id AND ar.ref = 'refs/pull/' || i.index || '/head' ORDER BY ar.workflow_id, ar.status = 3, ar.id DESC) x) AS ci FROM issue i JOIN repository r ON r.id = i.repo_id LEFT JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND NOT i.is_closed AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror ) SELECT *, CASE WHEN ci = 'failure' THEN 'red checks' WHEN ci = 'running' THEN 'checks running' WHEN ci IS NULL THEN 'no checks ran' WHEN automerge AND renovate THEN 'automerge due' WHEN approved THEN 'approved, not merged' ELSE 'waiting for review' END AS waits_on FROM open_prs ) q WHERE waits_on = 'red checks'"
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "stat",
+          "title": "Oldest open Renovate PR",
+          "description": "Age of the oldest open pull request Renovate opened. Amber from a week, vermillion from two: a dependency PR that old is either blocked on a person or abandoned and keeps the repository behind.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 17,
+            "y": 0
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "forgejo-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "none open",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 604800
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1209600
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT max(age) AS value FROM ( WITH open_prs AS ( SELECT r.name AS repo, i.index AS number, i.name AS title, coalesce(u.lower_name, '?') AS author, 'https://forgejo.webgrip.dev/webgrip/' || r.name || '/pulls/' || i.index AS url, extract(epoch FROM now())::bigint - i.created_unix AS age, coalesce(u.lower_name LIKE 'renovate%', false) AS renovate, EXISTS (SELECT 1 FROM issue_label il JOIN label l ON l.id = il.label_id WHERE il.issue_id = i.id AND l.name = 'automerge') AS automerge, EXISTS (SELECT 1 FROM review rv WHERE rv.issue_id = i.id AND rv.type = 1 AND rv.official AND NOT rv.dismissed) AS approved, (SELECT CASE WHEN count(*) = 0 THEN NULL WHEN bool_or(x.status = 2) THEN 'failure' WHEN bool_or(x.status IN (5, 6, 7)) THEN 'running' WHEN bool_and(x.status IN (1, 4)) THEN 'success' ELSE 'cancelled' END FROM (SELECT DISTINCT ON (ar.workflow_id) ar.status FROM action_run ar WHERE ar.repo_id = r.id AND ar.ref = 'refs/pull/' || i.index || '/head' ORDER BY ar.workflow_id, ar.status = 3, ar.id DESC) x) AS ci FROM issue i JOIN repository r ON r.id = i.repo_id LEFT JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND NOT i.is_closed AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror ) SELECT *, CASE WHEN ci = 'failure' THEN 'red checks' WHEN ci = 'running' THEN 'checks running' WHEN ci IS NULL THEN 'no checks ran' WHEN automerge AND renovate THEN 'automerge due' WHEN approved THEN 'approved, not merged' ELSE 'waiting for review' END AS waits_on FROM open_prs ) q WHERE renovate"
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "stat",
+          "title": "CI queue wait p95",
+          "description": "How long the slowest twentieth of runs waited between Forgejo creating them and a runner starting them, trailing hour. Run level: Forgejo stamps a task with its run's start, so there is no honest per-job queue number. Amber from one minute, vermillion from five, when a push has stopped feeling like CI and started feeling like waiting. The buckets end at 30 minutes, so a p95 past that reads as 30 minutes.",
+          "gridPos": {
+            "h": 4,
+            "w": 3,
+            "x": 21,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "area",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no runs queued in the last hour",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 60
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 300
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(forgejo_ci_run_queue_seconds_bucket[1h])))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ],
+          "links": [
+            {
+              "title": "Open Forgejo CI",
+              "url": "/d/forgejo-ci"
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "table",
+          "title": "Estate: how each repository builds, releases and ships",
+          "description": "One row per active repository. kind, branching (staged or trunk), core and GitHub mirror come from the repo-config model; everything else is read from the repository's default branch every hour. Renovate gate is the profile its renovate.json extends (app, site, library, image-set), presets when it composes presets without a profile, own when it has config but no shared preset, none without a config. releases says whether a workflow calls the shared semantic-release workflow, runs semantic-release itself, or neither. ships lists what the workflows publish (cloudflare, image, chart, npm, docs), from shared workflow calls and well-known publish steps. Pins show every version found; amber when the oldest is behind the newest stable release, vermillion when one has no version at all.",
+          "gridPos": {
+            "h": 12,
+            "w": 24,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "workflows"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": ".*behind$$",
+                          "result": {
+                            "color": "#e69f00"
+                          }
+                        }
+                      },
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^unversioned.*",
+                          "result": {
+                            "color": "#d55e00"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "renovate_config"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": ".*behind$$",
+                          "result": {
+                            "color": "#e69f00"
+                          }
+                        }
+                      },
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^unversioned.*",
+                          "result": {
+                            "color": "#d55e00"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "agent_standards"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": ".*behind$$",
+                          "result": {
+                            "color": "#e69f00"
+                          }
+                        }
+                      },
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^unversioned.*",
+                          "result": {
+                            "color": "#d55e00"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "semantic_release_config"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": ".*behind$$",
+                          "result": {
+                            "color": "#e69f00"
+                          }
+                        }
+                      },
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^unversioned.*",
+                          "result": {
+                            "color": "#d55e00"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "kind"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "unmodelled": {
+                            "color": "#e69f00"
+                          },
+                          "unset": {
+                            "color": "#e69f00"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Renovate gate"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "none": {
+                            "color": "#e69f00"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true
+                },
+                "renameByName": {
+                  "github_mirror": "GitHub mirror",
+                  "renovate_gate": "Renovate gate",
+                  "renovate_config": "renovate-config",
+                  "agent_standards": "agent-standards",
+                  "semantic_release_config": "semantic-release-config",
+                  "workflow_calls": "shared workflows called"
+                },
+                "indexByName": {
+                  "repository": 0,
+                  "kind": 1,
+                  "branching": 2,
+                  "core": 3,
+                  "github_mirror": 4,
+                  "renovate_gate": 5,
+                  "releases": 6,
+                  "ships": 7,
+                  "workflows": 8,
+                  "renovate_config": 9,
+                  "agent_standards": 10,
+                  "semantic_release_config": 11,
+                  "workflow_calls": 12
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "repository",
+                    "desc": false
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (repository, kind, branching, core, github_mirror, renovate_gate, releases, ships, workflows, renovate_config, agent_standards, semantic_release_config, workflow_calls) ((last_over_time(repo_config_repository_info{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_repository_info{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "table",
+          "title": "Bottleneck queue: open pull requests, oldest first",
+          "description": "Every open pull request in the organisation and what it is waiting on: red checks (fix or close), checks running, no checks ran (the repository runs no CI on pull requests, so a person must judge it), automerge due (Renovate merges it on its next run), approved but not merged, or waiting for review. Core repositories need a second person's approval (ADR-0083). Click a title to open it.",
+          "gridPos": {
+            "h": 10,
+            "w": 16,
+            "x": 0,
+            "y": 16
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "forgejo-db"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "age"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "waits on"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "red checks": {
+                            "color": "#d55e00"
+                          },
+                          "no checks ran": {
+                            "color": "#e69f00"
+                          },
+                          "waiting for review": {
+                            "color": "#e69f00"
+                          },
+                          "approved, not merged": {
+                            "color": "#e69f00"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 170
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "title"
+                },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the pull request",
+                        "url": "$${__data.fields.url}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "repo"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 170
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "#"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 60
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "author"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 120
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "url": true
+                },
+                "renameByName": {
+                  "waits_on": "waits on",
+                  "number": "#"
+                },
+                "indexByName": {
+                  "repo": 0,
+                  "number": 1,
+                  "title": 2,
+                  "author": 3,
+                  "waits_on": 4,
+                  "age": 5
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "age",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT repo, number, title, author, waits_on, age, url FROM ( WITH open_prs AS ( SELECT r.name AS repo, i.index AS number, i.name AS title, coalesce(u.lower_name, '?') AS author, 'https://forgejo.webgrip.dev/webgrip/' || r.name || '/pulls/' || i.index AS url, extract(epoch FROM now())::bigint - i.created_unix AS age, coalesce(u.lower_name LIKE 'renovate%', false) AS renovate, EXISTS (SELECT 1 FROM issue_label il JOIN label l ON l.id = il.label_id WHERE il.issue_id = i.id AND l.name = 'automerge') AS automerge, EXISTS (SELECT 1 FROM review rv WHERE rv.issue_id = i.id AND rv.type = 1 AND rv.official AND NOT rv.dismissed) AS approved, (SELECT CASE WHEN count(*) = 0 THEN NULL WHEN bool_or(x.status = 2) THEN 'failure' WHEN bool_or(x.status IN (5, 6, 7)) THEN 'running' WHEN bool_and(x.status IN (1, 4)) THEN 'success' ELSE 'cancelled' END FROM (SELECT DISTINCT ON (ar.workflow_id) ar.status FROM action_run ar WHERE ar.repo_id = r.id AND ar.ref = 'refs/pull/' || i.index || '/head' ORDER BY ar.workflow_id, ar.status = 3, ar.id DESC) x) AS ci FROM issue i JOIN repository r ON r.id = i.repo_id LEFT JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND NOT i.is_closed AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror ) SELECT *, CASE WHEN ci = 'failure' THEN 'red checks' WHEN ci = 'running' THEN 'checks running' WHEN ci IS NULL THEN 'no checks ran' WHEN automerge AND renovate THEN 'automerge due' WHEN approved THEN 'approved, not merged' ELSE 'waiting for review' END AS waits_on FROM open_prs ) q"
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "table",
+          "title": "Where pull requests pile up",
+          "description": "Open pull requests per repository: how many wait on a person, how many are red, how many Renovate opened, and the age of the oldest. A repository near the top is where the next hour of review unblocks the most.",
+          "gridPos": {
+            "h": 10,
+            "w": 8,
+            "x": 16,
+            "y": 16
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "forgejo-db"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "oldest"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "s"
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "red"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "on a person"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 3
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "person": "on a person",
+                  "renovate": "from Renovate"
+                },
+                "indexByName": {
+                  "repo": 0,
+                  "open": 1,
+                  "person": 2,
+                  "red": 3,
+                  "renovate": 4,
+                  "oldest": 5
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "open",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT repo, count(*) AS open, count(*) FILTER (WHERE waits_on IN ('waiting for review', 'approved, not merged', 'no checks ran')) AS person, count(*) FILTER (WHERE waits_on = 'red checks') AS red, count(*) FILTER (WHERE renovate) AS renovate, max(age) AS oldest FROM ( WITH open_prs AS ( SELECT r.name AS repo, i.index AS number, i.name AS title, coalesce(u.lower_name, '?') AS author, 'https://forgejo.webgrip.dev/webgrip/' || r.name || '/pulls/' || i.index AS url, extract(epoch FROM now())::bigint - i.created_unix AS age, coalesce(u.lower_name LIKE 'renovate%', false) AS renovate, EXISTS (SELECT 1 FROM issue_label il JOIN label l ON l.id = il.label_id WHERE il.issue_id = i.id AND l.name = 'automerge') AS automerge, EXISTS (SELECT 1 FROM review rv WHERE rv.issue_id = i.id AND rv.type = 1 AND rv.official AND NOT rv.dismissed) AS approved, (SELECT CASE WHEN count(*) = 0 THEN NULL WHEN bool_or(x.status = 2) THEN 'failure' WHEN bool_or(x.status IN (5, 6, 7)) THEN 'running' WHEN bool_and(x.status IN (1, 4)) THEN 'success' ELSE 'cancelled' END FROM (SELECT DISTINCT ON (ar.workflow_id) ar.status FROM action_run ar WHERE ar.repo_id = r.id AND ar.ref = 'refs/pull/' || i.index || '/head' ORDER BY ar.workflow_id, ar.status = 3, ar.id DESC) x) AS ci FROM issue i JOIN repository r ON r.id = i.repo_id LEFT JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND NOT i.is_closed AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror ) SELECT *, CASE WHEN ci = 'failure' THEN 'red checks' WHEN ci = 'running' THEN 'checks running' WHEN ci IS NULL THEN 'no checks ran' WHEN automerge AND renovate THEN 'automerge due' WHEN approved THEN 'approved, not merged' ELSE 'waiting for review' END AS waits_on FROM open_prs ) q GROUP BY repo"
+            }
+          ],
+          "id": 10
+        },
+        {
+          "type": "row",
+          "title": "Dissemination: one release, many pull requests",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 26
+          },
+          "panels": [
+            {
+              "type": "table",
+              "title": "Renovate pull requests per upstream, last 30 days",
+              "description": "Each release of a shared package reaches its consumers as one Renovate pull request per repository, and each runs that repository's full CI. This counts that fan-out: pull requests Renovate opened per upstream (taken from the title), in how many repositories, how many merged, and how long they took. webgrip dependencies is the grouped first-party branch; renovate-config and agent-standards bumps get a branch of their own on purpose (see the doc). Closed unmerged usually means superseded by a newer release before the old one merged.",
+              "gridPos": {
+                "h": 9,
+                "w": 24,
+                "x": 0,
+                "y": 27
+              },
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "filterable": false
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "text"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "median time to merge"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      },
+                      {
+                        "id": "decimals",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "closed unmerged"
+                    },
+                    "properties": [
+                      {
+                        "id": "thresholds",
+                        "value": {
+                          "mode": "absolute",
+                          "steps": [
+                            {
+                              "color": "#898781",
+                              "value": null
+                            },
+                            {
+                              "color": "#e69f00",
+                              "value": 5
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "thresholds"
+                        }
+                      },
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "color-text"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "transformations": [
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true
+                    },
+                    "renameByName": {
+                      "still_open": "still open",
+                      "closed_unmerged": "closed unmerged",
+                      "median_to_merge": "median time to merge"
+                    },
+                    "indexByName": {
+                      "upstream": 0,
+                      "opened": 1,
+                      "repositories": 2,
+                      "merged": 3,
+                      "still_open": 4,
+                      "closed_unmerged": 5,
+                      "median_to_merge": 6
+                    }
+                  }
+                },
+                {
+                  "id": "sortBy",
+                  "options": {
+                    "sort": [
+                      {
+                        "field": "opened",
+                        "desc": true
+                      }
+                    ]
+                  }
+                }
+              ],
+              "targets": [
+                {
+                  "refId": "A",
+                  "datasource": {
+                    "type": "grafana-postgresql-datasource",
+                    "uid": "forgejo-db"
+                  },
+                  "editorMode": "code",
+                  "format": "table",
+                  "rawQuery": true,
+                  "rawSql": "SELECT coalesce(substring(i.name from '(@?webgrip/[A-Za-z0-9._-]+|webgrip dependencies)'), 'third-party') AS upstream, count(*) AS opened, count(DISTINCT i.repo_id) AS repositories, count(*) FILTER (WHERE pr.has_merged) AS merged, count(*) FILTER (WHERE NOT i.is_closed) AS still_open, count(*) FILTER (WHERE i.is_closed AND NOT pr.has_merged) AS closed_unmerged, percentile_cont(0.5) WITHIN GROUP (ORDER BY pr.merged_unix - i.created_unix) FILTER (WHERE pr.has_merged) AS median_to_merge FROM issue i JOIN pull_request pr ON pr.issue_id = i.id JOIN repository r ON r.id = i.repo_id JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND u.lower_name LIKE 'renovate%' AND i.created_unix > extract(epoch FROM now() - interval '30 days') AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror GROUP BY 1"
+                }
+              ],
+              "id": 12
+            },
+            {
+              "type": "table",
+              "title": "Shared packages: newest release and who runs it",
+              "description": "Per shared package: its newest stable tag, how many repositories pin it, how many are behind and the worst lag in releases. Repositories with no versioned pin of a package are not counted.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 36
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "filterable": false
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "text"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "most releases behind"
+                    },
+                    "properties": [
+                      {
+                        "id": "thresholds",
+                        "value": {
+                          "mode": "absolute",
+                          "steps": [
+                            {
+                              "color": "#898781",
+                              "value": null
+                            },
+                            {
+                              "color": "#e69f00",
+                              "value": 5
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "thresholds"
+                        }
+                      },
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "color-text"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "transformations": [
+                {
+                  "id": "merge",
+                  "options": {}
+                },
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true,
+                      "Value #A": true
+                    },
+                    "renameByName": {
+                      "version": "newest stable",
+                      "Value #B": "repositories current",
+                      "Value #C": "repositories behind",
+                      "Value #D": "most releases behind"
+                    },
+                    "indexByName": {
+                      "package": 0,
+                      "version": 1,
+                      "Value #B": 2,
+                      "Value #C": 3,
+                      "Value #D": 4
+                    }
+                  }
+                }
+              ],
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max by (package, version) ((last_over_time(repo_config_shared_latest{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_shared_latest{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                },
+                {
+                  "refId": "B",
+                  "expr": "count by (package) ((last_over_time(repo_config_shared_pin_releases_behind{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_shared_pin_releases_behind{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)) == 0)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                },
+                {
+                  "refId": "C",
+                  "expr": "count by (package) ((last_over_time(repo_config_shared_pin_releases_behind{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_shared_pin_releases_behind{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)) > 0)",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                },
+                {
+                  "refId": "D",
+                  "expr": "max by (package) ((last_over_time(repo_config_shared_pin_releases_behind{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_shared_pin_releases_behind{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                }
+              ],
+              "id": 13
+            },
+            {
+              "type": "table",
+              "title": "Estate shape",
+              "description": "Repositories per kind (from the model) and release path (from the workflows). ADR-0078 says every service, image set, package and site releases with semantic-release; a row with releases none for those kinds is a repository not yet on the recipe.",
+              "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 36
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "filterable": false
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "text"
+                  }
+                },
+                "overrides": []
+              },
+              "transformations": [
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true
+                    },
+                    "renameByName": {
+                      "Value": "repositories"
+                    },
+                    "indexByName": {
+                      "kind": 0,
+                      "releases": 1,
+                      "Value": 2
+                    }
+                  }
+                },
+                {
+                  "id": "sortBy",
+                  "options": {
+                    "sort": [
+                      {
+                        "field": "repositories",
+                        "desc": true
+                      }
+                    ]
+                  }
+                }
+              ],
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "count by (kind, releases) ((last_over_time(repo_config_repository_info{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_repository_info{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false,
+                  "format": "table"
+                }
+              ],
+              "id": 14
+            },
+            {
+              "type": "bargauge",
+              "title": "Shared workflows: how many repositories call each",
+              "description": "How many repositories call each reusable workflow of webgrip/workflows. A workflow few repositories call is a candidate to fold in or retire; one nearly all call is the de-facto recipe.",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "gridPos": {
+                "h": 9,
+                "w": 24,
+                "x": 0,
+                "y": 44
+              },
+              "options": {
+                "orientation": "horizontal",
+                "displayMode": "basic",
+                "valueMode": "text",
+                "namePlacement": "left",
+                "showUnfilled": true,
+                "sizing": "auto",
+                "minVizWidth": 8,
+                "minVizHeight": 12,
+                "maxVizHeight": 26,
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "values": false
+                },
+                "text": {
+                  "titleSize": 13,
+                  "valueSize": 18
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "min": 0,
+                  "noValue": "no data",
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "#3987e5"
+                  },
+                  "decimals": 0
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "sort_desc(count by (workflow) ((last_over_time(repo_config_workflow_call{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_workflow_call{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900))))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "legendFormat": "{{workflow}}",
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 15
+            }
+          ],
+          "id": 11
+        },
+        {
+          "type": "row",
+          "title": "Merge flow and approvals",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 53
+          },
+          "panels": [
+            {
+              "type": "table",
+              "title": "Time to merge per repository, last 30 days",
+              "description": "Merged pull requests per repository and the median time from opening to merge, split into Renovate's and everyone else's. A Renovate median over three days means the repository's gate (review, red CI, no automerge) is the bottleneck, not Renovate.",
+              "gridPos": {
+                "h": 10,
+                "w": 14,
+                "x": 0,
+                "y": 54
+              },
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "filterable": false
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "text"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "Renovate median"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      },
+                      {
+                        "id": "decimals",
+                        "value": 0
+                      },
+                      {
+                        "id": "thresholds",
+                        "value": {
+                          "mode": "absolute",
+                          "steps": [
+                            {
+                              "color": "#898781",
+                              "value": null
+                            },
+                            {
+                              "color": "#e69f00",
+                              "value": 259200
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "id": "color",
+                        "value": {
+                          "mode": "thresholds"
+                        }
+                      },
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "color-text"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "others median"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "s"
+                      },
+                      {
+                        "id": "decimals",
+                        "value": 0
+                      }
+                    ]
+                  }
+                ]
+              },
+              "transformations": [
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true
+                    },
+                    "renameByName": {
+                      "renovate_merged": "Renovate merged",
+                      "renovate_median": "Renovate median",
+                      "people_merged": "others merged",
+                      "people_median": "others median"
+                    },
+                    "indexByName": {
+                      "repo": 0,
+                      "renovate_merged": 1,
+                      "renovate_median": 2,
+                      "people_merged": 3,
+                      "people_median": 4
+                    }
+                  }
+                },
+                {
+                  "id": "sortBy",
+                  "options": {
+                    "sort": [
+                      {
+                        "field": "renovate_median",
+                        "desc": true
+                      }
+                    ]
+                  }
+                }
+              ],
+              "targets": [
+                {
+                  "refId": "A",
+                  "datasource": {
+                    "type": "grafana-postgresql-datasource",
+                    "uid": "forgejo-db"
+                  },
+                  "editorMode": "code",
+                  "format": "table",
+                  "rawQuery": true,
+                  "rawSql": "SELECT r.name AS repo, count(*) FILTER (WHERE u.lower_name LIKE 'renovate%') AS renovate_merged, percentile_cont(0.5) WITHIN GROUP (ORDER BY pr.merged_unix - i.created_unix) FILTER (WHERE u.lower_name LIKE 'renovate%') AS renovate_median, count(*) FILTER (WHERE NOT u.lower_name LIKE 'renovate%') AS people_merged, percentile_cont(0.5) WITHIN GROUP (ORDER BY pr.merged_unix - i.created_unix) FILTER (WHERE NOT u.lower_name LIKE 'renovate%') AS people_median FROM issue i JOIN pull_request pr ON pr.issue_id = i.id JOIN repository r ON r.id = i.repo_id JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND pr.has_merged AND pr.merged_unix > extract(epoch FROM now() - interval '30 days') AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror GROUP BY r.name"
+                }
+              ],
+              "id": 17
+            },
+            {
+              "type": "table",
+              "title": "Updates waiting for a dashboard tick",
+              "description": "Updates Renovate found but will not open a pull request for until someone ticks them on the repository's Dependency Dashboard issue: third-party majors and the always-review list. Read from the dashboard issue's text, so it is only as fresh as Renovate's last run on that repository (dashboard updated).",
+              "gridPos": {
+                "h": 10,
+                "w": 10,
+                "x": 14,
+                "y": 54
+              },
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "filterable": false
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "text"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "dashboard updated"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "dateTimeFromNow"
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "repo"
+                    },
+                    "properties": [
+                      {
+                        "id": "links",
+                        "value": [
+                          {
+                            "title": "Open the Dependency Dashboard",
+                            "url": "$${__data.fields.url}",
+                            "targetBlank": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "transformations": [
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true,
+                      "url": true
+                    },
+                    "renameByName": {
+                      "pending_approval": "pending approval",
+                      "dashboard_updated": "dashboard updated"
+                    },
+                    "indexByName": {
+                      "repo": 0,
+                      "pending_approval": 1,
+                      "dashboard_updated": 2
+                    }
+                  }
+                },
+                {
+                  "id": "sortBy",
+                  "options": {
+                    "sort": [
+                      {
+                        "field": "pending_approval",
+                        "desc": true
+                      }
+                    ]
+                  }
+                }
+              ],
+              "targets": [
+                {
+                  "refId": "A",
+                  "datasource": {
+                    "type": "grafana-postgresql-datasource",
+                    "uid": "forgejo-db"
+                  },
+                  "editorMode": "code",
+                  "format": "table",
+                  "rawQuery": true,
+                  "rawSql": "SELECT r.name AS repo, (SELECT count(*) FROM regexp_matches(i.content, 'approve-branch=', 'g')) AS pending_approval, i.updated_unix * 1000 AS dashboard_updated, 'https://forgejo.webgrip.dev/webgrip/' || r.name || '/issues/' || i.index AS url FROM issue i JOIN repository r ON r.id = i.repo_id WHERE NOT i.is_pull AND NOT i.is_closed AND i.name LIKE '%Dependency Dashboard%' AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror"
+                }
+              ],
+              "id": 18
+            }
+          ],
+          "id": 16
+        },
+        {
+          "type": "row",
+          "title": "Releases",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 64
+          },
+          "panels": [
+            {
+              "type": "table",
+              "title": "Releases per repository, last 30 days",
+              "description": "Tags and releases cut per repository, stable and release candidate (-rc) apart. A staged repository with many candidates and no stable is waiting on a promotion, which is a person's step by design (ADR-0078).",
+              "gridPos": {
+                "h": 9,
+                "w": 24,
+                "x": 0,
+                "y": 65
+              },
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "forgejo-db"
+              },
+              "options": {
+                "showHeader": true,
+                "cellHeight": "sm",
+                "footer": {
+                  "show": false
+                }
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "filterable": false
+                  },
+                  "color": {
+                    "mode": "fixed",
+                    "fixedColor": "text"
+                  }
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "last release"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "dateTimeFromNow"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "transformations": [
+                {
+                  "id": "organize",
+                  "options": {
+                    "excludeByName": {
+                      "Time": true
+                    },
+                    "renameByName": {
+                      "last_tag": "last tag",
+                      "last_at": "last release"
+                    },
+                    "indexByName": {
+                      "repo": 0,
+                      "stable": 1,
+                      "candidates": 2,
+                      "last_tag": 3,
+                      "last_at": 4
+                    }
+                  }
+                },
+                {
+                  "id": "sortBy",
+                  "options": {
+                    "sort": [
+                      {
+                        "field": "last_at",
+                        "desc": true
+                      }
+                    ]
+                  }
+                }
+              ],
+              "targets": [
+                {
+                  "refId": "A",
+                  "datasource": {
+                    "type": "grafana-postgresql-datasource",
+                    "uid": "forgejo-db"
+                  },
+                  "editorMode": "code",
+                  "format": "table",
+                  "rawQuery": true,
+                  "rawSql": "SELECT r.name AS repo, count(*) FILTER (WHERE NOT rl.is_prerelease) AS stable, count(*) FILTER (WHERE rl.is_prerelease) AS candidates, (array_agg(rl.tag_name ORDER BY rl.created_unix DESC))[1] AS last_tag, max(rl.created_unix) * 1000 AS last_at FROM release rl JOIN repository r ON r.id = rl.repo_id WHERE NOT rl.is_draft AND rl.created_unix > extract(epoch FROM now() - interval '30 days') AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror GROUP BY r.name"
+                }
+              ],
+              "id": 20
+            }
+          ],
+          "id": 19
+        },
+        {
+          "type": "row",
+          "title": "Inventory health",
+          "collapsed": true,
+          "gridPos": {
+            "h": 1,
+            "w": 24,
+            "x": 0,
+            "y": 74
+          },
+          "panels": [
+            {
+              "type": "stat",
+              "title": "Inventory last read",
+              "description": "Time since the repo-config inventory last pushed. It runs hourly; past three hours every table on this board that reads repo_config_* goes empty.",
+              "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 0,
+                "y": 75
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "no data",
+                  "unit": "s",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 10800
+                      },
+                      {
+                        "color": "#d55e00",
+                        "value": 21600
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "time() - max(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"})",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 22
+            },
+            {
+              "type": "stat",
+              "title": "Repositories it could not read",
+              "description": "Repositories whose workflow, Renovate or agent files the inventory could not read on its last run; their estate row says unread. The CronJob's log names them.",
+              "gridPos": {
+                "h": 4,
+                "w": 6,
+                "x": 6,
+                "y": 75
+              },
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "options": {
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "orientation": "auto",
+                "textMode": "auto",
+                "wideLayout": true,
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "center"
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "noValue": "0",
+                  "decimals": 0,
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "#898781",
+                        "value": null
+                      },
+                      {
+                        "color": "#e69f00",
+                        "value": 1
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              },
+              "targets": [
+                {
+                  "refId": "A",
+                  "expr": "max((last_over_time(repo_config_inventory_scan_failed_repositories{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_inventory_scan_failed_repositories{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)))",
+                  "datasource": {
+                    "type": "prometheus",
+                    "uid": "prometheus"
+                  },
+                  "instant": true,
+                  "range": false
+                }
+              ],
+              "id": 23
+            }
+          ],
+          "id": 21
+        }
+      ]
+    }

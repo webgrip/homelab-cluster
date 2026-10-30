@@ -78,5 +78,20 @@ mutate archived-model-entry-dropped test_model_parser_matches_yaml_on_the_real_m
 mutate private-setting-unparsed test_model_parser_matches_yaml_on_the_real_model \
   'in ("archived", "private"):' \
   'in ("archived",):'
+mutate prerelease-counted-as-latest test_repository_info_states_how_a_repository_ships \
+  '(?P<patch>\d+)$")' \
+  '(?P<patch>\d+)")'
+mutate unreadable-repository-aborts test_unreadable_repository_is_reported_and_the_inventory_still_succeeds \
+  'log(f"could not read the delivery files of {name}: {failure}")' \
+  'raise failure'
+mutate reusable-definition-ships test_own_release_and_steps_are_read_but_reusable_definitions_are_not \
+  'if REUSABLE_DEFINITION.search(text):' \
+  'if False:'
+mutate archived-mirror-counted test_model_facts_match_yaml_on_the_real_model \
+  'fact.get("mirror_of") and not fact["archived"]' \
+  'fact.get("mirror_of")'
+mutate lag-counts-the-newest-pin test_repository_info_states_how_a_repository_ships \
+  'if version_key(tag) > version_key(oldest)' \
+  'if version_key(tag) >= version_key(oldest)'
 
 echo "all mutations killed"
