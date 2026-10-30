@@ -64,6 +64,7 @@ question; a board that repeats another's tiles comes off.
 | Unfold | `glide-loop` (KPIs), `glide-plant`, `glide-runs`, **Unfold · Run explorer** (one Run) | five `dark-factory-*` boards, named for the old program |
 | Model gateway | `litellm-reliability`, `litellm-spend` | `dark-factory-llm-traffic` |
 | Forgejo CI | `forgejo-ci` (generated), `infra-forgejo-ci-runners` | `infra-forgejo-ci` |
+| How each repository ships, which shared versions it runs, where pull requests wait | `delivery-estate` (generated, [delivery estate](delivery-estate.md)) | nothing; new 2026-10-30 |
 
 The Run explorer kept its uid `dark-factory-run-explorer` so bookmarks and data links keep
 working; only its title changed.
