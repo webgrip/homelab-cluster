@@ -1,0 +1,45 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: unfold-audit-checkpoints
+  labels:
+    rules: logs
+spec:
+  groups:
+    - name: unfold.audit.checkpoints
+      type: vlogs
+      interval: 5m
+      rules:
+        - alert: UnfoldAuditCheckpointFailing
+          expr: >-
+            _time:3h namespace:=ploeg container:=workbench pod:unfold*
+            event:="audit.checkpoint_failed"
+            | stats count() as failures
+            | filter failures:>=2
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: unfold
+          annotations:
+            summary: "Unfold cannot sign or store its audit checkpoints (ploeg/unfold)"
+            description: |
+              What's happening:
+              - Unfold logged audit.checkpoint_failed {{ $value }} times in three hours; it logs that warning at most once an hour, so the failure has lasted at least an hour.
+
+              Impact/risk:
+              - While OpenBao fails, no checkpoint is written, so the daily proof that the audit chain was not rewritten stops.
+              - While the bucket fails, checkpoints wait in Unfold's database, where a rewrite of the database can still remove them.
+              - GET /api/admin/audit/verify reports stale once the newest checkpoint is two days old.
+
+              Likely causes:
+              - OpenBao is sealed or unreachable from ploeg, or the unfold-audit Kubernetes auth role or Transit key does not exist yet (openbao-config CronJob).
+              - The OVH bucket refuses the access key, or the unfold-audit-checkpoints Secret holds a wrong endpoint or region.
+              - A network policy drops ploeg/unfold to security/openbao:8200 or to the bucket host.
+
+              First actions:
+              - Read the message: `namespace:=ploeg container:=workbench event:="audit.checkpoint_failed"` in VictoriaLogs.
+              - kubectl -n security get jobs --sort-by=.metadata.creationTimestamp | grep openbao-config, then read the newest job's log for the "transit keys" and "kubernetes roles" steps.
+              - kubectl -n ploeg get externalsecret unfold-audit-checkpoints
+            runbook_url: "https://forgejo.webgrip.dev/webgrip/unfold/src/branch/development/apps/unfold/docs/operations/audit-siem.md#sign-the-chain-head-and-copy-it-off-the-box"
