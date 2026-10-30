@@ -9,8 +9,8 @@
 #
 # Isolation trade (accepted for a single-tenant homelab): jobs on the same node share one
 # daemon. act_runner names containers/networks uniquely per job; the CiliumNetworkPolicy below
-# restricts the TCP endpoint to runner pods in this namespace. TLS is off — the port never
-# leaves the node in practice (runners connect to their own node's hostIP) and the policy is
+# restricts the TCP endpoint to runner pods in this namespace. TLS is off — the daemon has no
+# hostPort, runners reach it only through the node-local forgejo-dind Service, and the policy is
 # the boundary, matching how the sidecar's localhost:2376 trusted the pod boundary before.
 #
 # ci-shared: the e2e validators `docker run -v` workspaces the RUNNER writes — bind mounts
@@ -122,9 +122,11 @@ spec:
             - name: DIND_DISK_WRITE_BPS
               value: "8388608"
           ports:
+            # No hostPort: reached only through the forgejo-dind Service below, which the
+            # CiliumNetworkPolicy limits to runner pods. The hostPort was reachable from the
+            # whole LAN without credentials (verified 2026-07-27) and was retired 2026-10-30.
             - name: docker
               containerPort: 2375
-              hostPort: 2375
               protocol: TCP
           securityContext:
             privileged: true
@@ -308,12 +310,10 @@ spec:
 ---
 # Node-local service front for the daemon: internalTrafficPolicy Local routes each runner pod
 # to ITS OWN node's dind (preserving the same-node bind-mount contract the header describes)
-# without the node IP in the client config. Motivation: the hostPort is reachable from the
-# whole LAN — verified 2026-07-27 with an unauthenticated `docker -H tcp://10.0.0.23:2375 info`
-# from a workstation; the CiliumNetworkPolicy below does not cover the external hostPort path.
-# Staged migration: DOCKER_HOST now targets this service; the hostPort stays as a fallback
-# until a few release waves prove the service path (then drop the hostPort mapping and the
-# LAN exposure with it).
+# without the node IP in the client config. It replaced the daemon's hostPort, which was
+# reachable from the whole LAN without credentials (verified 2026-07-27); the hostPort was
+# retired 2026-10-30. Runners fall back to this Service's ClusterIP (injected as
+# FORGEJO_DIND_SERVICE_HOST) when cluster DNS is slow, so no path leaves the cluster network.
 apiVersion: v1
 kind: Service
 metadata:

@@ -233,11 +233,13 @@ spec:
                 # The Service name is tried first but is NOT trusted blindly: a cluster-DNS blip
                 # took the whole nightly gate down on 2026-08-01 ("cannot connect to the Docker
                 # daemon ... lookup forgejo-dind.forgejo.svc.cluster.local: i/o timeout", run 679).
-                # The hostPort on NODE_IP reaches the same daemon on this node without DNS, so
-                # fall back to it rather than letting a name-resolution hiccup fail the job. Probe
-                # with bash's /dev/tcp, which exercises resolution AND reachability in one go.
+                # The fallback is the same Service by ClusterIP, which kubelet injects as
+                # FORGEJO_DIND_SERVICE_HOST at pod start: no DNS, still node-local through
+                # internalTrafficPolicy Local. (It used to be the daemon's LAN-reachable hostPort,
+                # retired 2026-10-30.) Probe with bash's /dev/tcp, which exercises resolution AND
+                # reachability in one go.
                 dind_svc=forgejo-dind.forgejo.svc.cluster.local
-                dind_endpoint="tcp://$NODE_IP:2375"
+                dind_endpoint="tcp://${FORGEJO_DIND_SERVICE_HOST:-$dind_svc}:2375"
                 for attempt in 1 2 3; do
                   if (exec 3<>/dev/tcp/$dind_svc/2375) 2>/dev/null; then
                     dind_endpoint="tcp://$dind_svc:2375"
@@ -246,8 +248,8 @@ spec:
                   echo "dind Service not reachable yet (attempt $attempt/3)"
                   sleep 2
                 done
-                if [ "$dind_endpoint" = "tcp://$NODE_IP:2375" ]; then
-                  echo "falling back to the node-local hostPort: $dind_endpoint"
+                if [ "$dind_endpoint" != "tcp://$dind_svc:2375" ]; then
+                  echo "falling back to the dind Service ClusterIP: $dind_endpoint"
                 fi
                 export DOCKER_HOST="$dind_endpoint"
                 # --wait blocks until Forgejo assigns a task. Required for the warm pool
@@ -269,13 +271,6 @@ spec:
               # secret mount — buildx and docker/login-action both write inside DOCKER_CONFIG.
               - name: DOCKER_CONFIG
                 value: /docker-config
-              # Node IP of the shared dind DaemonSet; the command script derives
-              # DOCKER_HOST=tcp://$(NODE_IP):2375 from it. No TLS: plaintext on the node
-              # boundary, gated by the forgejo-dind CiliumNetworkPolicy.
-              - name: NODE_IP
-                valueFrom:
-                  fieldRef:
-                    fieldPath: status.hostIP
             volumeMounts:
               - name: runner-bin
                 mountPath: /dist
