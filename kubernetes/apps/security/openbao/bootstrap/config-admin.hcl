@@ -56,3 +56,6 @@ path "sys/auth/jwt-unfold-main" {
 path "auth/jwt-unfold-main/config" {
   capabilities = ["create", "read", "update"]
 }
+path "transit/keys/unfold-audit" {
+  capabilities = ["create", "read", "update"]
+}

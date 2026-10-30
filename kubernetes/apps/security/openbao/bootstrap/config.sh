@@ -41,6 +41,7 @@ bao policy write github-mirrors /scripts/github-mirrors.hcl
 bao policy write renovate-github-app-token-ploeg-hq /scripts/renovate-github-app-token-ploeg-hq.hcl
 bao policy write renovate-github-app-token-wellhead-dev /scripts/renovate-github-app-token-wellhead-dev.hcl
 bao policy write homelab-etcd-age-keygen /scripts/homelab-etcd-age-keygen.hcl
+bao policy write unfold-audit-checkpoints /scripts/unfold-audit-checkpoints.hcl
 
 echo "==> kubernetes roles"
 for retired in external-secrets external-secrets-push; do
@@ -84,6 +85,18 @@ bao write auth/kubernetes/role/renovate-github-app-token-wellhead-dev \
 bao write auth/kubernetes/role/homelab-etcd-age-keygen \
   bound_service_account_names=homelab-etcd-age-keygen bound_service_account_namespaces=backup \
   policies=homelab-etcd-age-keygen ttl=5m >/dev/null
+bao write auth/kubernetes/role/unfold-audit \
+  bound_service_account_names=unfold bound_service_account_namespaces=ploeg \
+  policies=unfold-audit-checkpoints ttl=1h >/dev/null
+
+echo "==> transit keys"
+if bao read transit/keys/unfold-audit >/dev/null 2>&1; then
+  echo "   transit key unfold-audit present"
+elif bao write transit/keys/unfold-audit type=ed25519 >/dev/null 2>&1; then
+  echo "   transit key unfold-audit created (ed25519)"
+else
+  echo "   WARN: transit key unfold-audit write FAILED (check the transit/keys/unfold-audit grant in config-admin.hcl)"
+fi
 
 echo "==> per-namespace ESO roles (each namespace reads only the paths its ExternalSecrets name)"
 sh /scripts/eso-grants.sh

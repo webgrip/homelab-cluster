@@ -44,6 +44,7 @@ bao secrets enable -path=database database
 # `generate-root` op (same as the database engine above).
 bao secrets enable -path=transit transit
 bao write transit/keys/cosign-webgrip type=ecdsa-p256 >/dev/null
+bao write transit/keys/unfold-audit type=ed25519 >/dev/null
 bao auth enable kubernetes
 bao write auth/kubernetes/config kubernetes_host="https://kubernetes.default.svc" >/dev/null
 bao auth enable oidc 2>/dev/null || true
