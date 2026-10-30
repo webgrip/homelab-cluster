@@ -111,8 +111,8 @@ research notes; the warm per-node image store is the daemon's raison d'être
 4. **`podPidsLimit`** via kubelet `extraConfig` — with nested containers now
    inside the pod cgroup, the pids controller finally covers CI too (closes
    the fork-bomb residual).
-5. **Retire the LAN-exposed hostPort 2375** (staged migration already in the
-   manifest; the Service path has been primary since 2026-07-27).
+5. **Retire the LAN-exposed hostPort 2375.** Done 2026-10-30: the daemon has no
+   hostPort, and runners fall back to the Service's ClusterIP instead of the node IP.
 6. **Kill the leaker class at the source**: finish ADR-0026's step 2 — move
    the remaining cross-repo buildx flows to `forgejo-buildkitd` (remote
    driver) and *remove* the docker-container-on-dind fallback, so no buildx
