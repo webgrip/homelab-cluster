@@ -545,6 +545,16 @@ spec:
           secretKeyRef:
             name: unfold-exchange-client
             key: client-secret
+      - name: UNFOLD_CLICKUP_CLIENT_ID
+        valueFrom:
+          secretKeyRef:
+            name: unfold-clickup-oauth
+            key: client-id
+      - name: UNFOLD_CLICKUP_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: unfold-clickup-oauth
+            key: client-secret
     # Governed delivery (ADR 0019/0040): a completed twente.dev session is
     # canonicalized against the approved base, its checks run in kata pods in
     # unfold-verifier, and Ploeg records the receipt under the policy whose
@@ -803,6 +813,9 @@ spec:
         baseUrl: https://forgejo.${SECRET_DOMAIN}/api/v1
         project: webgrip/unfold
         tokenEnv: UNFOLD_REPORTS_FORGEJO_TOKEN
+      links:
+        clickup:
+          clientSecretEnv: UNFOLD_CLICKUP_CLIENT_SECRET
       taskSources:
         - id: ploeg-test
           name: Ploeg Test
