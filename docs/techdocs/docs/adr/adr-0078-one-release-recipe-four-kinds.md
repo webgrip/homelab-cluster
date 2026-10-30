@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-24
+date: 2026-10-31
 ---
 
 # One release recipe: semantic-release tags-only, four kinds of project, fast-forward promotion
@@ -139,3 +139,7 @@ promising but pre-1.0 with one maintainer and is piloted separately
 * 2026-10-27 — Amended by [ADR-0086](adr-0086-a-repository-states-what-it-is-and-its-protection-follows.md):
   the kind is the one classification a repository states. It carries the default Renovate profile,
   and a repository protects its staged branch shape by saying `staged: true`.
+* 2026-10-31 — Amended by [ADR-0088](adr-0088-one-branch-every-merge-releases-and-environments-promote-the-artifact.md):
+  points 6 and 7 are replaced. `main` is the only long-lived branch, every releasing merge cuts
+  `vX.Y.Z`, and environments promote the artifact the release built instead of a fast-forward of
+  `development`. Every other point stands.

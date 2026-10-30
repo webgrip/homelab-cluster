@@ -155,7 +155,8 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | [0030](adr-0030-forgejo-static-bot-pat.md) | Authenticate Renovate to Forgejo with a static bot PAT | accepted | 2026-06-16 |
 | [0031](adr-0031-github-as-renovate-data-oracle.md) | Keep GitHub as a read-only data oracle during the cutover | accepted | 2026-10-04 |
 | [0066](adr-0066-actions-resolve-from-the-local-forge.md) | Forgejo Actions resolve bare `uses:` refs from the local forge, against mirrored action repos | accepted | 2026-10-04 |
-| [0078](adr-0078-one-release-recipe-four-kinds.md) | One release recipe: semantic-release tags-only, four kinds of project, fast-forward promotion | accepted | 2026-10-24 |
+| [0078](adr-0078-one-release-recipe-four-kinds.md) | One release recipe: semantic-release tags-only, four kinds of project, fast-forward promotion | accepted | 2026-10-31 |
+| [0088](adr-0088-one-branch-every-merge-releases-and-environments-promote-the-artifact.md) | One branch, every merge releases, and environments promote the artifact | accepted | 2026-10-31 |
 
 ### 8. Policy & admission
 
@@ -205,7 +206,7 @@ Tenant apps the platform hosts — decisions about *what* runs, not how the plat
 | [0050](adr-0050-per-repo-delivery-contract.md) | Per-repo delivery contract, server-enforced via branch protection | accepted | 2026-10-26 |
 | [0083](adr-0083-nobody-pushes-to-main-and-core-repositories-need-a-second-person.md) | Nobody pushes to main, and the core repositories need a second person | accepted | 2026-10-26 |
 | [0084](adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md) | A branch rule requires one gate check, and Forgejo merges Renovate's pull requests on it | accepted | 2026-10-27 |
-| [0086](adr-0086-a-repository-states-what-it-is-and-its-protection-follows.md) | A repository states what it is, and its protection follows | accepted | 2026-10-27 |
+| [0086](adr-0086-a-repository-states-what-it-is-and-its-protection-follows.md) | A repository states what it is, and its protection follows | accepted | 2026-10-31 |
 | [0051](adr-0051-harness-plurality-acp.md) | Agent harnesses are plural behind ACP; OpenHands stays the default | accepted | 2026-10-04 |
 | [0053](adr-0053-daemonless-agent-plane.md) | The agent plane is daemonless: dind stays false everywhere, gates run in CI | accepted | 2026-10-04 |
 

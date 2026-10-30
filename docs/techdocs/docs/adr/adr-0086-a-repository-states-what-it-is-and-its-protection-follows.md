@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-27
+date: 2026-10-31
 decision-makers: Ryan Grippeling
 ---
 
@@ -80,3 +80,6 @@ Decisions carried over from pull request #934, 2026-10-27, by Ryan Grippeling:
 - 2026-10-27 — decided by Ryan Grippeling: one key per repository instead of a second protection kind.
 - 2026-10-27 — amended: GitHub repositories no longer keep their `profile` (rule 1). It is derived the same way, and today every GitHub entry derives `baseline`, the one profile with a `github` block; the schema refuses `profile` on either forge. This also amends [ADR-0085](adr-0085-github-push-mirrors-are-tracked-in-the-model-and-reconciled-for-drift-and-releases.md) rule 1: an active mirror is `{forge: github, mirror_of: <name>}`.
 - 2026-10-27 — amended: rule 9's coverage check moved out of tofu into the hourly CronJob `repo-config/repo-config-inventory`, which lists the organisation with a read-only token (`read:organization`, `read:repository`, minted by `forgejo/repo-config-provisioner`) and so sees private repositories too. It publishes `repo_config_unmodelled_repository` per active repository to vmagent; `ForgejoRepositoryNotInRepoConfigModel` warns after 2h and `ForgejoRepoInventoryStale` after 3h without a successful run. The tofu check `every_active_repo_is_modelled` and its anonymous `data "http" "org_repos"` are gone: OpenTofu cannot pass the module's ephemeral token to a `data "http"` source. The per-repository drift checks stay in tofu and still read public repositories only. `scripts/test-repo-config-inventory.sh` proves the job both ways ([runbook](../runbooks/forgejo-branch-protection-rollout.md#every-repository-is-in-the-model)).
+- 2026-10-31 — amended by [ADR-0088](adr-0088-one-branch-every-merge-releases-and-environments-promote-the-artifact.md):
+  `staged: true` is retired as repositories move to artifact promotion, and a repository states its
+  release layout (`single`, `trains`, `upstream`) next to its kind.
