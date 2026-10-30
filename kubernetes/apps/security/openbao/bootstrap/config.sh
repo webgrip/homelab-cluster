@@ -149,10 +149,11 @@ JSON
   "user_claim": "sub",
   "bound_audiences": ["openbao-ci"],
   "bound_claims_type": "string",
-  "bound_claims": {"repository": ["webgrip/cloudflare"], "ref": ["refs/heads/main", "main"], "event_name": ["push", "workflow_dispatch"], "actor": ["ryangr0"], "run_attempt": ["1"]},
+  "bound_claims": {"repository": ["webgrip/cloudflare"], "ref": ["refs/heads/main", "main"], "event_name": ["push"], "actor": ["ryangr0"], "workflow": ["apply.yml"], "run_attempt": ["1"]},
   "token_policies": ["ci-cloudflare-registrar"],
-  "token_ttl": "10m",
-  "token_max_ttl": "10m"
+  "token_ttl": "5m",
+  "token_max_ttl": "5m",
+  "token_num_uses": 10
 }
 JSON
     then
