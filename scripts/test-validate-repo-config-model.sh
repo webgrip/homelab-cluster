@@ -92,7 +92,7 @@ run_case fail unknown-kind "sed -i '0,/^    kind: package$/s//    kind: library/
 run_case fail mirror-with-a-kind "sed -i '0,/^    mirror_of: \\(.*\\)$/s//    mirror_of: \\1\\n    kind: service/' repos.yaml"
 
 run_case pass platform-automerge-behind-the-gate "true"
-run_case fail platform-automerge-without-a-gate "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"  seekframe:\\n    forge: forgejo\\n    kind: package\\n    staged: true\\n    renovate:\\n      presets:\\n\", \"  seekframe:\\n    forge: forgejo\\n    kind: package\\n    staged: true\\n    renovate:\\n      presets:\\n        - \\\"local>webgrip/renovate-config:platform-automerge\\\"\\n\", 1))'"
+run_case fail platform-automerge-without-a-gate "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"  seekframe:\\n    forge: forgejo\\n    kind: service\\n    staged: true\\n    renovate:\\n      presets:\\n\", \"  seekframe:\\n    forge: forgejo\\n    kind: service\\n    staged: true\\n    renovate:\\n      presets:\\n        - \\\"local>webgrip/renovate-config:platform-automerge\\\"\\n\", 1))'"
 run_case fail platform-automerge-with-one-branch-ungated "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); s=p.read_text(); i=s.index(\"  unfold:\"); p.write_text(s[:i] + s[i:].replace(\"          - \\\"* / gate (pull_request)\\\"\\n\", \"          - \\\"\\\\\\\\[Workflow\\\\\\\\] On Pull Request / checks (pull_request)\\\"\\n\", 1))'"
 
 run_case fail archived-repo-claims-core "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"  ledgerflow:\n    forge: forgejo\n\", \"  ledgerflow:\n    forge: forgejo\n    core: true\n\"))'"
