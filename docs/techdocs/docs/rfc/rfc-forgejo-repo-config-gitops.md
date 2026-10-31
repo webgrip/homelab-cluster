@@ -127,8 +127,9 @@ kube_cronjob_status_last_successful_time > 2h`, as `HarborProxyReconcileStale` i
 - Covers everything, including push mirrors and topics, because we write every call.
 - Every behaviour is our code: diffing, withdrawal, the status-check wipe quirk, masked webhook
   headers, pagination (the script already lost repos past page one once, fixed 2026-07-26). This
-  is `forgejo-sync.sh` rewritten, and the access-plane decision rejected exactly this shape after
-  the staging cluster built it and deleted 3,900 lines (ADR-0058 context).
+  is `forgejo-sync.sh` rewritten, and the access-plane decision rejected exactly this shape as a
+  partial reimplementation of a provider
+  ([ADR-0058](../adr/adr-0058-access-plane-one-module-one-model.md) context).
 - No plan: the "diff" is whatever we log.
 - Removal from the model does nothing unless we write deletion code, which is where lock-out and
   fail-open bugs live.

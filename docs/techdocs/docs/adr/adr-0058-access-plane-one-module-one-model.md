@@ -15,12 +15,12 @@ identity groups) and the Kubernetes API's own RBAC. Today the first is twelve bl
 apply state and never withdraw it, the second is a shell script in a CronJob, and the third has
 no human subjects at all.
 
-The sibling estate's staging cluster built the full version of the alternative: a six-file
-model validated by CUE, a 2,900-line Python renderer emitting nine generated artefacts, a bash
-converger that PATCHed group membership every ten minutes, a membership ConfigMap, a metrics
-exporter, five alerts and a dashboard. Three weeks later its ADR-0048 replaced the converger
-with an OpenTofu module run by tofu-controller and deleted 3,900 lines. This estate has none of
-the intermediate machinery yet, so the question is only which end state to build.
+The full version of the alternative is heavy: a model validated by CUE, a Python renderer
+emitting generated artefacts, a converger that PATCHes group membership on a timer, a membership
+ConfigMap, a metrics exporter, alerts and a dashboard. Every part of it reimplements what a
+provider already does, and the end state it converges to is an OpenTofu module run by
+tofu-controller. This estate has none of the intermediate machinery yet, so the question is
+only which end state to build.
 
 ## Decision Drivers
 
@@ -37,7 +37,6 @@ the intermediate machinery yet, so the question is only which end state to build
 * **One OpenTofu module (providers `authentik`, `vault`, `kubernetes`), two `Terraform` objects,
   run in-cluster by tofu-controller; the model as four YAML files with JSON Schema**
 * A Python renderer plus CUE schema producing generated manifests and a converger CronJob
-  (staging's first version)
 * Crossplane compositions over provider-kubernetes and provider-terraform
 * `tofu apply` from a Forgejo Actions job on `main`
 * The model as Kubernetes custom resources with CEL validation
@@ -67,8 +66,8 @@ plan-before-apply and native deletion, and no generated file in between.
   through `import` blocks, not loss of access.
 * **Adoption, not recreation.** Every object that exists today is imported by name or id; the
   first plan is approved by a person and must change nothing. Afterwards `approvePlan: auto`.
-* **Intent lives in names and docs.** Staging's module is comment-heavy; this repository does
-  not allow comments. Resource and local names carry the meaning; the RFC and the runbook carry
+* **Intent lives in names and docs.** This repository does not allow comments, so the module
+  cannot carry its rationale inline. Resource and local names carry the meaning; the RFC and the runbook carry
   the reasoning.
 * **The matrix is a view.** `escalates_to` edges stay in the capability catalogue; the closure
   and the access matrix are a build-time macro in `docs/techdocs/main.py`, never a committed
@@ -117,8 +116,8 @@ plan-before-apply and native deletion, and no generated file in between.
 ### Python renderer, CUE schema, converger CronJob
 
 * Good, because it needs nothing new in the cluster.
-* Bad, because every part of it is a partial reimplementation of a provider, and the estate
-  that built it has already replaced it.
+* Bad, because every part of it is a partial reimplementation of a provider, and its natural
+  end state is the provider-based module anyway.
 
 ### Crossplane
 
@@ -145,7 +144,6 @@ plan-before-apply and native deletion, and no generated file in between.
   [ADR-0059](adr-0059-per-user-kubernetes-identity-via-google.md) ·
   [ADR-0055](adr-0055-one-secrets-model-six-levels.md) (the secrets model the runner's
   credential follows)
-* Sibling: code14 staging-cluster ADR-0028 and ADR-0048, RFC-0012, RFC-0017, RFC-0018.
 * [tofu-controller](https://github.com/flux-iac/tofu-controller) ·
   [goauthentik/authentik provider](https://registry.terraform.io/providers/goauthentik/authentik)
   · [hashicorp/vault provider](https://registry.terraform.io/providers/hashicorp/vault)
