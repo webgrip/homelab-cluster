@@ -257,27 +257,3 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
----
-# Public ClickUp webhook: envoy (network ns) -> ploegd only. The public route
-# forwards nothing but POST /webhooks/tracker/clickup (ploeg-clickup-webhook in
-# network), so no other pod in this namespace is opened to the gateway.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: ploegd-allow-gateway-ingress
-  labels:
-    app.kubernetes.io/part-of: ploeg
-spec:
-  podSelector:
-    matchLabels:
-      ploeg.webgrip.dev/component: daemon
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: network
-      ports:
-        - protocol: TCP
-          port: 8080

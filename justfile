@@ -447,54 +447,6 @@ hetzner-token path key:
     unset value
     echo "Hetzner accepted the token; wrote {{ key }} to secret/{{ path }}"
 
-[doc('Check a ClickUp personal API token against ClickUp, then write it to OpenBao at secret/clickup/ploeg api_token')]
-[group('secrets')]
-clickup-token:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just _need bao gum curl python3
-    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
-    value="$(gum input --password --placeholder 'ClickUp personal API token (pk_…) for secret/clickup/ploeg api_token')"
-    user="$(printf 'header = "Authorization: %s"\n' "${value}" | curl -sS --fail --config - https://api.clickup.com/api/v2/user | python3 -c 'import json, sys; print(json.load(sys.stdin)["user"]["username"])')" \
-        || { echo "ClickUp rejects that token; nothing written" >&2; exit 1; }
-    if bao kv get secret/clickup/ploeg >/dev/null 2>&1; then
-        printf '%s' "${value}" | bao kv patch secret/clickup/ploeg api_token=- >/dev/null
-    else
-        printf '%s' "${value}" | bao kv put secret/clickup/ploeg api_token=- >/dev/null
-    fi
-    unset value
-    echo "ClickUp accepted the token of ${user}; wrote api_token to secret/clickup/ploeg"
-
-# ClickUp generates a webhook's signing secret when the webhook is created, so
-# registering it and storing the secret are one step: the token is read from
-# OpenBao and the secret goes straight back into it; neither is printed.
-[doc('Register the Workspace webhook that sends ClickUp assignments to ploegd and store its secret at secret/clickup/ploeg webhook_secret')]
-[group('secrets')]
-clickup-webhook workspace="1500520000009653" endpoint="https://ploeg-hooks.webgrip.dev/webhooks/tracker/clickup":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just _need bao curl python3
-    BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
-    token="$(bao kv get -field=api_token secret/clickup/ploeg)" || { echo "secret/clickup/ploeg has no api_token; run just clickup-token first" >&2; exit 1; }
-    api() { printf 'header = "Authorization: %s"\nheader = "Content-Type: application/json"\n' "${token}" | curl -sS --fail-with-body --config - "$@"; }
-    existing="$(api "https://api.clickup.com/api/v2/team/{{ workspace }}/webhook")"
-    secret="$(printf '%s' "${existing}" | ENDPOINT='{{ endpoint }}' python3 -c '
-    import json, os, sys
-    hooks = [h for h in json.load(sys.stdin).get("webhooks", []) if h.get("endpoint") == os.environ["ENDPOINT"]]
-    print(hooks[0].get("secret", "") if hooks else "")')"
-    if [ -z "${secret}" ]; then
-        body="$(ENDPOINT='{{ endpoint }}' python3 -c 'import json, os; print(json.dumps({"endpoint": os.environ["ENDPOINT"], "events": ["taskAssigneeUpdated", "taskStatusUpdated", "taskUpdated", "taskPriorityUpdated"]}))')"
-        secret="$(api -X POST --data "${body}" "https://api.clickup.com/api/v2/team/{{ workspace }}/webhook" | python3 -c 'import json, sys; print(json.load(sys.stdin)["webhook"]["secret"])')"
-        echo "registered the ClickUp webhook for {{ endpoint }}"
-    else
-        echo "the ClickUp webhook for {{ endpoint }} already exists; storing its secret"
-    fi
-    printf '%s' "${secret}" | bao kv patch secret/clickup/ploeg webhook_secret=- >/dev/null
-    unset token secret
-    echo "wrote webhook_secret to secret/clickup/ploeg — ESO syncs the ploeg-clickup Secret within 1h, or force it with: kubectl -n ploeg annotate externalsecret ploeg-clickup force-sync=$(date +%s) --overwrite"
-
 [doc('Seed Harbor’s Garage S3 registry key into OpenBao (secret/harbor/s3)')]
 [group('secrets')]
 harbor-s3-cred:
