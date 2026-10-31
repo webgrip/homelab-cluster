@@ -23,7 +23,7 @@ TAG_PAGES = 10
 WORKFLOW_DIRECTORIES = (".forgejo/workflows", ".github/workflows")
 RENOVATE_FILES = ("renovate.json", "renovate.json5", ".renovaterc.json", ".forgejo/renovate.json",
                   ".github/renovate.json")
-RENOVATE_GATES = ("profile-app", "profile-site", "profile-library", "profile-image-set")
+RENOVATE_GATES = ("reviewed", "unattended")
 STABLE_TAG = re.compile(r"^v?(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)$")
 RENOVATE_PRESET = re.compile(
     r"local>webgrip/renovate-config(?::(?P<preset>[\w-]+))?(?:#(?P<version>v\d+\.\d+\.\d+))?")
@@ -259,7 +259,7 @@ def renovate_reading(text):
     pins = {match.group("version") or UNVERSIONED for match in RENOVATE_PRESET.finditer(text)}
     gates = [preset for preset in presets if preset in RENOVATE_GATES]
     if gates:
-        gate = gates[0].removeprefix("profile-")
+        gate = gates[0]
     elif presets:
         gate = "presets"
     else:

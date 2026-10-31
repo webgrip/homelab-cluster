@@ -24,7 +24,7 @@ repository's default branch:
 
 | File | What it yields |
 | --- | --- |
-| `renovate.json` (or `.json5`, `.renovaterc.json`, `.forgejo/` or `.github/` copies) | the Renovate gate (the `profile-*` preset it extends) and the `renovate-config` pin |
+| `renovate.json` (or `.json5`, `.renovaterc.json`, `.forgejo/` or `.github/` copies) | the Renovate gate (the `reviewed` or `unattended` preset it extends) and the `renovate-config` pin |
 | `.forgejo/workflows/*.yml`, `.github/workflows/*.yml` | the `webgrip/workflows` pin from each `uses:` call's `# vX.Y.Z` comment, which shared workflows it calls, whether it releases with semantic-release, and what it publishes |
 | `apm.yml`, `mise.toml` | the `agent-standards` pin |
 | `package.json` | the `@webgrip/semantic-release-config` pin |
@@ -48,10 +48,16 @@ The pin labels on `repo_config_repository_info` carry every version found, so a 
 a new series. The board only reads series from the inventory's latest push, so a bump never shows
 twice.
 
+`AgentStandardsPinBehindForADay` warns when a repository's agent-standards pin stays behind for 24
+hours without a break: the gates open that bump without a dashboard tick and merge it on green, so a
+day behind means a pull request waits for an approval or a check, or the repository extends no gate.
+agent-standards' own daily estate report reads the same organisation with this inventory's
+read-only token, published to that one repository as `WEBGRIP_INVENTORY_TOKEN`.
+
 ### What the derived labels mean
 
-- **renovate_gate**: `app`, `site`, `library` or `image-set` for the profile the config extends;
-  `presets` when it composes shared presets without a profile; `own` when it has a config with no
+- **renovate_gate**: `reviewed` or `unattended` for the gate the config extends;
+  `presets` when it composes shared presets without a gate; `own` when it has a config with no
   shared preset; `none` without a config.
 - **releases**: `shared semantic-release` when a workflow calls the shared `semantic-release` or
   `semantic-release-monorepo` workflow; `own semantic-release` when a workflow runs it directly;

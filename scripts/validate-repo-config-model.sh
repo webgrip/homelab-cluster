@@ -77,8 +77,8 @@ def archived(repo, profile):
 
 
 def renovate_presets(policy):
-    if "profile" in policy:
-        return [f"local>webgrip/renovate-config:{policy['profile']}"]
+    if "gate" in policy:
+        return [f"local>webgrip/renovate-config:{policy['gate']}"]
     return policy.get("presets")
 
 
@@ -98,12 +98,12 @@ for name, repo in sorted(repos.items()):
     active_source = not archived(repo, profile) and "mirror_of" not in repo
     if active_source and "renovate" not in repo and kind_renovate(repo) is None:
         errors.append(
-            f"{name}: an active repository must state its Renovate policy (renovate.profile, renovate.presets,"
+            f"{name}: an active repository must state its Renovate policy (renovate.gate, renovate.presets,"
             " or renovate.absent) unless its kind carries one, or the renovate_policy_matches_live check has nothing to compare"
         )
     default = kind_renovate(repo)
     own = repo.get("renovate", {})
-    if default and own and set(own) <= {"profile", "presets"} and renovate_presets(own) == renovate_presets(default):
+    if default and own and set(own) <= {"gate", "presets"} and renovate_presets(own) == renovate_presets(default):
         errors.append(f"{name}: its Renovate policy is what kind {repo['kind']} already gives it; drop renovate here")
     if forge == "forgejo" and forgejo_archived(repo):
         carried = [field for field in ("kind", "core", "staged", "writer") if field in repo]
