@@ -500,6 +500,28 @@ spec:
         operator: Exists
         effect: NoExecute
         tolerationSeconds: 45
+    # Keep Unfold's Longhorn engine next to its replicas and off fringe-workstation: fringe's single SATA SSD is
+    # I/O-saturated, kubelet keeps killing its Longhorn CSI plugin and instance-manager, and every engine death
+    # turned unfold-data read-only (EIO/EROFS, "database disk image is malformed", pod churn). Same pin as
+    # forgejo-cache-server; worker-2 preferred because worker-1 runs near full CPU.
+    affinity:
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values:
+                    - worker-1
+                    - worker-2
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+                - key: kubernetes.io/hostname
+                  operator: In
+                  values:
+                    - worker-2
     credentialsSecret: unfold-operator
     # Unfold ADR 0042: server errors and failed Asks go to Alloy as OTLP log
     # records (exception.* attributes, event.name=unfold.error), and from there
