@@ -390,7 +390,7 @@ bao-login:
     set -euo pipefail
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
     echo "OpenBao: ${BAO_ADDR}"
-    bao login -method=oidc
+    bao login -no-print -method=oidc
     printf '\nFor further bao commands this shell:\n  export BAO_ADDR=%s\n' "${BAO_ADDR}"
 
 [doc('Print export lines for every key at secret/<path>; use as eval "$(just secret-env <path>)"')]
@@ -412,7 +412,7 @@ secret-set path key:
     set -euo pipefail
     just _need bao gum jq
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    bao token lookup >/dev/null 2>&1 || bao login -no-print -method=oidc
     value="$(gum input --password --placeholder '{{ key }} for secret/{{ path }}')"
     [ -n "${value}" ] || { echo "empty value; nothing written" >&2; exit 1; }
     if bao kv get "secret/{{ path }}" >/dev/null 2>&1; then
@@ -431,7 +431,7 @@ hetzner-token path key:
     set -euo pipefail
     just _need bao gum curl
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    bao token lookup >/dev/null 2>&1 || bao login -no-print -method=oidc
     value="$(gum input --password --placeholder 'Hetzner Cloud API token for secret/{{ path }} {{ key }}')"
     code="$(printf 'header = "Authorization: Bearer %s"\n' "${value}" | curl -sS -o /dev/null -w '%{http_code}' --config - 'https://api.hetzner.cloud/v1/locations?per_page=1')" || code=000
     case "${code}" in
@@ -454,7 +454,7 @@ clickup-token:
     set -euo pipefail
     just _need bao gum curl python3
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    bao token lookup >/dev/null 2>&1 || bao login -no-print -method=oidc
     value="$(gum input --password --placeholder 'ClickUp personal API token (pk_…) for secret/clickup/ploeg api_token')"
     user="$(printf 'header = "Authorization: %s"\n' "${value}" | curl -sS --fail --config - https://api.clickup.com/api/v2/user | python3 -c 'import json, sys; print(json.load(sys.stdin)["user"]["username"])')" \
         || { echo "ClickUp rejects that token; nothing written" >&2; exit 1; }
@@ -476,7 +476,7 @@ clickup-webhook workspace="1500520000009653" endpoint="https://ploeg-hooks.webgr
     set -euo pipefail
     just _need bao curl python3
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    bao token lookup >/dev/null 2>&1 || bao login -no-print -method=oidc
     token="$(bao kv get -field=api_token secret/clickup/ploeg)" || { echo "secret/clickup/ploeg has no api_token; run just clickup-token first" >&2; exit 1; }
     api() { printf 'header = "Authorization: %s"\nheader = "Content-Type: application/json"\n' "${token}" | curl -sS --fail-with-body --config - "$@"; }
     existing="$(api "https://api.clickup.com/api/v2/team/{{ workspace }}/webhook")"
@@ -502,7 +502,7 @@ harbor-s3-cred:
     set -euo pipefail
     just _need bao gum kubectl
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    bao token lookup >/dev/null 2>&1 || bao login -no-print -method=oidc
     key_id="$(gum input --placeholder 'Garage access key ID  -> REGISTRY_STORAGE_S3_ACCESSKEY')"
     secret="$(gum input --password --placeholder 'Garage secret key  -> REGISTRY_STORAGE_S3_SECRETKEY')"
     bao kv put secret/harbor/s3 \
@@ -522,7 +522,7 @@ cloudflare-deploy-cred:
     set -euo pipefail
     just _need bao gum kubectl
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    bao token lookup >/dev/null 2>&1 || bao login -no-print -method=oidc
     account_id="$(gum input --placeholder 'Cloudflare Account ID (zone Overview, rechtsonder)')"
     deploy_token="$(gum input --password --placeholder 'forgejo-ci-wrangler token VALUE (Workers Scripts:Edit + Account Settings:Read + Workers Routes:Edit op twente.dev + webgrip.nl)')"
     deploy_token_id="$(gum input --placeholder 'forgejo-ci-wrangler token ID (uit de API Tokens-lijst, niet de waarde)')"
@@ -544,7 +544,7 @@ cloudflare-tofu-cred:
     set -euo pipefail
     just _need bao gum kubectl openssl
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    bao token lookup >/dev/null 2>&1 || bao login -no-print -method=oidc
     tofu_token="$(gum input --password --placeholder 'forgejo-ci-tofu token VALUE (Zone Read + DNS Write op twente.dev + webgrip.nl, Single Redirect Write op webgrip.nl, Workers R2 Storage Write)')"
     tofu_token_id="$(gum input --placeholder 'forgejo-ci-tofu token ID (uit de API Tokens-lijst, niet de waarde)')"
     state_key_id="$(gum input --placeholder 'R2 API token Access Key ID (Object Read & Write, alleen bucket tofu-state)')"
@@ -568,7 +568,7 @@ openvsx-cred:
     set -euo pipefail
     just _need bao gum kubectl curl
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    bao token lookup >/dev/null 2>&1 || bao login -no-print -method=oidc
     ovsx_token="$(gum input --password --placeholder 'open-vsx.org access token (avatar -> Settings -> Access Tokens, publisher agreement signed)')"
     code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
         -d '{"name":"webgrip"}' "https://open-vsx.org/api/-/namespace/create?token=${ovsx_token}")"
@@ -593,7 +593,7 @@ ntfy-auth-cred:
     just _need bao gum kubectl python3
     python3 -c 'import bcrypt' 2>/dev/null || { echo "needs python3 bcrypt module (pip install bcrypt)"; exit 1; }
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
-    bao token lookup >/dev/null 2>&1 || bao login -method=oidc
+    bao token lookup >/dev/null 2>&1 || bao login -no-print -method=oidc
     phone_pw="$(gum input --password --placeholder 'password for user "phone" (typed into the ntfy app)')"
     phone_pw2="$(gum input --password --placeholder 'repeat phone password')"
     [ -n "${phone_pw}" ] && [ "${phone_pw}" = "${phone_pw2}" ] || { echo "empty or mismatched password, aborting"; exit 1; }
