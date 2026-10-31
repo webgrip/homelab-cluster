@@ -1,0 +1,1842 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: unfold-health
+spec:
+  instanceSelector:
+    matchLabels:
+      grafana.internal/instance: grafana
+  folderRef: boards
+  json: |-
+    {
+      "uid": "unfold-health",
+      "title": "Unfold · Health",
+      "description": "Is the Unfold application itself healthy: up, which release, crashes, server errors, the Ploeg link, Asks and their cost, background deliveries and audit checkpoints. Ploeg's Runs and workers are on Unfold · Plant. Unfold logs no rate-limit refusals and no job queue depth yet, so neither is shown.",
+      "tags": [
+        "board",
+        "glide",
+        "unfold"
+      ],
+      "schemaVersion": 39,
+      "editable": true,
+      "graphTooltip": 1,
+      "refresh": "1m",
+      "time": {
+        "from": "now-24h",
+        "to": "now"
+      },
+      "timezone": "browser",
+      "links": [
+        {
+          "title": "Unfold · Plant",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/glide-plant",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Unfold Loop",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/glide-loop",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Unfold · Needs-you insight",
+          "type": "link",
+          "icon": "dashboard",
+          "url": "/d/unfold-insight",
+          "targetBlank": false,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "title": "Unfold docs",
+          "type": "link",
+          "icon": "doc",
+          "url": "https://docs.webgrip.dev/glide/",
+          "targetBlank": true,
+          "asDropdown": false,
+          "includeVars": false,
+          "keepTime": false,
+          "tags": [],
+          "tooltip": ""
+        },
+        {
+          "type": "dashboards",
+          "tags": [
+            "board"
+          ],
+          "title": "Boards",
+          "asDropdown": true,
+          "keepTime": true,
+          "includeVars": false,
+          "icon": "external link",
+          "targetBlank": false,
+          "tooltip": "",
+          "url": ""
+        }
+      ],
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "Unfold up",
+          "description": "How many Unfold pods are ready to answer right now, from Kubernetes. Unfold runs one pod, so 1 is healthy and 0 (red, shown as down) means nobody can open Unfold.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "text": {
+              "valueSize": 48
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 0
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "type": "value",
+                  "options": {
+                    "0": {
+                      "text": "down"
+                    }
+                  }
+                }
+              ]
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max(kube_deployment_status_replicas_available{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", deployment=\"unfold\"}) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 1
+        },
+        {
+          "type": "stat",
+          "title": "Running release",
+          "description": "The Unfold release tag of the newest pod, and the Ploeg release it connected to, read from the line Unfold logs when it finds Ploeg compatible (ploeg.contract_compatible) shortly after it starts. Looks back 30 days, so a pod that has run longer than that shows nothing here.",
+          "gridPos": {
+            "h": 5,
+            "w": 5,
+            "x": 3,
+            "y": 0
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no start logged in 30 days",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"ploeg.contract_compatible\" | first 1 by (_time desc) | stats by (unfold, ploeg) count() as pods",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "legendFormat": "Unfold {{unfold}} · Ploeg {{ploeg}}"
+            }
+          ],
+          "timeFrom": "30d",
+          "id": 2
+        },
+        {
+          "type": "stat",
+          "title": "Reachable through the gateway",
+          "description": "Share of the 15-second blackbox checks of Unfold's /healthz, through the internal gateway, that succeeded in this time range. Amber below 99.9 %, red below 99 %.",
+          "gridPos": {
+            "h": 5,
+            "w": 4,
+            "x": 8,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "unit": "percentunit",
+              "decimals": 2,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": -1e+18
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.99
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 0.999
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "avg_over_time(probe_success{endpoint=\"unfold\"}[$$__range])",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 3
+        },
+        {
+          "type": "stat",
+          "title": "Pods started",
+          "description": "Unfold pods created in this time range. A release or a configuration change starts one or two; more means pods keep dying and being replaced, which a person sees as Unfold dropping out. Amber from 4, red from 10.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 4
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 10
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count(max by (exported_pod) (max_over_time(kube_pod_created{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"unfold-.+\"}[$$__range])) > time() - $$__range_s) or on() vector(0)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 4
+        },
+        {
+          "type": "stat",
+          "title": "Container restarts",
+          "description": "Times Kubernetes restarted the Unfold container inside a pod in this time range, usually after a crash or a failed health check. Amber from 1, red from 5.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 15,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "no data",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 5
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "round(sum(increase(kube_pod_container_status_restarts_total{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"unfold-.+\", exported_container=\"workbench\"}[$$__range])) or on() vector(0))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 5
+        },
+        {
+          "type": "stat",
+          "title": "Failed starts",
+          "description": "Times Unfold gave up while starting (startup.failed), for example because its data volume or database could not be opened. Red from 1: read the message in VictoriaLogs with `namespace:=ploeg container:=workbench event:=\"startup.failed\"`. Each line counts once per timestamp, because the log shipper sometimes delivers the same line more than once.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 18,
+            "y": 0
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"startup.failed\" | stats count_uniq(_time) as failed",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              }
+            }
+          ],
+          "id": 6
+        },
+        {
+          "type": "stat",
+          "title": "Server errors",
+          "description": "Requests Unfold answered with a 5xx error in this time range, from the error report it logs for each one (error.reported, feature http). 4xx answers are not counted: Unfold does not log them. Amber from 1, red from 20. Each line counts once per timestamp, because the log shipper sometimes delivers the same line more than once.",
+          "gridPos": {
+            "h": 5,
+            "w": 3,
+            "x": 21,
+            "y": 0
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 20
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"error.reported\" feature:=http | stats count_uniq(_time) as errors",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              }
+            }
+          ],
+          "id": 7
+        },
+        {
+          "type": "table",
+          "title": "Server errors by code and route",
+          "description": "Every 5xx answer in this time range, grouped by the error code from Unfold's error catalogue and the route shape. A code that is not in the catalogue (for example ERR_SQLITE_ERROR) is a raw failure Unfold did not translate, usually its database or disk. Each line counts once per timestamp, because the log shipper sometimes delivers the same line more than once.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 5
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No server errors in this range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Errors"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Code"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 190
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "labelsToFields",
+              "options": {
+                "mode": "columns",
+                "valueLabel": "__name__"
+              }
+            },
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "code": "Code",
+                  "route": "Route",
+                  "reports": "Errors"
+                },
+                "indexByName": {
+                  "Code": 0,
+                  "Route": 1,
+                  "Errors": 2
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Errors",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"error.reported\" feature:=http | stats by (code, route) count_uniq(_time) as reports",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              }
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "stat",
+          "title": "Ploeg link",
+          "description": "How Unfold's connection to Ploeg went in this time range. Contract refused (red from 1) means Ploeg stopped serving a contract version this Unfold needs and Unfold refuses to act through it. Version unreadable (amber) means Unfold could not ask Ploeg which contracts it serves and kept its last answer. Ploeg unavailable (amber) counts requests that failed because Ploeg did not answer. Each line counts once per timestamp, because the log shipper sometimes delivers the same line more than once.",
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 12,
+            "y": 5
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "value_and_name",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "contract refused"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#d55e00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"ploeg.contract_incompatible\" | stats count_uniq(_time) as incompatible",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "legendFormat": "contract refused"
+            },
+            {
+              "refId": "B",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"ploeg.version_unreadable\" | stats count_uniq(_time) as unreadable",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "legendFormat": "version unreadable"
+            },
+            {
+              "refId": "C",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"error.reported\" code:=ploeg_unavailable | stats count_uniq(_time) as unavailable",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "legendFormat": "Ploeg unavailable"
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "bargauge",
+          "title": "Error reports by area",
+          "description": "Error reports by the part of Unfold that raised them: http is a failed request, ask a failed Ask, process an uncaught crash, store the database upkeep. Neutral bars: compare the mix, then read the table beside it. Each line counts once per timestamp, because the log shipper sometimes delivers the same line more than once.",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 18,
+            "y": 5
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "No error reports in this range.",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#3987e5"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"error.reported\" | stats by (feature) count_uniq(_time) as reports",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "legendFormat": "{{feature}}"
+            }
+          ],
+          "id": 10
+        },
+        {
+          "type": "bargauge",
+          "title": "Ask Runs by outcome",
+          "description": "How the Ask Runs Ploeg finished in this time range ended, from ploegd's own counter. An answered Ask ends as other; failed is the one to read. Counts restart from zero when ploegd restarts, so read this as a floor.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 6,
+            "x": 0,
+            "y": 13
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "No Ask finished in this range.",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#3987e5"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (outcome) (round(increase(ploeg_runs_finished_total{job=\"ploeg\", role=\"ask\"}[$$__range]))) > 0",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{outcome}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 11
+        },
+        {
+          "type": "bargauge",
+          "title": "Asks Unfold could not answer",
+          "description": "Asks that failed or were refused on Unfold's side in this time range, by failure code: not_admitted and allowance_used_up mean Ploeg refused to fund it, rate_limited and timeout mean the model provider was busy or slow. Each line counts once per timestamp, because the log shipper sometimes delivers the same line more than once.",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 6,
+            "x": 6,
+            "y": 13
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "No Ask failed in this range.",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#d55e00"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:ask.* | stats by (code) count_uniq(_time) as asks",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "legendFormat": "{{code}}"
+            }
+          ],
+          "id": 12
+        },
+        {
+          "type": "stat",
+          "title": "Ask spend",
+          "description": "What every Ask Run in this time range cost, in US dollars: per Run the reconciled LiteLLM spend, else the observed spend, else what the Run reported. Read from Ploeg's database, like the Unfold Loop board's spend tiles.",
+          "gridPos": {
+            "h": 7,
+            "w": 4,
+            "x": 12,
+            "y": 13
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "/.*/",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "nothing asked",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#898781"
+              },
+              "unit": "string"
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT 'US' || chr(36) || ' ' || translate(to_char(round(coalesce(sum(COALESCE(a.reconciled_spend, a.observed_spend, CASE WHEN jsonb_typeof(r.usage->'costUsd') = 'number' THEN (r.usage->>'costUsd')::numeric END)), 0)::numeric, 2), 'FM999G999G990D00'), ',.', '.,') AS spend FROM agent_runs r LEFT JOIN run_llm_accounts a ON a.alias = r.trace_alias WHERE r.role = 'ask' AND $$__timeFilter(coalesce(r.started_at, r.finished_at))"
+            }
+          ],
+          "id": 13
+        },
+        {
+          "type": "table",
+          "title": "Asks and spend per team",
+          "description": "Ask Runs per team in this time range and what they cost in US dollars. Not settled counts Asks whose gateway spend is not reconciled yet, so the spend still reads low; amber from 1.",
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 16,
+            "y": 13
+          },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "ploeg-db"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Ask in this range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Asks"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 70
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Not settled"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {},
+                "indexByName": {}
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "ploeg-db"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT r.team AS \"Team\", count(*) AS \"Asks\", 'US' || chr(36) || ' ' || translate(to_char(round(coalesce(sum(COALESCE(a.reconciled_spend, a.observed_spend, CASE WHEN jsonb_typeof(r.usage->'costUsd') = 'number' THEN (r.usage->>'costUsd')::numeric END)), 0)::numeric, 2), 'FM999G999G990D00'), ',.', '.,') AS \"Spend\", count(*) FILTER (WHERE a.reconciled_spend IS NULL) AS \"Not settled\" FROM agent_runs r LEFT JOIN run_llm_accounts a ON a.alias = r.trace_alias WHERE r.role = 'ask' AND $$__timeFilter(coalesce(r.started_at, r.finished_at)) GROUP BY r.team ORDER BY count(*) DESC"
+            }
+          ],
+          "id": 14
+        },
+        {
+          "type": "bargauge",
+          "title": "Jobs given up, by kind",
+          "description": "Background jobs Unfold stopped retrying in this time range (job.dead), by kind: notify.notice is a notification, outbound.delivery a webhook, billing.line a billing line, report.file a filed problem report. How many wait or retry is not logged; an administrator reads that at GET /api/admin/jobs. Unfold's development branch logs this; the release running on the homelab (0.4.0-rc.125) does not yet, so the panel stays empty until a newer release is deployed.",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 0,
+            "y": 20
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "No job given up in this range.",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#d55e00"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"job.dead\" | stats by (kind) count_uniq(_time) as jobs",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "legendFormat": "{{kind}}"
+            }
+          ],
+          "id": 15
+        },
+        {
+          "type": "bargauge",
+          "title": "Webhook and notification failures",
+          "description": "Webhook deliveries given up (outbound.delivery_dead), webhook subscriptions switched off because the receiver answered 410 Gone, the webhook or notification sender stopping on an error, and Web Push off because its keys are invalid. A single failed attempt that a retry fixed is not logged. Unfold's development branch logs this; the release running on the homelab (0.4.0-rc.125) does not yet, so the panel stays empty until a newer release is deployed.",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "gridPos": {
+            "h": 6,
+            "w": 6,
+            "x": 6,
+            "y": 20
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "No delivery failure in this range.",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#d55e00"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:in(\"outbound.delivery_dead\", \"outbound.subscription_disabled\", \"outbound.loop_failed\", \"notify.loop_failed\", \"notify.vapid_invalid\") | stats by (event) count_uniq(_time) as failures",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              },
+              "legendFormat": "{{event}}"
+            }
+          ],
+          "id": 16
+        },
+        {
+          "type": "stat",
+          "title": "Last audit checkpoint",
+          "description": "How long ago Unfold last signed the head of its audit chain and copied it off the box (audit.checkpoint). It does this once a day, so amber from 26 hours and red from 48, when GET /api/admin/audit/verify starts calling the chain stale. Unfold's development branch logs this; the release running on the homelab (0.4.0-rc.125) does not yet, so the panel stays empty until a newer release is deployed.",
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 12,
+            "y": 20
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "none in 3 days",
+              "unit": "s",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 93600
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 172800
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"audit.checkpoint\" | stats max(_time) as last, count() as written | filter written:>0 | math round((now() - last) / 1e9) as age_seconds | fields age_seconds",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              }
+            }
+          ],
+          "timeFrom": "3d",
+          "id": 17
+        },
+        {
+          "type": "stat",
+          "title": "Audit checkpoint failures",
+          "description": "Times Unfold could not sign a checkpoint with OpenBao or store it in the bucket in this time range (audit.checkpoint_failed, logged at most once an hour). The UnfoldAuditCheckpointFailing alert fires from 2 in three hours. Unfold's development branch logs this; the release running on the homelab (0.4.0-rc.125) does not yet, so the panel stays empty until a newer release is deployed.",
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 16,
+            "y": 20
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": 2
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"audit.checkpoint_failed\" | stats count_uniq(_time) as failures",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              }
+            }
+          ],
+          "id": 18
+        },
+        {
+          "type": "stat",
+          "title": "Database upkeep failures",
+          "description": "Times Unfold's routine database upkeep failed in this time range (store.upkeep_failed). Together with ERR_SQLITE_ERROR in the server error table it says the SQLite file or its disk is in trouble. Each line counts once per timestamp, because the log shipper sometimes delivers the same line more than once.",
+          "gridPos": {
+            "h": 6,
+            "w": 4,
+            "x": 20,
+            "y": 20
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 1
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"store.upkeep_failed\" | stats count_uniq(_time) as failures",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              }
+            }
+          ],
+          "id": 19
+        },
+        {
+          "type": "table",
+          "title": "Unfold pods now",
+          "description": "Each running Unfold pod: whether Kubernetes counts it ready, how often its container restarted, and when it started.",
+          "gridPos": {
+            "h": 7,
+            "w": 10,
+            "x": 0,
+            "y": 26
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Unfold pod is running."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Ready"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "0": {
+                            "text": "no",
+                            "color": "#d55e00"
+                          },
+                          "1": {
+                            "text": "yes",
+                            "color": "#898781"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 80
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Restarts"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "#898781",
+                          "value": null
+                        },
+                        {
+                          "color": "#e69f00",
+                          "value": 1
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "thresholds"
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 90
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Started"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "exported_pod": "Pod",
+                  "Value #A": "Ready",
+                  "Value #B": "Restarts",
+                  "Value #C": "Started"
+                },
+                "indexByName": {
+                  "Pod": 0,
+                  "Ready": 1,
+                  "Restarts": 2,
+                  "Started": 3
+                }
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (exported_pod) (kube_pod_status_ready{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"unfold-.+\", condition=\"true\"}) and on (exported_pod) (max by (exported_pod) (kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"unfold-.+\", phase=\"Running\"}) == 1)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "B",
+              "expr": "max by (exported_pod) (kube_pod_container_status_restarts_total{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"unfold-.+\", exported_container=\"workbench\"}) and on (exported_pod) (max by (exported_pod) (kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"unfold-.+\", phase=\"Running\"}) == 1)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            },
+            {
+              "refId": "C",
+              "expr": "max by (exported_pod) (kube_pod_start_time{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"unfold-.+\"}) * 1000 and on (exported_pod) (max by (exported_pod) (kube_pod_status_phase{job=\"kube-state-metrics\", exported_namespace=\"ploeg\", exported_pod=~\"unfold-.+\", phase=\"Running\"}) == 1)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 20
+        },
+        {
+          "type": "table",
+          "title": "Releases started in this range",
+          "description": "Each Unfold release that started in this time range, the Ploeg release it found, how many pods ran it and when the last of them started. Many pods on one release means that release kept being replaced; compare with Pods started.",
+          "gridPos": {
+            "h": 7,
+            "w": 14,
+            "x": 10,
+            "y": 26
+          },
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "victorialogs"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              },
+              "noValue": "No Unfold pod started in this range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Pods"
+                },
+                "properties": [
+                  {
+                    "id": "decimals",
+                    "value": 0
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 70
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Last start"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeFromNow"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "labelsToFields",
+              "options": {
+                "mode": "columns",
+                "valueLabel": "__name__"
+              }
+            },
+            {
+              "id": "merge",
+              "options": {}
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true
+                },
+                "renameByName": {
+                  "unfold": "Unfold",
+                  "ploeg": "Ploeg",
+                  "pods": "Pods",
+                  "last_ms": "Last start"
+                },
+                "indexByName": {
+                  "Unfold": 0,
+                  "Ploeg": 1,
+                  "Pods": 2,
+                  "Last start": 3
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "Last start",
+                    "desc": true
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "namespace:=ploeg container:=workbench pod:unfold* event:=\"ploeg.contract_compatible\" | stats by (unfold, ploeg) count_uniq(pod) as pods, max(_time) as last | math round(last / 1e6) as last_ms | fields unfold, ploeg, pods, last_ms",
+              "queryType": "stats",
+              "datasource": {
+                "type": "victoriametrics-logs-datasource",
+                "uid": "victorialogs"
+              }
+            }
+          ],
+          "id": 21
+        }
+      ]
+    }
