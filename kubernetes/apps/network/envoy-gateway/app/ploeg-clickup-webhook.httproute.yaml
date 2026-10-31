@@ -1,0 +1,29 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/gateway.networking.k8s.io/httproute_v1.json
+# ClickUp is a cloud service, so its webhook needs a public address. This route
+# lives in `network` (an approved envoy-external namespace) and forwards ONE
+# exact path, POST only, to ploegd; the ReferenceGrant in the ploeg namespace
+# admits it. ploegd rejects any delivery whose X-Signature does not match the
+# webhook secret ClickUp generated, and nothing else of Ploeg or Unfold is
+# reachable from the internet.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ploeg-clickup-webhook
+spec:
+  hostnames:
+    - ploeg-hooks.${SECRET_DOMAIN}
+  parentRefs:
+    - name: envoy-external
+      namespace: network
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /webhooks/tracker/clickup
+          method: POST
+      backendRefs:
+        - name: ploeg
+          namespace: ploeg
+          port: 8080
