@@ -1,6 +1,6 @@
 # RFC: One docs portal, in the webgrip look, readable by whoever can read the repository
 
-> Status: **Proposed** · Date: 2026-10-31 · Decider: Ryan Grippeling
+> Status: **Accepted** 2026-10-31, rollout step 1 in progress · Date: 2026-10-31 · Decider: Ryan Grippeling
 > Builds on: [ADR-0052 (Zensical docs site on Garage web)](../adr/adr-0052-zensical-docs-site-garage-web.md) ·
 > [ADR-0060 (gateway OIDC for apps without a login)](../adr/adr-0060-gateway-oidc-for-apps-without-a-login.md) ·
 > [Access plane](rfc-access-plane.md) · [Docs platform 2026](rfc-docs-platform-2026.md) ·
@@ -142,12 +142,19 @@ Each step is a pull request; the next waits until the previous one is live.
 | 5 | Private sites: `SecurityPolicy` with per-path authorization from the access-plane model | Signed out: login. A reader with the capability: 200. Without: 403. Search leaves the site out |
 | 6 | Every repository's `mkdocs.yml` moves to the theme | No stock palette remains |
 
-## Open questions for the owner
+## Progress
 
-1. **The portal at the root**, with homelab-cluster moving to its own path. Recommended: yes.
-2. **Theme name and registry**: `webgrip-zensical-theme` on the Forgejo PyPI registry, mirrored
-   to PyPI. Recommended: yes.
-3. **Default readers of a private repository's docs**: the platform engineers plus the
-   repository's own team. Recommended: yes.
-4. **Sharing the use case with Zensical** (their contact or Spark channel) once this is
-   built. Recommended: yes, after step 3, with the design here as the example.
+- **Step 1, 2026-11-02:** [`webgrip-zensical-theme`](https://forgejo.webgrip.dev/webgrip/webgrip-zensical-theme)
+  is on Forgejo with its first commit (theme package, tests, Test workflow, Renovate). The
+  repository was created by hand; its entry in the repo-config model (`repos.yaml`) brings it
+  under management with the Test workflow as the required check. The tests build a fixture site strict on the
+  newest Zensical and on 0.0.53, the builder image's version; light and dark were checked in a
+  headless browser. Not yet: the first release, the PyPI publish, and the builder image
+  installing it.
+
+## Questions answered by the owner, 2026-10-31
+
+All four as recommended: the portal at the root with homelab-cluster on its own path;
+`webgrip-zensical-theme` on the Forgejo PyPI registry, mirrored to PyPI; platform engineers plus
+the repository's own team read a private repository's docs; the use case goes to Zensical after
+step 3.
