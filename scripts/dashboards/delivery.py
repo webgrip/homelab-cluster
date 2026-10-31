@@ -149,8 +149,8 @@ def estate():
                    col("Renovate gate", colour_text=True, mappings=gates)],
         desc="One row per active repository. kind, branching (staged or trunk), core and GitHub mirror come from "
              "the repo-config model; everything else is read from the repository's default branch every hour. "
-             "Renovate gate is the profile its renovate.json extends (app, site, library, image-set), presets when "
-             "it composes presets without a profile, own when it has config but no shared preset, none without "
+             "Renovate gate is the gate its renovate.json extends (reviewed, unattended), presets when "
+             "it composes presets without a gate, own when it has config but no shared preset, none without "
              "a config. releases says whether a workflow calls the shared semantic-release workflow, runs "
              "semantic-release itself, or neither. ships lists what the workflows publish (cloudflare, image, "
              "chart, npm, docs), from shared workflow calls and well-known publish steps. Pins show every version "

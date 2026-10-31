@@ -277,8 +277,7 @@ class InventoryTest(unittest.TestCase):
         self.world.tags["agent-standards"] = ["v0.5.3"]
         self.world.files.update({
             ("homelab-cluster", "renovate.json"):
-                '{"extends": ["local>webgrip/renovate-config:profile-app#v1.18.0", '
-                '"local>webgrip/renovate-config:apm#v1.18.0"]}',
+                '{"extends": ["local>webgrip/renovate-config:reviewed#v1.18.0"]}',
             ("homelab-cluster", ".forgejo/workflows/release.yml"):
                 "jobs:\n  release:\n    uses: webgrip/workflows/.forgejo/workflows/semantic-release.yml@"
                 "0123456789abcdef0123456789abcdef01234567 # v3.2.0\n"
@@ -306,7 +305,7 @@ class InventoryTest(unittest.TestCase):
         self.assertEqual(info["branching"], "staged")
         self.assertEqual(info["core"], "yes")
         self.assertEqual(info["github_mirror"], "yes")
-        self.assertEqual(info["renovate_gate"], "app")
+        self.assertEqual(info["renovate_gate"], "reviewed")
         self.assertEqual(info["releases"], "shared semantic-release")
         self.assertEqual(info["ships"], "cloudflare")
         self.assertEqual(info["workflows"], "v3.2.0 · 2 behind")

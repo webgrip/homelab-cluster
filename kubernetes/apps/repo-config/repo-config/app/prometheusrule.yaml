@@ -140,3 +140,30 @@ spec:
               - kubectl -n repo-config logs job/<latest repo-config-inventory job>
               - kubectl -n forgejo logs job/repo-config-provisioner
               - kubectl -n repo-config create job --from=cronjob/repo-config-inventory repo-config-inventory-manual
+        - alert: AgentStandardsPinBehindForADay
+          expr: |
+            last_over_time(repo_config_shared_pin_releases_behind{job="repo-config-inventory", package="agent-standards"}[2h]) > 0
+          for: 24h
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "webgrip/{{ $labels.repository }} has pinned an older agent-standards release for a day (repo-config/{{ $labels.repository }})"
+            description: |-
+              What's happening:
+              - The hourly repo-config inventory has read an agent-standards pin in apm.yml or mise.toml on the default branch of webgrip/{{ $labels.repository }} that is {{ $value }} release(s) behind, without a break, for 24 hours.
+              - Every repository is meant to run the newest agent-standards release within a day: the reviewed and unattended gates of webgrip/renovate-config open the bump without a dashboard tick and merge it on green.
+
+              Impact/risk:
+              - Agents in that repository work from older rules, skills and hooks than the rest of the estate.
+
+              Likely causes:
+              - The bump pull request is open and waits for an approval (a core repository) or a red check
+              - The repository's renovate.json extends no gate, so the bump waits for a dashboard tick
+              - The post-upgrade agentstd install failed, so Renovate produced no branch
+
+              First actions:
+              - Open the repository's Renovate Dependency Dashboard issue and its open chore(agents) pull request
+              - kubectl -n renovate get jobs --sort-by=.metadata.creationTimestamp, then the logs of the latest webgrip-forgejo job for {{ $labels.repository }}
+              - docs/techdocs/docs/general/delivery-estate.md

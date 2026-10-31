@@ -192,15 +192,15 @@ homelab-cluster:
 
 | Key | Meaning |
 | --- | --- |
-| `profile` | One of `profile-app`, `profile-site`, `profile-library`, `profile-image-set`; expands to the single preset `local>webgrip/renovate-config:<profile>`. |
-| `presets` | The exact ordered `extends` list without pins, for repos on a legacy combination or a profile plus extras. |
+| `gate` | `reviewed` or `unattended`; expands to the single preset `local>webgrip/renovate-config:<gate>`. |
+| `presets` | The exact ordered `extends` list without pins, for a gate plus capability overlays or a GitOps repository on `default`. |
 | `absent: true` | The repo deliberately has no Renovate config. |
 | `config_file` | Where the config lives on the default branch; default `renovate.json`. JSON5 files are read too. |
 
-Exactly one of `profile`, `presets`, `absent` is set. `scripts/validate-repo-config-model.sh`
+Exactly one of `gate`, `presets`, `absent` is set. `scripts/validate-repo-config-model.sh`
 requires the field on every active repo except push mirrors, which take the policy of their
-source. When the renovate-config gate/risk/capability redesign lands, add its profile names to
-`model/schema/renovate.schema.json`.
+source. The kinds carry the default: `service` and `site` take `reviewed`, `package` takes `unattended`,
+`image-set` takes `unattended` plus `docker-arg-pins`.
 
 `tofu/renovate.tf` reads each anonymously readable repo's config from Forgejo every hourly run
 and never writes. Two `check` blocks warn without blocking an apply:

@@ -6,7 +6,7 @@ locals {
       config_file = try(repo.renovate.config_file, "renovate.json")
       absent      = try(repo.renovate.absent, false)
       presets = tolist(try(
-        ["${local.renovate_config_repo}:${repo.renovate.profile}"],
+        ["${local.renovate_config_repo}:${repo.renovate.gate}"],
         repo.renovate.presets,
         [],
       ))
