@@ -30,11 +30,11 @@ maxReplicaCount: 8         # burst ceiling
   no-op for burst pods (their task is already pending).
 - **Burst.** When pending jobs exceed the warm pool, KEDA creates more Jobs up to
   `maxReplicaCount`. As each warm runner takes a job and exits, KEDA backfills to maintain the floor.
-- **Capacity bound.** Memory requests, not CPU, decide how many runners fit. Measured
-  2026-10-24 over 14 days and 4,683 `docker` runner pods: median peak 49Mi, p95 1.1Gi,
-  29 pods above 1.5Gi, 4 above 3Gi (the release sign job's syft/grype scan, up to ~5.7Gi).
-  The runner requests **250m / 1.5Gi** with a **6Gi** limit; eight runners reserve the same
-  12Gi that six did at 2Gi. `docker-large` requests 3Gi for jobs known to scan.
+- **Capacity bound.** Memory requests decide how many runners fit on fringe-workstation and
+  worker-2; CPU requests decide it on worker-1. Since 2026-11-01 a `docker` runner requests
+  **250m / 1Gi** (limit 6Gi), the shared `forgejo-dind` daemon requests **1Gi** (limit 6Gi) once
+  per node, `docker-large` requests 3Gi and `unfold-infra` 512Mi. The measurements and the
+  reasoning are in [Right-sizing the runner reservations](#right-sizing-the-runner-reservations).
 - **Do not size from `kube_node_status_allocatable` summed per node.** kube-state-metrics and
   opencost both export it, so the sum is twice the node. Read `kubectl describe node`
   (Allocated resources). Worker pool on 2026-10-24: fringe-workstation and worker-2 8c / ~15Gi,
@@ -50,6 +50,113 @@ maxReplicaCount: 8         # burst ceiling
 - **2026-08-11 node-level kill.** At 512Mi requests every runner bin-packed onto worker-1, the node
   took a memory-pressure taint and the kernel killed syft, then grype, in a sign job despite the
   6Gi limit. Keep the request honest enough that scan jobs spread across nodes.
+
+## Right-sizing the runner reservations
+
+Measured 2026-11-01 over 14 days (VictoriaMetrics, cAdvisor and kube-state-metrics, 1-5 minute
+samples). A sampled peak misses spikes shorter than the scrape interval: the fringe dind daemon was
+OOM-killed at its 6Gi limit on 2026-10-26 while its highest sample was 3.96Gi.
+
+### Where a job's memory lands
+
+A runner pod is only half of a job. Steps run in the runner container (host mode), but every
+`container:` job, `docker build` and `docker run` runs under the per-node `forgejo-dind` daemon,
+whose cgroup holds those containers (see the cgroup containment in `dind-daemonset.yaml`). A
+runner pod's own working set therefore understates many jobs, and the daemon, which used to
+request 128Mi, carried the rest unreserved. The honest unit is per node: the runners' working
+sets plus the daemon's.
+
+### Per pool, per container
+
+Per-pod peak working set, then the percentile across pods:
+
+| Pool | Pods | Memory p50 | p95 | p99 | max | CPU (5m peak) p50 / p95 / max | Request before → after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `docker` (default) | 7,841 | 73Mi | 1.17Gi | 1.52Gi | 3.04Gi | 0.11 / 0.76 / 3.28 cores (7d) | 1536Mi → **1Gi** |
+| `docker-large` | 40 | 807Mi | 2.78Gi | 2.84Gi | 2.85Gi | – / 0.94 / 1.12 cores | 3Gi (unchanged) |
+| `unfold-infra` | 109 | 61Mi | 247Mi | 344Mi | 359Mi | – / 0.40 / 0.54 cores | 1536Mi → **512Mi** |
+
+`unfold-infra` jobs (`infra.yml`, `etcd-backup-check.yml`, `rebuild-drill.yml` in unfold-cluster)
+use no Docker, so the runner container is their whole footprint; 30 days give the same maximum.
+No runner container was OOM-killed in the 14 days.
+
+The `forgejo-dind` daemon, time percentiles per node:
+
+| Node | Working set p50 | p95 | p99 | max | RSS p50 / p95 / max | CPU p95 / max |
+| --- | --- | --- | --- | --- | --- | --- |
+| fringe-workstation | 357Mi | 1.61Gi | 2.25Gi | 3.96Gi (OOM-killed 2026-10-26) | 140Mi / 683Mi / 2.53Gi | 1.02 / 4.88 cores |
+| worker-1 | 462Mi | 1.65Gi | 2.25Gi | 4.23Gi | 129Mi / 529Mi / 2.18Gi | 0.66 / 2.23 cores |
+| worker-2 | 117Mi | 603Mi | 1.26Gi | 2.13Gi | 98Mi / 108Mi / 1.60Gi | 0.35 / 4.11 cores |
+
+### Per node, runners and daemon together
+
+Runner pods per node (5-minute samples with at least one runner): fringe-workstation p50 2,
+p95 3, max 6; worker-1 p50 1, p95 3, max 6; worker-2 p50 1, p95 2, max 2.
+
+CI memory (runner working sets plus the daemon) by how many runners were on the node:
+
+| Node | 1 runner p95 / max | 2 | 3 | 4 | 5 |
+| --- | --- | --- | --- | --- | --- |
+| fringe-workstation | 1.56 / 3.00Gi | 2.57 / 4.02Gi | 3.07 / 4.89Gi | 2.00 / 3.55Gi | 2.42Gi (3 samples) |
+| worker-1 | 2.04 / 2.95Gi | 2.40 / 3.17Gi | 2.90 / 3.65Gi | 3.88 / 4.05Gi | 4.47 / 4.75Gi |
+| worker-2 | 1.48 / 2.32Gi | 1.39 / 1.74Gi | – | – | – |
+
+A node needs about 1.5-2Gi for the daemon and its first runner, then 0.6-0.75Gi per extra runner
+at p95. Share of samples where CI used more than CI reserved:
+
+| Reservation | fringe-workstation | worker-1 | worker-2 |
+| --- | --- | --- | --- |
+| before: 1.5Gi per runner + 128Mi daemon | 1.9% (worst +1.37Gi) | 9.4% (worst +1.32Gi) | 3.5% (worst +0.69Gi) |
+| after: 1Gi per runner + 1Gi daemon | 1.5% (worst +1.02Gi) | 3.4% (worst +0.95Gi) | 0.5% (worst +0.32Gi) |
+
+The new split reserves less from two runners on a node upwards (six runners: 7Gi instead of
+9.1Gi) and still overruns less often on every node, because it puts the reservation where the
+memory is. Each extra runner now costs 1Gi of node room instead of 1.5Gi.
+
+### What this does not fix
+
+- **worker-1 is bound by CPU, not memory.** It has 7Gi of memory unrequested but 3.73 of 3.95
+  cores requested, and it is really busy (74% CPU at p50, 99.8% at p95), so the 250m runner CPU
+  request stays. A busy runner peaks at 0.76 cores at p95, so the request is already low.
+- **worker-2 is full of other workloads.** On 2026-11-01 its non-CI pods requested 13.9Gi of
+  15.1Gi, so no runner fits there at any of these sizes.
+- **Renovate executors are under-requested.** They request 512Mi and peaked at 1.33Gi p95 and
+  2.33Gi max over 7,458 pods; that unreserved memory competes with runners on the same nodes.
+- **The daemon's CPU request stays at 50m.** It bursts to several cores, but worker-1 has no CPU
+  requests left, and a daemon that cannot schedule leaves that node's runners without Docker
+  (2026-07-24).
+
+### Queries
+
+```promql
+# per-pod peak working set, percentile across pods (default pool; large/infra: pod=~"forgejo-runner-(large|infra)-.*")
+quantile(0.95, max by (pod) (max_over_time(container_memory_working_set_bytes{namespace="forgejo",container="runner",pod=~"forgejo-runner-[a-z0-9]+-[a-z0-9]+"}[14d])))
+# per-pod peak CPU (7d: 14d exceeds the query memory budget)
+quantile(0.95, max by (pod) (max_over_time(rate(container_cpu_usage_seconds_total{namespace="forgejo",container="runner",pod=~"forgejo-runner-[a-z0-9]+-[a-z0-9]+"}[5m])[7d:5m])))
+# daemon working set / RSS / CPU per node over time
+quantile_over_time(0.95, (max by (node) (container_memory_working_set_bytes{namespace="forgejo",container="dind"}))[14d:1m])
+quantile_over_time(0.95, (max by (node) (container_memory_rss{namespace="forgejo",container="dind"}))[14d:1m])
+quantile_over_time(0.95, (max by (node) (rate(container_cpu_usage_seconds_total{namespace="forgejo",container="dind"}[5m])))[14d:5m])
+# per-node joint view: range queries at step 300s over 14d, joined offline per timestamp
+count by (node) (container_memory_working_set_bytes{namespace="forgejo",container="runner",pod=~"forgejo-runner-.*"})
+sum by (node) (max by (node, pod) (container_memory_working_set_bytes{namespace="forgejo",container="runner",pod=~"forgejo-runner-.*"}))
+max by (node) (container_memory_working_set_bytes{namespace="forgejo",container="dind"})
+# OOM kills (kube-state-metrics relabels the target labels to exported_*)
+count by (exported_container, reason) (max_over_time(kube_pod_container_status_last_terminated_reason{exported_namespace="forgejo",reason!="Completed"}[14d]))
+count by (exported_container, reason) (max_over_time(kube_pod_container_status_terminated_reason{exported_namespace="forgejo",exported_pod=~"forgejo-runner.*",reason!="Completed"}[14d]) > 0)
+# requests on a node right now (running and pending pods)
+sum by (node, resource) (kube_pod_container_resource_requests{job="kube-state-metrics",resource=~"cpu|memory"} * on (uid) group_left() max by (uid) (kube_pod_status_phase{job="kube-state-metrics",phase=~"Running|Pending"}))
+# runner pod wait: scheduled minus created, per pod
+max by (exported_pod) (max_over_time(kube_pod_status_scheduled_time{exported_namespace="forgejo",exported_pod=~"forgejo-runner-[a-z0-9]+-[a-z0-9]+"}[14d])) - max by (exported_pod) (max_over_time(kube_pod_created{exported_namespace="forgejo",exported_pod=~"forgejo-runner-[a-z0-9]+-[a-z0-9]+"}[14d]))
+```
+
+kube-state-metrics series carry `exported_namespace`, `exported_pod` and `exported_container`;
+`namespace="forgejo"` on a `kube_*` metric matches nothing. `container_oom_events_total` showed 0
+for every forgejo container while kube-state-metrics recorded the dind OOM kill, because the
+counter restarts with the container.
+
+Runner pods waited for a node (created to scheduled) 29s at p50, 4.9 min at p90 and 27.6 min
+at p99 over 13,845 pods; 1,338 waited more than 5 minutes.
 
 ## The runner identity (registration)
 
