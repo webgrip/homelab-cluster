@@ -206,6 +206,14 @@ The rule is preferred, not required. It was required for about 40 minutes on 202
 | Renovate pods still land on `fringe-workstation` | worker-1 and worker-2 have no CPU or memory request room left | free request room on the workers; check fringe's disk stall with `rate(node_pressure_io_stalled_seconds_total{instance="10.0.0.30:9100"}[5m])` before making the rule required |
 | First run after the change is slow at image pull | the `-full` image is not yet on the workers | expected once per node per Renovate image |
 
+### How much a Renovate run reserves
+
+Each executor reserves 250m CPU and 1536Mi memory, with limits of 1500m and 4Gi. Over 14 days to 2026-11-01 an executor used 1.33Gi memory at p95 and 2.33Gi at its peak (homelab-cluster #1023 has the measurement). Until 2026-11-01 it reserved 512Mi, so the scheduler placed Renovate as if it used about a third of its real memory, and CI runners were overpacked onto the same nodes. Reserving 1536Mi means Renovate sometimes waits for room instead of crowding CI out.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Executor pod `Pending` with `Insufficient memory` | no node has 1.5Gi request room free | expected under a CI burst; it starts when runners finish. If it stays Pending for over an hour, look at what else holds the room before lowering the request |
+
 ## More detail
 
 - Full Renovate docs/config: [docs/techdocs/docs/renovate.md](../general/renovate.md)
