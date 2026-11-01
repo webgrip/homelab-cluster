@@ -158,6 +158,9 @@ counter restarts with the container.
 Runner pods waited for a node (created to scheduled) 29s at p50, 4.9 min at p90 and 27.6 min
 at p99 over 13,845 pods; 1,338 waited more than 5 minutes.
 
+
+**2026-11-01 correction: the Docker daemon reserves 128Mi again.** The 1Gi reservation from #1023 did not fit on worker-2. The DaemonSet replaced worker-2's daemon, and the new pod stayed `Pending` with `0/6 nodes are available: 1 Insufficient memory`, which left that node's runners without Docker. worker-2's reservations are almost all non-CI services (Harbor, Forgejo, OpenBao, databases), and nothing there has a lower priority to preempt. A DaemonSet reservation has to fit on the fullest node it runs on. Until worker-2 has room, the daemon reserves 128Mi and the runner request (1Gi) carries the daemon's share, as it did before. Raise it only after `kubectl describe node worker-2` shows at least 1Gi of memory request headroom.
+
 ## The runner identity (registration)
 
 The `one-job` command consumes a **static, reused** runner identity — `--uuid` + `--token-url`
