@@ -43,14 +43,17 @@ spec:
   # Hourly cuts that to ~2h. It does NOT increase PR or CI volume — the same updates are simply
   # discovered sooner; CI cost is per-PR, not per-run.
   #
-  # Minute moved :47 -> :33 to preserve the anti-overlap offset from webgrip-gitops (:17), which
-  # matters more now that this job runs every hour instead of every sixth. Arithmetic: this job
-  # starts ~8min after its cron (pod schedule + image pull) and runs ~29min, so it occupies
-  # roughly :41-:10. webgrip-gitops occupies :17-:33. At the old :47 the two would have collided
-  # ~6min four times a day; at :33 they clear each other by ~7-8min on both sides. If this job's
-  # runtime grows past ~40min the margin is gone — re-check before adding repos to it.
+  # Minute moved :47 -> :33 to keep an offset from webgrip-gitops (:17).
   schedule: "33 * * * *"
-  parallelism: 1
+  # Three at a time. Each cron re-marks every project `scheduled` with
+  # the same timestamp, and the operator (executor.go dispatchScheduled) then runs a job's
+  # projects in list order, so every hour starts again at the top of the alphabet. One at a time,
+  # a pass over the 21 projects took about 155 minutes (homelab-cluster alone 29), so the tail
+  # (unfold, unfold-cluster, webgrip.nl, workflows) ran only when a merge or a tooling release
+  # scheduled it: dashboard ticks there waited for hours. Three brings a pass to about 55
+  # minutes. Each executor requests 250m CPU and 512Mi, runs at background-batch priority, and
+  # prefers the workers over fringe-workstation, so CI still wins.
+  parallelism: 3
   image: docker.io/renovate/renovate:44.176.2-full@sha256:d71868289bdaa0f46770ef2fd81dff6d6d296328a6f0895bcbdab42b38d0728f
   secretRef: renovate-forgejo-token
   webhook:

@@ -117,7 +117,7 @@ It POSTs the schedule endpoint above once per project, so the consumers get thei
 minutes instead of at the next `33 * * * *` run. The endpoint takes exactly one project per
 request and answers `404` for a project the job does not own, so the action lists the organisation's
 repositories with the `renovate` topic and schedules each (one executor pod per project, about
-1 GB of disk writes each, `parallelism: 1`). The wiring, token and network rule are in
+1 GB of disk writes each, three at a time). The wiring, token and network rule are in
 [`jobs/README.md`](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/kubernetes/apps/renovate/renovate-operator/jobs/README.md#run-renovate-when-shared-tooling-releases).
 
 A release run that ends with `::warning::renovate-operator rejected the token` means the
