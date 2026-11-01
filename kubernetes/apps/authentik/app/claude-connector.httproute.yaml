@@ -1,0 +1,60 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/gateway.networking.k8s.io/httproute_v1.json
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: unfold-mcp-token-through-tunnel
+  annotations:
+    external-dns.alpha.kubernetes.io/exclude: "true"
+spec:
+  hostnames:
+    - authentik.${SECRET_DOMAIN}
+  parentRefs:
+    - name: envoy-internal
+      namespace: network
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /application/o/token/
+          headers:
+            - type: RegularExpression
+              name: cf-connecting-ip
+              value: ".+"
+        - path:
+            type: Exact
+            value: /application/o/unfold-mcp/.well-known/openid-configuration
+          headers:
+            - type: RegularExpression
+              name: cf-connecting-ip
+              value: ".+"
+        - path:
+            type: Exact
+            value: /.well-known/oauth-authorization-server/application/o/unfold-mcp/
+          headers:
+            - type: RegularExpression
+              name: cf-connecting-ip
+              value: ".+"
+      backendRefs:
+        - name: authentik-server
+          port: 80
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/gateway.envoyproxy.io/securitypolicy_v1alpha1.json
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: unfold-mcp-token-through-tunnel
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: unfold-mcp-token-through-tunnel
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: anthropic-outbound
+        action: Allow
+        principal:
+          clientCIDRs:
+            - 160.79.104.0/21

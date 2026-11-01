@@ -228,7 +228,7 @@ locals {
     unfold-mcp = {
       provider_name         = "unfold-mcp-oauth"
       app_name              = "Unfold MCP"
-      description           = "Unfold's MCP tools for Claude Code, VS Code and Cursor, as the signed-in person."
+      description           = "Unfold's MCP tools for Claude Code, claude.ai, VS Code and Cursor, as the signed-in person."
       launch_url            = null
       client_id             = "unfold-mcp"
       client_secret         = null
@@ -242,6 +242,7 @@ locals {
         { matching_mode = "strict", url = "http://127.0.0.1:33418/" },
         { matching_mode = "strict", url = "https://vscode.dev/redirect" },
         { matching_mode = "strict", url = "http://localhost:8787/callback" },
+        { matching_mode = "strict", url = "https://claude.ai/api/mcp/auth_callback" },
       ]
       extra_scopes = ["unfold-mcp", "groups"]
       adopt        = false
