@@ -118,3 +118,6 @@ point of ADR-0078 stands.
 * Refines [ADR-0078](adr-0078-one-release-recipe-four-kinds.md): replaces points 6 and 7.
 * Refines [ADR-0086](adr-0086-a-repository-states-what-it-is-and-its-protection-follows.md):
   `staged` is retired as repositories migrate; a repository adds `release` next to `kind`.
+* Refined by [ADR-0089](adr-0089-tooling-repositories-release-in-layers.md) (2026-11-01): the
+  shared release action of point 5 is the `webgrip-release` command in the
+  `semantic-release-config` image, and the tooling repositories release in layers.

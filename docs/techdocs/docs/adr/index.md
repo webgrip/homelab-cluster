@@ -157,6 +157,7 @@ The Harbor family — adoption, backing services, exposure, SSO — then the cac
 | [0066](adr-0066-actions-resolve-from-the-local-forge.md) | Forgejo Actions resolve bare `uses:` refs from the local forge, against mirrored action repos | accepted | 2026-10-04 |
 | [0078](adr-0078-one-release-recipe-four-kinds.md) | One release recipe: semantic-release tags-only, four kinds of project, fast-forward promotion | accepted | 2026-10-31 |
 | [0088](adr-0088-one-branch-every-merge-releases-and-environments-promote-the-artifact.md) | One branch, every merge releases, and environments promote the artifact | accepted | 2026-10-31 |
+| [0089](adr-0089-tooling-repositories-release-in-layers.md) | Tooling repositories release in layers | accepted | 2026-11-01 |
 
 ### 8. Policy & admission
 
