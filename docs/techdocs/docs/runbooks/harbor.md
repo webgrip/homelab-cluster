@@ -29,15 +29,12 @@ kubectl -n harbor get secret harbor-admin -o jsonpath='{.data.HARBOR_ADMIN_PASSW
 
 1. The broker module (`kubernetes/apps/security/access-plane/tofu/broker/applications.tf`, entry `harbor`) provisions the
    `harbor` OIDC provider/application (redirect `https://harbor.${SECRET_DOMAIN}/c/oidc/callback`).
-2. Read the issued client id/secret from Authentik, then store the values fragment in OpenBao:
-
-   ```
-   just bao-login
-   bao kv put secret/harbor/oidc values.yaml=@harbor-oidc.values.yaml
-   ```
-
-   where `harbor-oidc.values.yaml` carries `core.configureUserSettings` (literal domain, not `${SECRET_DOMAIN}`) —
-   template is in `kubernetes/apps/harbor/harbor/app/harbor-oidc-values.externalsecret.yaml`.
+2. Nothing to type. The client secret is generated in the cluster
+   (`authentik/app/harbor-oidc-client.externalsecret.yaml`) and the PushSecret `harbor-oidc-client`
+   writes it to OpenBao `secret/harbor/oidc`, property `client_secret`, its only writer. The broker
+   reads it from there. `harbor-oidc-values` templates the `core.configureUserSettings` fragment
+   around it. Never `bao kv put secret/harbor/oidc`: a put replaces the whole entry and drops
+   `client_secret` until the next push.
 3. ESO syncs `harbor-oidc-values`; the HelmRelease merges it via `valuesFrom` and `harbor-core` restarts apply it.
    `configureUserSettings` is re-applied on every core restart — it is the source of truth (UI auth edits revert).
 
