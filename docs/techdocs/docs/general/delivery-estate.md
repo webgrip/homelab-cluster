@@ -14,8 +14,8 @@ like the other boards ([information radiators](information-radiators.md)).
 
 | Panel family | Source | Freshness |
 | --- | --- | --- |
-| Estate table, shared package adoption, shared workflow calls, estate shape | `repo_config_*` series pushed by the repo-config inventory CronJob | hourly |
-| Bottleneck queue, pile-up, PR counts, fan-out, time to merge, dashboard ticks, releases | Forgejo's own database (`forgejo-db`) | live |
+| Estate table, update state of behind pins, release style, shared package adoption, shared workflow calls, estate shape | `repo_config_*` series pushed by the repo-config inventory CronJob | hourly |
+| Bottleneck queue, pile-up, PR counts, fan-out, release-to-PR wait, time to merge, dashboard ticks, releases | Forgejo's own database (`forgejo-db`) | live |
 | CI queue wait | `forgejo-ci-exporter` | five minutes |
 
 The inventory ([`repo_config_inventory.py`](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/kubernetes/apps/repo-config/repo-config/inventory/repo_config_inventory.py))
@@ -25,9 +25,16 @@ repository's default branch:
 | File | What it yields |
 | --- | --- |
 | `renovate.json` (or `.json5`, `.renovaterc.json`, `.forgejo/` or `.github/` copies) | the Renovate gate (the `reviewed` or `unattended` preset it extends) and the `renovate-config` pin |
-| `.forgejo/workflows/*.yml`, `.github/workflows/*.yml` | the `webgrip/workflows` pin from each `uses:` call's `# vX.Y.Z` comment, which shared workflows it calls, whether it releases with semantic-release, and what it publishes |
+| `.forgejo/workflows/*.yml`, `.github/workflows/*.yml` | the `webgrip/workflows` pin of each reusable workflow and composite action call, which ones it calls, how it releases, what it publishes, and the `harbor.webgrip.dev/webgrip/semantic-release:<version>` toolchain image it runs in |
+| `<path>/action.yml` of each local action a workflow calls (`uses: ./<path>`) | read as if its steps were in the workflow, so a release that runs inside a repository's own action still counts |
 | `apm.yml`, `mise.toml` | the `agent-standards` pin |
 | `package.json` | the `@webgrip/semantic-release-config` pin |
+
+For a repository that is behind on a shared package it also reads, once per scan, its open pull
+requests, the combined commit status of the Renovate pull request it picked, and, only when a behind
+package has no such pull request, its Dependency Dashboard issue (see
+[Is the update on its way?](#is-the-update-on-its-way)). A repository on the newest release of every
+package costs no extra call.
 
 `kind`, `branching` (staged or trunk), `core` and `GitHub mirror` come from the model
 (`kubernetes/apps/repo-config/repo-config/model/repos.yaml`), not from the repository.
@@ -40,7 +47,9 @@ repository's default branch:
 | `repo_config_shared_latest` | `package`, `version` | 1 |
 | `repo_config_shared_pin_releases_behind` | `repository`, `package` | stable releases newer than the oldest pin |
 | `repo_config_shared_pin_unversioned` | `repository`, `package` | 1 when a pin has no version Renovate can read |
-| `repo_config_workflow_call` | `repository`, `workflow` | 1 |
+| `repo_config_shared_pin_update` | `repository`, `package`, `state`, `proposed`, `pull` | 1, for each behind pin |
+| `repo_config_shared_pin_update_age_seconds` | `repository`, `package` | age of the Renovate pull request it found |
+| `repo_config_workflow_call` | `repository`, `workflow`, `form` (`reusable` or `composite`) | 1 |
 | `repo_config_scan_failed` | `repository` | 1 when its files could not be read |
 | `repo_config_inventory_scan_failed_repositories` | | count |
 
@@ -59,16 +68,75 @@ read-only token, published to that one repository as `WEBGRIP_INVENTORY_TOKEN`.
 - **renovate_gate**: `reviewed` or `unattended` for the gate the config extends;
   `presets` when it composes shared presets without a gate; `own` when it has a config with no
   shared preset; `none` without a config.
-- **releases**: `shared semantic-release` when a workflow calls the shared `semantic-release` or
-  `semantic-release-monorepo` workflow; `own semantic-release` when a workflow runs it directly;
-  `none` otherwise. Workflow files that are themselves reusable (`on: workflow_call`) are not
-  counted, so the workflows library does not read as shipping everything it offers.
-- **ships**: `cloudflare`, `image`, `chart`, `npm` and `docs`, from shared workflow calls and
+- **releases**, first match wins:
+
+    | Value | Means |
+    | --- | --- |
+    | `monorepo (old path)` | a workflow calls `semantic-release-monorepo`, the composite action or the reusable workflow. This path is being retired; the board's *Repositories on the old release path* stat is the migration's finish line at zero |
+    | `shared semantic-release` | a workflow calls the `semantic-release` composite action or reusable workflow of `webgrip/workflows` (since v4.0.0 it runs `webgrip-release` underneath) |
+    | `webgrip-release` | a step runs the command itself: `node_modules/.bin/webgrip-release`, `node bin/webgrip-release.cjs`, or `webgrip-release` at the start of a `run:` line |
+    | `own semantic-release` | a step runs `semantic-release` (or `knope release`) as a command |
+    | `none` | none of these |
+
+    Calls and steps in workflow files that are themselves reusable (`on: workflow_call`) are not
+    counted, so the workflows library does not read as releasing or shipping everything it offers.
+    Comment lines are skipped, and the toolchain image name does not count as running
+    semantic-release.
+- **ships**: `cloudflare`, `image`, `chart`, `npm` and `docs`, from shared workflow and composite
+  action calls (`docker-build-push-registry-fast` and the other image builders read as `image`) and
   well-known publish steps (`wrangler deploy`, `docker/build-push-action`, `helm push`,
   `npm publish`). A repository that publishes some other way reads as `nothing`.
 - **pin cells**: every version found, oldest first, then `· N behind` when the oldest is N stable
-  releases behind. `unversioned` is a SHA without a version comment, a branch, or a preset without
-  `#vX.Y.Z`; Renovate cannot move those.
+  releases behind. Following ADR-0089, a call is versioned when it is `@vX.Y.Z` or
+  `@<40-hex sha> # vX.Y.Z`; a bare SHA, `@main` or `@<sha> # main` is `unversioned`, as is a preset
+  without `#vX.Y.Z`. Renovate cannot move those. A tooling repository calling itself (the workflows
+  repository's own `@main` calls) is not a pin, as in `scripts/check-tooling-pins.sh`.
+- **semantic-release-config pin**: the `@webgrip/semantic-release-config` version in `package.json`
+  and the tag of `harbor.webgrip.dev/webgrip/semantic-release:<version>` in a `container:`,
+  `image:` or `toolchain-image:` line. Most consumers take the config through that image, whose tag
+  is the config version it carries. Image tags below 1.0.0 belong to the retired 0.x image line,
+  whose tags were never config versions, and are ignored rather than shown as a very old pin.
+
+## Is the update on its way?
+
+The table *Behind a shared package: is the update on its way?* has one row per repository and shared
+package whose pin is behind the newest stable release. The inventory reads the repository's open
+pull requests and keeps the Renovate ones (head branch `renovate/…`). From each it reads which shared
+package it moves and to which version: first from the version table Renovate writes in the
+description (``| [webgrip/workflows](…) | … | `v3.4.0` → `v3.5.1` |``), else from the title
+(`update dependency webgrip/agent-standards ( v0.5.3 ➔ v0.6.1 )`, `… to v4.0.0`). It knows these
+dependency names: `webgrip/workflows`, `webgrip/renovate-config`, `webgrip/agent-standards`,
+`@webgrip/semantic-release-config` and `harbor.webgrip.dev/webgrip/semantic-release`. When several
+pull requests move the same package (a `3.x` and a `4.x` branch), the one to the newest version
+counts.
+
+| `state` | Board says | Means | Who acts |
+| --- | --- | --- | --- |
+| `pr_green` | PR open, checks green | the combined commit status is success | whoever merges, or Renovate under an unattended gate |
+| `pr_red` | PR open, checks red | the combined status is failure or error | someone fixes the repository or the release, or closes the pull request |
+| `pr_pending` | PR open, checks running | the status is pending, or no check reported yet | nobody yet |
+| `awaits_approval` | waits for a dashboard tick | no pull request; the Dependency Dashboard lists it under *Pending Approval* | a person ticks it |
+| `queued` | Renovate opens it soon | no pull request; the dashboard lists it as rate-limited, awaiting schedule or pending status checks | Renovate |
+| `no_pr` | no update PR | neither a pull request nor a dashboard line | look at the repository's Renovate config and the renovate-operator jobs |
+
+`proposed` is the version that pull request or dashboard line moves to, which can be short of the
+newest release. `pull` is the pull request number. A repository whose pull requests cannot be read
+keeps its pins but gets no update row; the CronJob log names it.
+
+`SharedPackageUpdateRedForADay` warns when a row stays `pr_red` for the same pull request and
+version for 24 hours without a break.
+
+### From release to pull request
+
+*From a shared release to the consumer's Renovate PR* measures how long consumers wait for Renovate
+after a shared package releases: the creation time of each Renovate pull request minus the creation
+time of the release it moves to, per package, over 30 days and over the last 7. It reads Forgejo's
+database, not the inventory, so merged pull requests count too (the inventory only sees open ones,
+which would leave out exactly the fast ones). The package and version come from the version table
+in the pull request's description, so grouped `renovate/webgrip` pull requests count. A pull request
+Renovate rewrote to a release newer than the one it was opened for is left out, because it was
+opened before that release. Since `renovate-trigger` schedules Renovate on the consumers right after
+a tooling release (2026-11-01), the 7-day column is the one to watch.
 
 ## Why one shared release turns into several pull requests
 

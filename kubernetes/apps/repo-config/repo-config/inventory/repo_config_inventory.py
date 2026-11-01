@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import re
@@ -27,20 +28,37 @@ RENOVATE_GATES = ("reviewed", "unattended")
 STABLE_TAG = re.compile(r"^v?(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)$")
 RENOVATE_PRESET = re.compile(
     r"local>webgrip/renovate-config(?::(?P<preset>[\w-]+))?(?:#(?P<version>v\d+\.\d+\.\d+))?")
-WORKFLOW_CALL = re.compile(
-    r"uses:\s*[\"']?(?:https://[^/\s]+/)?webgrip/workflows/\.(?:forgejo|github)/workflows/"
-    r"(?P<workflow>[\w.-]+?)\.ya?ml@[^\s\"']+[\"']?(?:[ \t]*#[ \t]*(?P<version>v\d+\.\d+\.\d+))?")
+SHARED_CALL = re.compile(
+    r"uses:[ \t]*[\"']?(?:https://[^/\s]+/)?webgrip/workflows/\.(?:forgejo|github)/"
+    r"(?:workflows/(?P<workflow>[\w.-]+?)\.ya?ml|composite-actions/(?P<action>[\w.-]+?))"
+    r"@(?P<ref>[^\s\"'#]+)[\"']?(?P<rest>[^\n]*)")
+SEMVER_REF = re.compile(r"^v\d+\.\d+\.\d+$")
+SHA_REF = re.compile(r"^[0-9a-f]{40}$")
+PIN_COMMENT = re.compile(r"^[ \t]+#[ \t]*(?P<version>v\d+\.\d+\.\d+)(?:\s|$)")
+LOCAL_ACTION = re.compile(r"uses:[ \t]*[\"']?\./(?P<path>[\w./-]+?)/?[\"']?[ \t]*$", re.M)
+LOCAL_ACTION_FILES = ("action.yml", "action.yaml")
+RELEASE_IMAGE_PIN = re.compile(
+    r"(?:^|\s)(?:image|toolchain-image|container)[ \t]*:[ \t]*[\"']?"
+    r"harbor\.webgrip\.dev/webgrip/semantic-release:v?(?P<version>\d+\.\d+\.\d+)(?![\w.-])", re.M)
+FIRST_CONFIG_RELEASE = (1, 0, 0)
 AGENT_STANDARDS_PIN = re.compile(
     r"git:\s*https://forgejo\.webgrip\.dev/webgrip/agent-standards(?:\.git)?\s*\n\s*path:\s*\S+\s*\n"
     r"\s*ref:\s*(?P<version>v\d+\.\d+\.\d+)"
     r"|agent-standards\.git@(?P<cli>v\d+\.\d+\.\d+)#subdirectory=cli")
 RELEASE_CONFIG_PIN = re.compile(r'"@webgrip/semantic-release-config"\s*:\s*"[\^~=]?(?P<version>\d+\.\d+\.\d+)"')
-SHIPS_BY_WORKFLOW = {
+SHIPS_BY_CALL = {
     "cloudflare-deploy": "cloudflare",
     "docker-build-and-push": "image",
+    "docker-build-and-push-ghcr": "image",
+    "docker-build-and-push-harbor": "image",
+    "docker-build-and-push-harbor-fast": "image",
     "docker-build-and-push-registry": "image",
     "docker-build-and-push-registry-fast": "image",
+    "docker-build-push": "image",
+    "docker-build-push-registry": "image",
+    "docker-build-push-registry-fast": "image",
     "helm-chart-push": "chart",
+    "helm-charts-push": "chart",
     "helm-chart-deploy": "chart",
     "helm-charts-deploy": "chart",
     "techdocs-deploy-docs-site": "docs",
@@ -52,7 +70,39 @@ SHIPS_BY_STEP = {
     "chart": re.compile(r"helm\s+push|helm-push"),
     "npm": re.compile(r"(?:npm|pnpm|yarn)\s+publish"),
 }
-OWN_RELEASE = re.compile(r"semantic-release|knope\s+release")
+OWN_RELEASE = re.compile(r"(?:^|[\s;&|(\"'`]|\.bin/)semantic-release(?=[\s;&|)\"'`]|$)|knope\s+release", re.M)
+WEBGRIP_RELEASE = re.compile(r"bin/webgrip-release\b|^[ \t]*(?:-[ \t]*)?(?:run:[ \t]*)?(?:npx[ \t]+)?webgrip-release(?=[\s\"']|$)",
+                             re.M)
+COMMENT_LINE = re.compile(r"^[ \t]*#.*$", re.M)
+OLD_RELEASE_CALLS = {"semantic-release-monorepo"}
+SHARED_RELEASE_CALLS = {"semantic-release"}
+RELEASE_WEBGRIP = "webgrip-release"
+RELEASE_SHARED = "shared semantic-release"
+RELEASE_OLD_MONOREPO = "monorepo (old path)"
+RELEASE_OWN = "own semantic-release"
+RELEASE_NONE = "none"
+
+PULL_PAGES = 10
+RENOVATE_BRANCH = "renovate/"
+DEPENDENCY_PACKAGES = {
+    "webgrip/workflows": "workflows",
+    "webgrip/renovate-config": "renovate-config",
+    "webgrip/agent-standards": "agent-standards",
+    "@webgrip/semantic-release-config": "semantic-release-config",
+    "harbor.webgrip.dev/webgrip/semantic-release": "semantic-release-config",
+}
+FORGE_PREFIX = re.compile(r"^(?:https?://)?forgejo\.webgrip\.dev/")
+ARROW = r"(?:→|➔|->)"
+UPDATE_ROW = re.compile(
+    r"^\|[ \t]*\[?(?P<dependency>[^\]|\n]+?)\]?(?:\([^)\n]*\))?[ \t]*\|(?:[^|`\n]*\|){1,2}[ \t]*"
+    r"`[^`\n]*`[ \t]*" + ARROW + r"[ \t]*`(?P<version>[^`\n]+)`", re.M)
+UPDATE_TITLE = re.compile(
+    r"[Uu]pdate\s+(?:dependency\s+)?(?P<dependency>\S+)(?:\s+(?:Docker\s+tag|action))?\s+"
+    r"(?:\(\s*\S+\s*" + ARROW + r"\s*(?P<version>[^\s)]+)\s*\)|to\s+(?P<to>\S+))")
+DASHBOARD_TITLE = "Dependency Dashboard"
+DASHBOARD_LINE = re.compile(r"<!--\s*(?P<action>[a-z]+)-branch=\S+\s*-->(?P<title>[^\n]*)")
+DASHBOARD_HAS_A_PULL = ("rebase", "retry", "recreate")
+CHECK_STATES = {"success": "pr_green", "failure": "pr_red", "error": "pr_red"}
 REUSABLE_DEFINITION = re.compile(r"^\s*workflow_call\s*:", re.M)
 
 
@@ -234,6 +284,31 @@ class Forgejo:
             tags.extend(tag["name"] for tag in batch if STABLE_TAG.match(tag.get("name", "")))
         return sorted({version_key(tag): normalise(tag) for tag in tags}.values(), key=version_key)
 
+    def open_pulls(self, repository):
+        pulls = []
+        for page in range(1, PULL_PAGES + 1):
+            body = self.get(f"/repos/{self.owner}/{repository}/pulls?state=open&limit={PAGE_SIZE}&page={page}")
+            batch = json.loads(body) if body else []
+            if not isinstance(batch, list) or not batch:
+                break
+            pulls.extend(batch)
+            if len(batch) < PAGE_SIZE:
+                break
+        return pulls
+
+    def check_state(self, repository, sha):
+        body = self.get(f"/repos/{self.owner}/{repository}/commits/{sha}/status")
+        return (json.loads(body) or {}).get("state", "") if body else ""
+
+    def dependency_dashboard(self, repository):
+        query = urllib.parse.quote(DASHBOARD_TITLE)
+        body = self.get(f"/repos/{self.owner}/{repository}/issues?state=open&type=issues&q={query}&limit=10")
+        issues = json.loads(body) if body else []
+        for issue in issues if isinstance(issues, list) else []:
+            if DASHBOARD_TITLE in (issue.get("title") or ""):
+                return issue.get("body") or ""
+        return ""
+
 
 def latest_releases(forgejo, package):
     try:
@@ -267,26 +342,70 @@ def renovate_reading(text):
     return {"gate": gate, "pins": pins}
 
 
+def call_pin(ref, rest):
+    if SEMVER_REF.match(ref):
+        return ref
+    comment = PIN_COMMENT.match(rest)
+    if SHA_REF.match(ref) and comment:
+        return comment.group("version")
+    return UNVERSIONED
+
+
+def release_image_pins(text):
+    return {normalise(match.group("version")) for match in RELEASE_IMAGE_PIN.finditer(text)
+            if version_key(match.group("version")) >= FIRST_CONFIG_RELEASE}
+
+
+def release_style(called, runs_webgrip_release, runs_own_release):
+    if called & OLD_RELEASE_CALLS:
+        return RELEASE_OLD_MONOREPO
+    if called & SHARED_RELEASE_CALLS:
+        return RELEASE_SHARED
+    if runs_webgrip_release:
+        return RELEASE_WEBGRIP
+    if runs_own_release:
+        return RELEASE_OWN
+    return RELEASE_NONE
+
+
 def workflow_reading(texts):
-    calls, pins, ships, own_release = set(), set(), set(), False
+    calls, pins, ships, image_pins, run_calls = set(), set(), set(), set(), set()
+    webgrip_release, own_release = False, False
     for text in texts:
-        for match in WORKFLOW_CALL.finditer(text):
-            calls.add(match.group("workflow"))
-            pins.add(match.group("version") or UNVERSIONED)
+        called = set()
+        for match in SHARED_CALL.finditer(text):
+            if match.group("workflow"):
+                called.add(("reusable", match.group("workflow")))
+            else:
+                called.add(("composite", match.group("action")))
+            pins.add(call_pin(match.group("ref"), match.group("rest")))
+        calls |= called
+        image_pins |= release_image_pins(text)
         if REUSABLE_DEFINITION.search(text):
             continue
+        run_calls |= {name for _, name in called}
         for ship, pattern in SHIPS_BY_STEP.items():
             if pattern.search(text):
                 ships.add(ship)
-        own_release = own_release or bool(OWN_RELEASE.search(WORKFLOW_CALL.sub("", text)))
-    ships.update(SHIPS_BY_WORKFLOW[call] for call in calls if call in SHIPS_BY_WORKFLOW)
-    if calls & {"semantic-release", "semantic-release-monorepo"}:
-        releases = "shared semantic-release"
-    elif own_release:
-        releases = "own semantic-release"
-    else:
-        releases = "none"
-    return {"calls": calls, "pins": pins, "ships": ships, "releases": releases}
+        steps = SHARED_CALL.sub("", COMMENT_LINE.sub("", text))
+        webgrip_release = webgrip_release or bool(WEBGRIP_RELEASE.search(steps))
+        own_release = own_release or bool(OWN_RELEASE.search(steps))
+    ships.update(SHIPS_BY_CALL[name] for name in run_calls if name in SHIPS_BY_CALL)
+    return {"calls": calls, "pins": pins, "ships": ships, "image_pins": image_pins,
+            "releases": release_style(run_calls, webgrip_release, own_release)}
+
+
+def local_action_texts(forgejo, name, workflow_texts):
+    paths = sorted({match.group("path").rstrip("/") for text in workflow_texts
+                    for match in LOCAL_ACTION.finditer(text)})
+    texts = []
+    for path in paths:
+        for file in LOCAL_ACTION_FILES:
+            text = forgejo.raw(name, f"{path}/{file}")
+            if text is not None:
+                texts.append(text)
+                break
+    return texts
 
 
 def scan_repository(forgejo, name):
@@ -297,6 +416,7 @@ def scan_repository(forgejo, name):
             break
     workflow_texts = [forgejo.raw(name, path) or "" for directory in WORKFLOW_DIRECTORIES
                       for path in forgejo.listing(name, directory)]
+    workflow_texts += local_action_texts(forgejo, name, workflow_texts)
     agent_texts = [forgejo.raw(name, "apm.yml") or "", forgejo.raw(name, "mise.toml") or ""]
     package_text = forgejo.raw(name, "package.json") or ""
     renovate = renovate_reading(renovate_text)
@@ -304,17 +424,19 @@ def scan_repository(forgejo, name):
     agent_pins = {match.group("version") or match.group("cli")
                   for text in agent_texts for match in AGENT_STANDARDS_PIN.finditer(text)}
     release_config_pins = {normalise(match.group("version")) for match in RELEASE_CONFIG_PIN.finditer(package_text)}
+    release_config_pins |= workflows["image_pins"]
+    pins = {
+        "workflows": workflows["pins"],
+        "renovate-config": renovate["pins"],
+        "agent-standards": agent_pins,
+        "semantic-release-config": release_config_pins,
+    }
     return {
         "gate": renovate["gate"],
         "calls": workflows["calls"],
         "ships": workflows["ships"],
         "releases": workflows["releases"],
-        "pins": {
-            "workflows": workflows["pins"],
-            "renovate-config": renovate["pins"],
-            "agent-standards": agent_pins,
-            "semantic-release-config": release_config_pins,
-        },
+        "pins": {package: set() if package == name else found for package, found in pins.items()},
     }
 
 
@@ -335,11 +457,90 @@ def pin_cell(pins, behind):
     return text
 
 
+def dependency_package(dependency):
+    return DEPENDENCY_PACKAGES.get(FORGE_PREFIX.sub("", dependency.strip()))
+
+
+def proposed_version(text):
+    version = text.strip().strip("`")
+    return normalise(version) if STABLE_TAG.match(version) else None
+
+
+def proposed_updates(title, body):
+    found = {}
+    for dependency, version in ([(m.group("dependency"), m.group("version")) for m in UPDATE_ROW.finditer(body)]
+                                or [(m.group("dependency"), m.group("version") or m.group("to"))
+                                    for m in UPDATE_TITLE.finditer(title)]):
+        package = dependency_package(dependency)
+        if package is None:
+            continue
+        candidate = proposed_version(version)
+        if package not in found or (candidate and (found[package] is None or
+                                                    version_key(candidate) > version_key(found[package]))):
+            found[package] = candidate
+    return found
+
+
+def newest_first(proposal):
+    version = proposal["proposed"]
+    return (version_key(version) if version else (-1, 0, 0), -proposal["created"])
+
+
+def epoch(stamp):
+    try:
+        return int(datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp())
+    except (AttributeError, ValueError):
+        return 0
+
+
+def renovate_proposals(pulls):
+    proposals = {}
+    for pull in pulls:
+        if not ((pull.get("head") or {}).get("ref") or "").startswith(RENOVATE_BRANCH):
+            continue
+        for package, version in proposed_updates(pull.get("title") or "", pull.get("body") or "").items():
+            proposal = {"proposed": version, "pull": pull.get("number"), "created": epoch(pull.get("created_at")),
+                        "sha": (pull.get("head") or {}).get("sha")}
+            if package not in proposals or newest_first(proposal) > newest_first(proposals[package]):
+                proposals[package] = proposal
+    return proposals
+
+
+def dashboard_waits(body):
+    waits = {}
+    for line in DASHBOARD_LINE.finditer(body):
+        if line.group("action") in DASHBOARD_HAS_A_PULL:
+            continue
+        state = "awaits_approval" if line.group("action") == "approve" else "queued"
+        for package, version in proposed_updates(line.group("title"), "").items():
+            if package not in waits or state == "awaits_approval":
+                waits[package] = {"state": state, "proposed": version}
+    return waits
+
+
+def update_status(forgejo, name, behind_packages, now):
+    proposals = renovate_proposals(forgejo.open_pulls(name))
+    statuses = {}
+    waiting = None
+    for package in sorted(behind_packages):
+        proposal = proposals.get(package)
+        if proposal:
+            state = CHECK_STATES.get(forgejo.check_state(name, proposal["sha"]), "pr_pending")
+            statuses[package] = {"state": state, "proposed": proposal["proposed"], "pull": proposal["pull"],
+                                 "age": max(0, now - proposal["created"]) if proposal["created"] else None}
+            continue
+        if waiting is None:
+            waiting = dashboard_waits(forgejo.dependency_dashboard(name))
+        wait = waiting.get(package, {"state": "no_pr", "proposed": None})
+        statuses[package] = {"state": wait["state"], "proposed": wait["proposed"], "pull": None, "age": None}
+    return statuses
+
+
 def label_name(package):
     return package.replace("-", "_")
 
 
-def record_scans(metrics, active, facts, mirrors, scans, latest):
+def record_scans(metrics, active, facts, mirrors, scans, latest, updates):
     for package, stable in latest.items():
         if stable:
             metrics.set("shared_latest", {"package": package, "version": stable[-1]}, 1)
@@ -371,9 +572,33 @@ def record_scans(metrics, active, facts, mirrors, scans, latest):
                 metrics.set("shared_pin_releases_behind", {"repository": name, "package": package}, behind)
             if UNVERSIONED in pins:
                 metrics.set("shared_pin_unversioned", {"repository": name, "package": package}, 1)
-        for call in sorted(scan["calls"]):
-            metrics.set("workflow_call", {"repository": name, "workflow": call}, 1)
+        for package, status in sorted(updates.get(name, {}).items()):
+            metrics.set("shared_pin_update", {"repository": name, "package": package, "state": status["state"],
+                                              "proposed": status["proposed"] or "",
+                                              "pull": str(status["pull"] or "")}, 1)
+            if status["age"] is not None:
+                metrics.set("shared_pin_update_age_seconds", {"repository": name, "package": package}, status["age"])
+        for form, call in sorted(scan["calls"]):
+            metrics.set("workflow_call", {"repository": name, "workflow": call, "form": form}, 1)
         metrics.set("repository_info", labels, 1)
+
+
+def behind_packages(scan, latest):
+    return {package for package in SHARED_PACKAGES
+            if (releases_behind(scan["pins"][package], latest.get(package, [])) or 0) > 0}
+
+
+def read_update_statuses(forgejo, scans, latest, now):
+    updates = {}
+    for name, scan in sorted(scans.items()):
+        behind = behind_packages(scan, latest)
+        if not behind:
+            continue
+        try:
+            updates[name] = update_status(forgejo, name, behind, now)
+        except (InventoryFailure, ValueError) as failure:
+            log(f"could not read the open updates of {name}: {failure}")
+    return updates
 
 
 def escape_label(value):
@@ -442,7 +667,8 @@ def run():
             scans[name] = scan_repository(forgejo, name)
         except (InventoryFailure, ValueError) as failure:
             log(f"could not read the delivery files of {name}: {failure}")
-    record_scans(metrics, active, facts, github_mirrors(facts), scans, latest)
+    updates = read_update_statuses(forgejo, scans, latest, int(time.time()))
+    record_scans(metrics, active, facts, github_mirrors(facts), scans, latest, updates)
     metrics.set("inventory_scan_failed_repositories", {}, len(active) - len(scans))
     metrics.set("inventory_active_repositories", {}, len(active))
     metrics.set("inventory_private_repositories_visible", {}, len(visible_private))
