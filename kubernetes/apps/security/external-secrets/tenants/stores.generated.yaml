@@ -545,64 +545,6 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: eso-openbao
-  namespace: n8n
-  labels:
-    app.kubernetes.io/managed-by: eso-grants
-automountServiceAccountToken: false
----
-apiVersion: external-secrets.io/v1
-kind: SecretStore
-metadata:
-  name: openbao
-  namespace: n8n
-spec:
-  provider:
-    vault:
-      server: http://openbao.security.svc.cluster.local:8200
-      path: secret
-      version: v2
-      auth:
-        kubernetes:
-          mountPath: kubernetes
-          role: eso-read-n8n
-          serviceAccountRef:
-            name: eso-openbao
-            audiences:
-            - openbao
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: eso-openbao-push
-  namespace: n8n
-  labels:
-    app.kubernetes.io/managed-by: eso-grants
-automountServiceAccountToken: false
----
-apiVersion: external-secrets.io/v1
-kind: SecretStore
-metadata:
-  name: openbao-push
-  namespace: n8n
-spec:
-  provider:
-    vault:
-      server: http://openbao.security.svc.cluster.local:8200
-      path: secret
-      version: v2
-      auth:
-        kubernetes:
-          mountPath: kubernetes
-          role: eso-push-n8n
-          serviceAccountRef:
-            name: eso-openbao-push
-            audiences:
-            - openbao
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: eso-openbao
   namespace: network
   labels:
     app.kubernetes.io/managed-by: eso-grants
