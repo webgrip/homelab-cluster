@@ -21,7 +21,6 @@ Hostnames follow `<app>.${SECRET_DOMAIN}` (`cluster-secrets`, SOPS-encrypted). G
 | Harbor | `harbor` | `harbor.${SECRET_DOMAIN}` | Private OCI registry; CNPG DB |
 | Policy Reporter | `kyverno` | `policy-reporter.${SECRET_DOMAIN}` | Kyverno PolicyReport UI |
 | Longhorn UI | `longhorn-system` | `longhorn.${SECRET_DOMAIN}` | Storage dashboard |
-| n8n | `n8n` | `n8n.${SECRET_DOMAIN}` | Workflow automation; CNPG DB |
 | Alloy gateway (OTLP) | `observability` | `otlp.${SECRET_DOMAIN}` | OTLP ingest for off-cluster clients |
 | Grafana | `observability` | `grafana.${SECRET_DOMAIN}` | Dashboards/alerting; CNPG DB |
 | k8s MCP | `observability` | none; LiteLLM `/kubernetes/mcp` | Read-only Kubernetes MCP server |
@@ -76,6 +75,7 @@ Object storage is split as of 2026-08-02: Harbor registry blobs on the **in-clus
 | zomboid | commented out of `kubernetes/apps/kustomization.yaml` | pending its last SOPS→ESO secret migration — see [Zomboid](zomboid.md) |
 | drawio | commented out of `kubernetes/apps/kustomization.yaml` | not needed; frees ~1Gi on fringe (manifests retained) |
 | tempo, pyroscope, beyla, k6 | suspended in `observability` | see [Observability](observability.md) |
+| n8n | retired 2026-11-01; `kubernetes/apps/n8n` removed | hibernated since 2026-10-10 and its ExternalSecrets pointed at stores that no longer existed. The last database backup (2026-10-10) stays in the off-site Garage at `s3://cnpg-backups-bucket/homelab-cluster/n8n-db/`; its encryption key and database login are archived in OpenBao at `secret/retired/n8n/app` and `secret/retired/n8n/db`. Restoring means a new CNPG cluster recovering from that path, with `N8N_ENCRYPTION_KEY` from the archive. |
 
 ## Verifying against the live cluster
 

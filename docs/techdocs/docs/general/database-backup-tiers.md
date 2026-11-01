@@ -50,7 +50,7 @@ the WAL-heavy tiers this is dominated by WAL accumulation, **not** database size
 | -------- | --------- | ---- | --------- | --- |
 | `authentik-db` | authentik | **1** | 0.8 GiB | SSO/identity. Loss locks every OIDC app out and means re-enrolling users/MFA. Small — long retention is cheap insurance. |
 | `forgejo-db` | forgejo | **2** | 0.15 GiB | Issues, PRs, reviews, users, tokens, webhooks — none of it in git. Irreplaceable user content. |
-| `n8n-db` | n8n | **2** | 0.16 GiB | User-authored workflows + (encrypted) credentials. Hand-built automation, not regenerable. |
+| `n8n-db` | n8n (retired 2026-11-01) | — | 0.16 GiB | No longer backed up. The last backup (2026-10-10) is kept as-is; see [Applications](applications.md#disabled-suspended-apps). |
 | `sparkyfitness-db` | sparkyfitness | **2** | 0.24 GiB | Personal health/fitness logs. Irreplaceable personal data. |
 | `vikunja-db` | vikunja | **2** | new (2026-07-09) | Tasks, projects, comments — user-authored, stored nowhere else (ADR-0040). |
 | `devex-db` | observability | **2** | new (2026-06-30) | Raw DevEx survey answers — irreplaceable human input (unlike `grafana-db`). Deliberately keeps **30d** retention, above the Tier-2 default. |
