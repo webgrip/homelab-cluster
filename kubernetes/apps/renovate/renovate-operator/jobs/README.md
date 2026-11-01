@@ -68,8 +68,8 @@ Template: `webhook-auth.secret.template.yaml`
 ## Webhook exposure
 
 The receiver is LAN-only: its route hangs off `envoy-internal`, so `renovate-webhook.${SECRET_DOMAIN}`
-has no public DNS record and nothing on the internet reaches it. Its only caller is Forgejo, which
-posts to the in-cluster Service (below). On 2026-09-27 no GitHub repo carried a hook to it and the
+has no public DNS record and nothing on the internet reaches it. Its callers are Forgejo and the
+Forgejo Actions runners, which post to the in-cluster Service (below). On 2026-09-27 no GitHub repo carried a hook to it and the
 operator had logged no accepted GitHub event in 30 days, so the `webgrip-gitops` job relies on its cron.
 
 The operator enforces authentication itself, per RenovateJob: a request is accepted only when a job
@@ -116,6 +116,56 @@ It registers a Forgejo repo webhook with:
 hooks do **not** go stale on refresh — only a real rotation of the OpenBao `renovate/webhook-auth` value
 does. After such a rotation, re-run `scripts/forgejo-sync.sh --all --only webhook --apply` (its PATCH
 re-sets the embedded bearer). The hook needs **repo admin** to create/update (same as `protect`).
+
+## Run Renovate when shared tooling releases
+
+The `webgrip-forgejo` job runs on `33 * * * *`, and a full pass over its ~20 projects takes well over
+an hour at `parallelism: 1`. A release of shared tooling (`webgrip/workflows`,
+`webgrip/semantic-release-config`, `webgrip/renovate-config`, `webgrip/agent-standards`) would wait
+for that queue. Instead, each of those repositories calls the `renovate-trigger` composite action of
+`webgrip/workflows` after a release, which schedules the consumers through the operator's schedule
+webhook:
+
+```text
+POST http://renovate-operator.renovate.svc.cluster.local:8082/webhook/v1/schedule?namespace=renovate&job=webgrip-forgejo&project=<owner/repo>
+Authorization: Bearer <token>
+```
+
+What the operator (5.2.0, `src/webhook/server.go` and `resolver.go`) does with it:
+
+- `project` is required; without it the answer is `400`. There is no "schedule every project" form,
+  so the action sends one request per project.
+- The job is found by `namespace`, `job` and the project being in its `status.projects`; a project
+  the job does not own answers `404` before authentication.
+- With `webhook.authentication.enabled`, the bearer token must be one of the comma-separated entries
+  of `renovate-webhook-auth`/`token`; otherwise `401`.
+- A match sets the project to `scheduled` at priority 1 and answers `200`; the queue then runs it
+  like any other project.
+
+Targeting: almost every repository consumes `webgrip/workflows` and `webgrip/agent-standards`, so the
+action schedules every non-archived, non-mirror repository of the organisation with the `renovate`
+topic (the same selector as `discoverTopics`), except the releasing repository. Each project run is
+one executor pod writing about 1 GB to disk; a release therefore costs one extra pass, mostly
+reordering work the hourly cron would do anyway. A caller can pass `projects:` to narrow it.
+
+The token reaches the workflows as the repository secret `RENOVATE_WEBHOOK_TOKEN`, a bridge-level
+secret (ADR-0055 L3):
+
+1. `ExternalSecret/forgejo-renovate-webhook` in namespace `forgejo`
+   (`kubernetes/apps/forgejo/forgejo-actions-secrets/app/renovate-webhook.externalsecret.yaml`)
+   reads OpenBao `renovate/webhook-auth` property `token` and keeps its first comma-separated entry.
+   `eso-grants.txt` grants `forgejo read renovate/webhook-auth`.
+2. The `forgejo-actions-secrets` CronJob publishes it to the repositories `SECRET_REPOS` names for
+   `RENOVATE_WEBHOOK_TOKEN`: agent-standards, renovate-config, semantic-release-config and workflows.
+   There is no verify call: the operator has no endpoint that checks a token without scheduling a
+   run, so a stale token shows up as a `::warning::` in the next release run instead.
+3. NetworkPolicy `forgejo-runner-allow-renovate-webhook` (`kubernetes/apps/forgejo/networkpolicy.yaml`)
+   lets `forgejo-runner` and `forgejo-dind` pods reach the operator pod on 8082. Without it
+   `forgejo-allow-egress` drops the call, because it excludes the pod and service CIDRs. Jobs with a
+   `container:` run on the shared `forgejo-dind` pods, so both identities are needed.
+
+Rotating `renovate/webhook-auth` needs nothing extra: the ExternalSecret refreshes hourly and the
+CronJob republishes on its next tick.
 
 ## Renovate manifests
 

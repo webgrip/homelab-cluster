@@ -109,6 +109,24 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 Note: editing a dashboard issue on Forgejo fires a webhook run near-instantly, but that run can read the **pre-click** issue body — checkbox ticks are honored by the *next* run.
 
+## Shared tooling releases run Renovate straight away
+
+A release of `webgrip/workflows`, `webgrip/semantic-release-config`, `webgrip/renovate-config` or
+`webgrip/agent-standards` ends with the `renovate-trigger` composite action of `webgrip/workflows`.
+It POSTs the schedule endpoint above once per project, so the consumers get their update PR within
+minutes instead of at the next `33 * * * *` run. The endpoint takes exactly one project per
+request and answers `404` for a project the job does not own, so the action lists the organisation's
+repositories with the `renovate` topic and schedules each (one executor pod per project, about
+1 GB of disk writes each, `parallelism: 1`). The wiring, token and network rule are in
+[`jobs/README.md`](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/kubernetes/apps/renovate/renovate-operator/jobs/README.md#run-renovate-when-shared-tooling-releases).
+
+A release run that ends with `::warning::renovate-operator rejected the token` means the
+`RENOVATE_WEBHOOK_TOKEN` repository secret no longer matches the first entry of OpenBao
+`renovate/webhook-auth`; check the `forgejo-actions-secrets` CronJob log for
+`set repo secret <repo>/RENOVATE_WEBHOOK_TOKEN`. `is unreachable` means the runner's egress to
+`renovate-operator:8082` is blocked (NetworkPolicy `forgejo-runner-allow-renovate-webhook`) or the
+operator is down. Neither fails the release; the hourly run picks the update up anyway.
+
 ## Unfold releases reach the homelab
 
 An Unfold release is one chart that carries the Ploeg chart it was tested with
