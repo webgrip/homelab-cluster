@@ -71,7 +71,9 @@ Two RenovateJobs run side by side ([ADR-0029](../adr/adr-0029-dual-run-renovate-
 
 Shared mechanics (both jobs):
 
-- One repository at a time (`parallelism: 1`), non-root, `RENOVATE_BASE_DIR=/tmp`.
+- `webgrip-forgejo` runs three repositories at a time (`parallelism: 3`), `webgrip-gitops` one. Each
+  hourly cron restarts the queue at the top of the alphabet, so a pass must fit in the hour or the last
+  repositories never get a turn. Non-root, `RENOVATE_BASE_DIR=/tmp`.
 - `RENOVATE_CONFIG_FILE=/config/renovate.json` mounted from a per-platform ConfigMap
   (`configmap-gitops.yaml` / `configmap-forgejo.yaml`).
 - Webhook authentication from Secret `renovate-webhook-auth`.
