@@ -177,15 +177,15 @@ Debugging trick for "which repos are skipped and why": `renovate --autodiscover 
 
 ## Where Renovate runs
 
-Every RenovateJob (`webgrip-forgejo`, `webgrip-gitops`, `ploeg-hq`, `wellhead-dev`) requires a node other than `fringe-workstation`. The operator copies `spec.affinity` into both its discovery and its executor Jobs.
+Every RenovateJob (`webgrip-forgejo`, `webgrip-gitops`, `ploeg-hq`, `wellhead-dev`) prefers any node other than `fringe-workstation` (node affinity, weight 100) and falls back to it only when worker-1 and worker-2 have no room. The operator copies `spec.affinity` into both its discovery and its executor Jobs.
 
 Why: on 2026-11-01 every Renovate pod in the namespace ran on `fringe-workstation`. The `dedicated=fringe` taint the jobs tolerated was retired on 2026-06-19, so nothing kept them off it, and the scheduler favours the node that already holds the multi-GB `renovate:*-full` image. Each repository run writes about 1 GB, about 300 GB a day in all. That node's 256 GB SATA SSD also holds Forgejo, its Postgres and the CI Docker daemon: it wrote 1.1 TB in a day against about 0.4-0.5 TB on worker-1 and worker-2, and spent 37% of the week stalled on disk IO against 1-2% on the other workers. Builds on it lost their BuildKit session halfway (`frontend grpc server closed unexpectedly`, `forwarding Ping: no such job`); all 17 such errors in two weeks came from that node.
 
-The rule is required, not preferred: the scheduler's image-locality score is what pulled the jobs there, and the workers have the room (Renovate runs one repository at a time at 250m CPU and 512Mi requested).
+The rule is preferred, not required. It was required for about 40 minutes on 2026-11-01: the next executor pod sat `Pending` with `0/6 nodes are available: 1 Insufficient cpu, 1 Insufficient memory, 4 node(s) didn't match Pod's node affinity/selector`. worker-1 and worker-2 had no request room left, and because the operator runs one repository at a time, one unschedulable pod stopped Renovate for every repository. A preference of weight 100 outweighs the image-locality score whenever a worker has room, and lets Renovate fall back to fringe instead of stopping.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Renovate executor pod `Pending` with `node(s) didn't match Pod's node affinity/selector` | worker-1 and worker-2 are both full | free room on the workers; do not drop the rule without checking fringe's disk stall first (`rate(node_pressure_io_stalled_seconds_total{instance="10.0.0.30:9100"}[5m])`) |
+| Renovate pods still land on `fringe-workstation` | worker-1 and worker-2 have no CPU or memory request room left | free request room on the workers; check fringe's disk stall with `rate(node_pressure_io_stalled_seconds_total{instance="10.0.0.30:9100"}[5m])` before making the rule required |
 | First run after the change is slow at image pull | the `-full` image is not yet on the workers | expected once per node per Renovate image |
 
 ## More detail
