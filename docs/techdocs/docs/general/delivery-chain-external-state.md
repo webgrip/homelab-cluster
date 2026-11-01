@@ -90,10 +90,10 @@ These are read by ExternalSecrets in git, so the *wiring* is declarative; the *v
 
 | # | KV path | Holds | Origin | Failure if lost |
 | --- | --- | --- | --- | --- |
-| V1 | `forgejo/admin` | Forgejo admin username, password | seeded from SOPS, PushSecret round-trip | every Forgejo provisioner stops; Forgejo chart cannot create its admin |
+| V1 | `forgejo/admin` | Forgejo admin username, password | seeded from SOPS; OpenBao is the original since 2026-11-01, when the write-back PushSecret went | every Forgejo provisioner stops; Forgejo chart cannot create its admin |
 | V2 | `forgejo/oidc` | Authentik client for Forgejo login | seeded from SOPS | SSO login fails; local admin still works |
 | V3 | `renovate/operator` | Renovate GitHub App id, installation id, private key; Docker Hub user and token | provided | G8 failure; Docker Hub rate limits |
-| V4 | `renovate/webhook-auth` | bearer token list for the operator's webhook receiver | seeded from SOPS; a PushSecret writes the K8s copy back to KV | release relay and every F4 hook get 401; the chain falls back to the hourly schedule |
+| V4 | `renovate/webhook-auth` | bearer token list for the operator's webhook receiver | seeded from SOPS; OpenBao is the original since 2026-11-01, when the write-back PushSecret went | release relay and every F4 hook get 401; the chain falls back to the hourly schedule |
 | V5 | `harbor/registry-proxy` | Docker Hub and GHCR pull credentials for Harbor's proxy projects | provided | proxy pulls fall back to anonymous limits or fail for private GHCR |
 | V6 | `cloudflare/tunnel`, `cloudflare/manager` (and the tunnel object at Cloudflare) | tunnel token in front of `forgejo.webgrip.dev`; the token that mints the rolled deploy and DNS tokens | provided | GitHub-hosted runners cannot reach Forgejo (G6/G7 calls, npm registry, `semantic-release-config` clone); Unfold site deploys stop |
 | V7 | `openvsx/unfold`, VS Marketplace PAT and Azure ids | extension publishing for Unfold | provided | extension publish steps fail or skip |
@@ -202,8 +202,8 @@ owner.
    alerting when stale. D5 goes live after this.
 5. **Rest of the repo-config scope**: F4 webhooks (bearer from OpenBao), F6 topics, F9 variables,
    F5 settings, then F7 push mirrors (VIK-1325) with G10 replaced by the GitHub App.
-6. **Re-home seeded values to generators**: V4 (drop the write-back PushSecret, as P1b already
-   asks), V2, V1.
+6. **Re-home seeded values to generators**: V4, V2, V1. Their write-back PushSecrets, and 24
+   others like them, were removed on 2026-11-01.
 7. **GHCR visibility probe** for G5, and a test that GHCR accepts App installation tokens (retire
    G9 if so).
 8. **Rebuild rehearsal**: on a scratch Forgejo and a fixture GitHub repo, apply the modules from an
