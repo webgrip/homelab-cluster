@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import forgejo_ci
-from lib import (AMBER, NEUTRAL, VERMILLION, alarm_at, bars, col, dashboard, doc_link, grid_pos, link, number, sql,
-                 stat, table, tag_links, target)
+from lib import (AMBER, GREEN, NEUTRAL, VERMILLION, alarm_at, bars, col, dashboard, doc_link, grid_pos, link, number,
+                 sql, stat, table, tag_links, target, target_met)
 from today import FORGEJO_DB, FORGEJO_URL, ORG, ORG_REPO, runs_verdict
 
 UID = "delivery-estate"
@@ -16,13 +16,25 @@ WINDOW_DAYS = 30
 RENOVATE = "u.lower_name LIKE 'renovate%'"
 UPSTREAM = r"(@?webgrip/[A-Za-z0-9._-]+|webgrip dependencies)"
 APPROVE = 1
+OLD_RELEASE_PATH = "monorepo (old path)"
+SHARED_DEPENDENCY = r"(?:@|harbor\.webgrip\.dev/)?webgrip/(?:workflows|renovate-config|agent-standards|semantic-release[a-z-]*)"
+UPDATE_ROW = (r"\[(" + SHARED_DEPENDENCY + r")\]\([^)]*\)\s*\|(?:[^|`]*\|){1,2}\s*`[^`]*`\s*→\s*`v?([0-9]+\.[0-9]+\.[0-9]+)`")
+UPDATE_STATES = {
+    "pr_green": ("PR open, checks green", GREEN),
+    "pr_red": ("PR open, checks red", VERMILLION),
+    "pr_pending": ("PR open, checks running", NEUTRAL),
+    "awaits_approval": ("waits for a dashboard tick", AMBER),
+    "queued": ("Renovate opens it soon", NEUTRAL),
+    "no_pr": ("no update PR", AMBER),
+}
 
 
-def fresh(metric):
+def fresh(metric, match=""):
     last_push = (f"scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds"
                  f"{{{INVENTORY}}}[{LOOKBACK}])))")
-    return (f"(last_over_time({metric}{{{INVENTORY}}}[{LOOKBACK}]) and "
-            f"(tlast_over_time({metric}{{{INVENTORY}}}[{LOOKBACK}]) > {last_push} - {PUSH_SLACK}))")
+    selector = f"{metric}{{{INVENTORY}{',' + match if match else ''}}}"
+    return (f"(last_over_time({selector}[{LOOKBACK}]) and "
+            f"(tlast_over_time({selector}[{LOOKBACK}]) > {last_push} - {PUSH_SLACK}))")
 
 
 def pr_link(title="Open the pull request"):
@@ -77,18 +89,18 @@ def behind_on_shared():
         f"count(count by (repository) ({fresh('repo_config_shared_pin_releases_behind')} > 0))",
         decimals=0, fixed_color=NEUTRAL, no_value="0",
         desc="Repositories whose oldest pin of workflows, renovate-config, agent-standards or "
-             "semantic-release-config is older than that package's newest stable release. The estate table shows "
-             "which pin and by how many releases. A large number here with few open Renovate PRs means the bumps "
-             "are majors waiting for a person, or the repository has no Renovate.")
+             "semantic-release-config is older than that package's newest stable release. The table below the "
+             "estate says, per repository and package, whether an update pull request is on its way and whether "
+             "its checks pass.")
 
 
 def unversioned_pins():
     return stat(
         "Unversioned shared pins", f"count({fresh('repo_config_shared_pin_unversioned')})", decimals=0,
         thresholds=alarm_at(amber=1), no_value="0",
-        desc="Pins of a shared package with no version Renovate can read: a workflow call by SHA without a "
-             "`# vX.Y.Z` comment, a branch name, or a preset without `#vX.Y.Z`. Renovate never moves these. "
-             "Amber from one: add the version comment or the tag.")
+        desc="Pins of a shared package with no version Renovate can read (ADR-0089): a workflow or composite "
+             "action call by SHA without a `# vX.Y.Z` comment, a branch name such as @main, or a preset without "
+             "`#vX.Y.Z`. Renovate never moves these. Amber from one: pin @vX.Y.Z or @<sha> # vX.Y.Z.")
 
 
 def waiting_on_a_person():
@@ -136,6 +148,7 @@ def estate():
     pins = [col(name, colour_text=True, mappings=behind) for name in
             ("workflows", "renovate_config", "agent_standards", "semantic_release_config")]
     kinds = [{"type": "value", "options": {"unmodelled": {"color": AMBER}, "unset": {"color": AMBER}}}]
+    styles = [{"type": "value", "options": {OLD_RELEASE_PATH: {"color": AMBER}}}]
     gates = [{"type": "value", "options": {"none": {"color": AMBER}}}]
     return table(
         "Estate: how each repository builds, releases and ships",
@@ -146,16 +159,69 @@ def estate():
                 "renovate_config": "renovate-config", "agent_standards": "agent-standards",
                 "semantic_release_config": "semantic-release-config", "workflow_calls": "shared workflows called"},
         overrides=[*pins, col("kind", colour_text=True, mappings=kinds),
-                   col("Renovate gate", colour_text=True, mappings=gates)],
+                   col("Renovate gate", colour_text=True, mappings=gates),
+                   col("releases", colour_text=True, mappings=styles)],
         desc="One row per active repository. kind, branching (staged or trunk), core and GitHub mirror come from "
              "the repo-config model; everything else is read from the repository's default branch every hour. "
              "Renovate gate is the gate its renovate.json extends (reviewed, unattended), presets when "
              "it composes presets without a gate, own when it has config but no shared preset, none without "
-             "a config. releases says whether a workflow calls the shared semantic-release workflow, runs "
-             "semantic-release itself, or neither. ships lists what the workflows publish (cloudflare, image, "
-             "chart, npm, docs), from shared workflow calls and well-known publish steps. Pins show every version "
-             "found; amber when the oldest is behind the newest stable release, vermillion when one has no "
-             "version at all.")
+             "a config. releases is the release style: webgrip-release, shared semantic-release, monorepo (old "
+             "path, amber), own semantic-release or none. ships lists what the workflows publish (cloudflare, "
+             "image, chart, npm, docs), from shared workflow and composite action calls and well-known publish "
+             "steps. Pins show every version found, the semantic-release toolchain image counting as a "
+             "semantic-release-config pin; amber when the oldest is behind the newest stable release, vermillion "
+             "when one has no version Renovate can read.")
+
+
+def update_state():
+    mapping = [{"type": "value", "options": {state: {"text": text, "color": colour, "index": index}
+                                             for index, (state, (text, colour)) in enumerate(UPDATE_STATES.items())}}]
+    pulls = f"{FORGEJO_URL}/{ORG}/${{__data.fields.repository}}/pulls"
+    return table(
+        "Behind a shared package: is the update on its way?",
+        [target(f"max by (repository, package, state, proposed, pull) ({fresh('repo_config_shared_pin_update')})",
+                "A", instant=True, fmt="table"),
+         target(f"max by (repository, package) ({fresh('repo_config_shared_pin_releases_behind')} > 0)", "B",
+                instant=True, fmt="table"),
+         target(f"max by (repository, package) ({fresh('repo_config_shared_pin_update_age_seconds')})", "C",
+                instant=True, fmt="table")],
+        hide=["Value #A"], order=["repository", "package", "Value #B", "state", "proposed", "pull", "Value #C"],
+        rename={"Value #B": "releases behind", "state": "update", "proposed": "update to", "pull": "PR",
+                "Value #C": "PR age"},
+        sort_field="releases behind",
+        overrides=[col("update", colour_text=True, mappings=mapping, width=200),
+                   col("PR age", unit="s", decimals=0, width=90), col("PR", width=60),
+                   col("releases behind", width=120),
+                   col("repository", links=[{"title": "Open its pull requests", "url": pulls, "targetBlank": True}])],
+        desc="One row per repository and shared package where the pin is behind the newest release. update says "
+             "what happens next: PR open with green checks (merge it, or Renovate will), PR open with red checks "
+             "(someone must fix or close it), PR open with checks running, waits for a dashboard tick (Renovate "
+             "found the update but needs a person to tick it on the Dependency Dashboard), Renovate opens it soon "
+             "(rate-limited or scheduled), or no update PR (nothing is on its way: no gate, Renovate not running, "
+             "or the update was closed). update to is the version that pull request or dashboard line moves to. "
+             "Click a repository to open its pull requests.")
+
+
+def old_release_path():
+    on_old_path = f'releases="{OLD_RELEASE_PATH}"'
+    return stat(
+        "Repositories on the old release path", f"count({fresh('repo_config_repository_info', on_old_path)})",
+        decimals=0, thresholds=target_met(1, higher_is_better=False), no_value="0",
+        desc="Repositories that still release through semantic-release-monorepo (the composite action or the "
+             "reusable workflow) instead of webgrip-release. The migration is done at zero.")
+
+
+def release_styles():
+    return table(
+        "Release style",
+        [target(f"count by (releases) ({fresh('repo_config_repository_info')})", instant=True, fmt="table")],
+        order=["releases", "Value"], rename={"releases": "releases with", "Value": "repositories"},
+        sort_field="repositories",
+        overrides=[col("releases with", colour_text=True,
+                       mappings=[{"type": "value", "options": {OLD_RELEASE_PATH: {"color": AMBER}}}])],
+        desc="How many repositories release each way: webgrip-release (runs the command itself), shared "
+             "semantic-release (the workflows composite or reusable workflow, webgrip-release underneath), "
+             "monorepo (old path) (semantic-release-monorepo, being retired), own semantic-release, or none.")
 
 
 def queue_table():
@@ -204,7 +270,8 @@ def first_screen():
         (waiting_on_a_person(), 9, 0, 4, 4), (red_pull_requests(), 13, 0, 4, 4), (oldest_renovate_pr(), 17, 0, 4, 4),
         (ci_queue(), 21, 0, 3, 4),
         (estate(), 0, 4, 24, 12),
-        (queue_table(), 0, 16, 16, 10), (pile_up(), 16, 16, 8, 10),
+        (update_state(), 0, 16, 16, 10), (old_release_path(), 16, 16, 8, 4), (release_styles(), 16, 20, 8, 6),
+        (queue_table(), 0, 26, 16, 10), (pile_up(), 16, 26, 8, 10),
     ]
     panels = []
     for panel, x, y, w, h in placed:
@@ -213,8 +280,8 @@ def first_screen():
     return panels
 
 
-def window(column):
-    return f"{column} > extract(epoch FROM now() - interval '{WINDOW_DAYS} days')"
+def window(column, days=WINDOW_DAYS):
+    return f"{column} > extract(epoch FROM now() - interval '{days} days')"
 
 
 def fan_out():
@@ -268,11 +335,12 @@ def adoption():
              "the worst lag in releases. Repositories with no versioned pin of a package are not counted.")
     calls = bars(
         "Shared workflows: how many repositories call each",
-        [target(f"sort_desc(count by (workflow) ({fresh('repo_config_workflow_call')}))", legend="{{workflow}}",
-                instant=True)],
+        [target(f"sort_desc(count by (workflow, form) ({fresh('repo_config_workflow_call')}))",
+                legend="{{workflow}} ({{form}})", instant=True)],
         decimals=0,
-        desc="How many repositories call each reusable workflow of webgrip/workflows. A workflow few repositories "
-             "call is a candidate to fold in or retire; one nearly all call is the de-facto recipe.")
+        desc="How many repositories call each reusable workflow and composite action of webgrip/workflows "
+             "(form says which). One few repositories call is a candidate to fold in or retire; one nearly all "
+             "call is the de-facto recipe.")
     shape = table(
         "Estate shape",
         [target(f"count by (kind, releases) ({fresh('repo_config_repository_info')})", instant=True, fmt="table")],
@@ -380,7 +448,49 @@ def rows():
 
 
 def fan_out_row():
-    return [(fan_out(), 0, 24, 9), *adoption()]
+    return [(fan_out(), 0, 24, 9), *adoption(), (release_to_pull_request(), 0, 24, 8)]
+
+
+def release_to_pull_request():
+    seconds = "p.opened - rl.created_unix"
+    query = f"""
+        WITH proposals AS (
+          SELECT DISTINCT i.id, r.name AS consumer, i.created_unix AS opened,
+            CASE WHEN m[1] LIKE '%semantic-release%' THEN 'semantic-release-config'
+                 ELSE regexp_replace(m[1], '^.*/', '') END AS package,
+            'v' || m[2] AS version
+          FROM issue i
+          JOIN repository r ON r.id = i.repo_id
+          JOIN "user" u ON u.id = i.poster_id
+          CROSS JOIN LATERAL regexp_matches(i.content, '{UPDATE_ROW}', 'g') AS m
+          WHERE i.is_pull AND {RENOVATE} AND {window('i.created_unix')} AND {ORG_REPO}
+        )
+        SELECT p.package, count(*) AS pull_requests, count(DISTINCT p.consumer) AS repositories,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY {seconds}) AS median,
+          percentile_cont(0.5) WITHIN GROUP (ORDER BY {seconds})
+            FILTER (WHERE {window('rl.created_unix', 7)}) AS median_week,
+          percentile_cont(0.9) WITHIN GROUP (ORDER BY {seconds}) AS p90
+        FROM proposals p
+        JOIN repository src ON src.owner_name = '{ORG}' AND src.name = p.package
+        JOIN release rl ON rl.repo_id = src.id AND rl.tag_name = p.version AND NOT rl.is_draft
+        WHERE p.opened >= rl.created_unix
+        GROUP BY p.package
+    """
+    return table(
+        f"From a shared release to the consumer's Renovate PR, last {WINDOW_DAYS} days", [sql(FORGEJO_DB, query)],
+        sort_field="package", sort_desc=False,
+        order=["package", "pull_requests", "repositories", "median", "median_week", "p90"],
+        rename={"pull_requests": "Renovate PRs", "median": "median wait", "median_week": "median wait, last 7 days",
+                "p90": "slowest 10% wait"},
+        overrides=[col("median wait", unit="s", decimals=0), col("slowest 10% wait", unit="s", decimals=0),
+                   col("median wait, last 7 days", unit="s", decimals=0, thresholds=alarm_at(amber=6 * 3600),
+                       colour_text=True)],
+        desc="How long a consumer waits for Renovate to open the pull request that moves it to a new release of a "
+             "shared package: the PR's creation time minus the release's. Read from the version table in each "
+             "Renovate PR's description, so grouped PRs count too. After a release, renovate-trigger schedules "
+             "Renovate on the consumers; the last-7-days column shows whether that keeps the wait short. A PR "
+             "Renovate rewrote to a newer release than it was opened for is left out (it was opened before that "
+             "release). Amber from six hours.")
 
 
 LINKS = [link("Forgejo CI", "/d/forgejo-ci"), link("Renovate operator", "/d/platform-renovate-operator"),
@@ -388,7 +498,7 @@ LINKS = [link("Forgejo CI", "/d/forgejo-ci"), link("Renovate operator", "/d/plat
 
 
 def desk():
-    panels = number(first_screen() + forgejo_ci.lay_out_rows(26, rows()))
+    panels = number(first_screen() + forgejo_ci.lay_out_rows(36, rows()))
     return dashboard(
         UID, "Delivery estate", panels, tags=TAGS, links=LINKS, time_from="now-24h", refresh="5m",
         description="How each repository builds, releases and ships, which version of each shared package it "
