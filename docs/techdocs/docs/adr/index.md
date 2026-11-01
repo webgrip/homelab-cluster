@@ -92,6 +92,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0087](adr-0087-each-namespace-reads-only-its-own-openbao-paths.md) | Each namespace reads only its own OpenBao paths | proposed | 2026-10-25 |
 | [0071](adr-0071-agent-egress-reaches-only-what-it-needs.md) | Agent egress reaches only what it needs: DNS, the model gateway, the forge and its own control plane | accepted | 2026-10-18 |
 | [0077](adr-0077-admins-prove-a-security-key-at-google-and-sessions-end-in-twelve-hours.md) | Admins prove a security key at Google, and the estate re-checks Google every twelve hours | accepted | 2026-10-18 |
+| [0090](adr-0090-claude-reaches-unfold-mcp-through-the-tunnel-from-anthropic-addresses-only.md) | Claude reaches Unfold's MCP endpoint through the tunnel, from Anthropic's addresses only | accepted | 2026-11-01 |
 
 ### 3. Storage
 
