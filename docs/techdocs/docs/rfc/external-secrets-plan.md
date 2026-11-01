@@ -363,7 +363,11 @@ spec:
 
 A second write-capable store, `openbao-push` (role `external-secrets-push`), is used **only**
 by `PushSecret` to seed existing Secret values into OpenBao during migration; it can be
-removed once seeding is done.
+removed once seeding is done. The 27 seed PushSecrets that copied a Secret an ExternalSecret
+owns back to the path that ExternalSecret reads were removed on 2026-11-01: they could push an
+old in-cluster value over a value rotated in OpenBao. n8n's two stay until its ExternalSecrets
+read a store that exists. The store itself stays for the PushSecrets that publish generated
+values.
 
 ### External `ExternalSecret` — three shapes
 
