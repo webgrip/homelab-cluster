@@ -167,3 +167,31 @@ spec:
               - Open the repository's Renovate Dependency Dashboard issue and its open chore(agents) pull request
               - kubectl -n renovate get jobs --sort-by=.metadata.creationTimestamp, then the logs of the latest webgrip-forgejo job for {{ $labels.repository }}
               - docs/techdocs/docs/general/delivery-estate.md
+        - alert: SharedPackageUpdateRedForADay
+          expr: |
+            max by (repository, package, proposed, pull) (
+              last_over_time(repo_config_shared_pin_update{job="repo-config-inventory", state="pr_red"}[2h])
+            ) == 1
+          for: 24h
+          labels:
+            severity: warning
+            owner: platform
+            service: forgejo
+          annotations:
+            summary: "webgrip/{{ $labels.repository }} has a red Renovate pull request for {{ $labels.package }} {{ $labels.proposed }} for a day (repo-config/{{ $labels.repository }})"
+            description: |-
+              What's happening:
+              - The hourly repo-config inventory has read webgrip/{{ $labels.repository }} as behind on {{ $labels.package }}, with Renovate pull request #{{ $labels.pull }} (to {{ $labels.proposed }}) open and its combined commit status failing, without a break, for 24 hours.
+
+              Impact/risk:
+              - The repository stays on an older release of a shared package, and Renovate will not merge the update while the checks are red.
+
+              Likely causes:
+              - The new release changed something the repository relies on (a workflow input, a preset rule, an agent check)
+              - The repository's own CI is red on main too, so every pull request fails
+              - A flaky or broken runner
+
+              First actions:
+              - Open https://forgejo.webgrip.dev/webgrip/{{ $labels.repository }}/pulls/{{ $labels.pull }} and read the failing check
+              - Compare with the newest run on the repository's default branch
+              - docs/techdocs/docs/general/delivery-estate.md

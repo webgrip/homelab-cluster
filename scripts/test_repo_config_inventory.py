@@ -62,6 +62,10 @@ class FakeWorld:
         ]
         self.files = {}
         self.tags = {}
+        self.pulls = {}
+        self.issues = {}
+        self.check_states = {}
+        self.broken_pulls = set()
         self.broken_repositories = set()
         self.forgejo_status = 200
         self.metrics_status = 204
@@ -91,14 +95,25 @@ def handler_for(world):
             self.wfile.write(raw)
 
         def repository_file(self, parsed, query):
-            match = re.match(r"^/api/v1/repos/webgrip/(?P<repo>[^/]+)/(?P<kind>raw|contents|tags)/?(?P<path>.*)$",
-                             parsed.path)
+            match = re.match(r"^/api/v1/repos/webgrip/(?P<repo>[^/]+)/(?P<kind>raw|contents|tags|pulls|issues|commits)"
+                             r"/?(?P<path>.*)$", parsed.path)
             if not match:
                 return self.reply(404, {"message": "not found"})
             repo, kind = match.group("repo"), match.group("kind")
             path = urllib.parse.unquote(match.group("path"))
             if repo in world.broken_repositories:
                 return self.reply(500, {"message": "boom"})
+            if kind == "pulls" and repo in world.broken_pulls:
+                return self.reply(500, {"message": "boom"})
+            if kind == "pulls":
+                limit = int(query.get("limit", "30"))
+                page = int(query.get("page", "1"))
+                return self.reply(200, world.pulls.get(repo, [])[(page - 1) * limit:page * limit])
+            if kind == "issues":
+                return self.reply(200, world.issues.get(repo, []))
+            if kind == "commits":
+                sha = path.removesuffix("/status")
+                return self.reply(200, {"state": world.check_states.get(sha, ""), "statuses": []})
             if kind == "tags":
                 limit = int(query.get("limit", "30"))
                 page = int(query.get("page", "1"))
@@ -319,7 +334,7 @@ class InventoryTest(unittest.TestCase):
         self.assertEqual(metrics[("repo_config_shared_pin_releases_behind",
                                   'package="agent-standards",repository="homelab-cluster"')], 0)
         self.assertEqual(metrics[("repo_config_workflow_call",
-                                  'repository="homelab-cluster",workflow="semantic-release"')], 1)
+                                  'form="reusable",repository="homelab-cluster",workflow="semantic-release"')], 1)
         self.assertEqual(metrics[("repo_config_scan_failed", 'repository="homelab-cluster"')], 0)
         self.assertEqual(metrics[("repo_config_inventory_scan_failed_repositories", "")], 0)
 
@@ -393,6 +408,218 @@ class InventoryTest(unittest.TestCase):
         self.assertEqual(self.repository_info(metrics, "homelab-cluster")["workflows"], "v3.2.0")
         self.assertNotIn(("repo_config_shared_pin_releases_behind",
                           'package="workflows",repository="homelab-cluster"'), metrics)
+
+    def test_composite_actions_are_calls_and_pins_in_both_forms(self):
+        self.world.tags["workflows"] = ["v4.0.0", "v3.4.0", "v3.3.0"]
+        sha = "0123456789abcdef0123456789abcdef01234567"
+        self.world.files[("erfbeeld", ".forgejo/workflows/ci.yml")] = (
+            "on: push\njobs:\n  build:\n    runs-on: docker\n    steps:\n"
+            "      - uses: https://forgejo.webgrip.dev/webgrip/workflows/.forgejo/composite-actions/"
+            "docker-build-push-registry-fast@v3.4.0\n"
+            f"      - uses: webgrip/workflows/.forgejo/composite-actions/cosign-sign-attest@{sha} # v3.3.0\n")
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        info = self.repository_info(metrics, "erfbeeld")
+        self.assertEqual(info["workflows"], "v3.3.0, v3.4.0 · 2 behind")
+        self.assertEqual(info["workflow_calls"], "2")
+        self.assertEqual(info["ships"], "image")
+        self.assertEqual(metrics[("repo_config_workflow_call",
+                                  'form="composite",repository="erfbeeld",workflow="docker-build-push-registry-fast"')], 1)
+        self.assertEqual(metrics[("repo_config_workflow_call",
+                                  'form="composite",repository="erfbeeld",workflow="cosign-sign-attest"')], 1)
+        self.assertNotIn(("repo_config_shared_pin_unversioned", 'package="workflows",repository="erfbeeld"'), metrics)
+
+    def test_a_pin_is_versioned_only_as_a_tag_or_a_sha_with_its_tag(self):
+        self.world.tags["workflows"] = ["v3.4.0"]
+        sha = "0123456789abcdef0123456789abcdef01234567"
+        cases = {
+            "erfbeeld": f"uses: webgrip/workflows/.forgejo/workflows/tests.yml@v3.4.0\n",
+            "homelab-cluster": f"uses: webgrip/workflows/.forgejo/workflows/tests.yml@{sha} # v3.4.0\n",
+            ".profile": f"uses: https://forgejo.webgrip.dev/webgrip/workflows/.forgejo/composite-actions/openbao-read@{sha}\n",
+            "new-thing": "uses: https://forgejo.webgrip.dev/webgrip/workflows/.forgejo/composite-actions/edge-verify@main\n",
+            "other-thing": f"uses: webgrip/workflows/.forgejo/composite-actions/openbao-read@{sha} # main\n",
+        }
+        self.world.repositories += [repository("new-thing"), repository("other-thing")]
+        for name, line in cases.items():
+            self.world.files[(name, ".forgejo/workflows/ci.yml")] = "jobs:\n  a:\n    steps:\n      - " + line
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        for name in ("erfbeeld", "homelab-cluster"):
+            self.assertEqual(self.repository_info(metrics, name)["workflows"], "v3.4.0", name)
+            self.assertNotIn(("repo_config_shared_pin_unversioned", f'package="workflows",repository="{name}"'),
+                             metrics)
+        for name in (".profile", "new-thing", "other-thing"):
+            self.assertEqual(self.repository_info(metrics, name)["workflows"], "unversioned", name)
+            self.assertEqual(metrics[("repo_config_shared_pin_unversioned",
+                                      f'package="workflows",repository="{name}"')], 1, name)
+
+    def test_a_tooling_repository_does_not_pin_itself(self):
+        self.world.repositories.append(repository("workflows"))
+        self.world.tags["workflows"] = ["v3.4.0"]
+        self.world.files[("workflows", ".forgejo/workflows/ci.yml")] = (
+            "jobs:\n  a:\n    uses: webgrip/workflows/.forgejo/workflows/tests.yml@main\n")
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        self.assertEqual(self.repository_info(metrics, "workflows")["workflows"], "-")
+        self.assertNotIn(("repo_config_shared_pin_unversioned", 'package="workflows",repository="workflows"'), metrics)
+
+    def test_the_release_image_is_a_semantic_release_config_pin(self):
+        self.world.tags["semantic-release-config"] = ["v2.5.1", "v2.5.0", "v2.4.0", "v2.2.0", "v0.0.0"]
+        image = "harbor.webgrip.dev/webgrip/semantic-release"
+        digest = "@sha256:" + "a" * 64
+        self.world.files.update({
+            ("erfbeeld", ".forgejo/workflows/release.yml"):
+                f"jobs:\n  release:\n    container:\n      image: {image}:2.4.0{digest}\n"
+                f"  other:\n    uses: webgrip/workflows/.forgejo/workflows/semantic-release.yml@v3.4.0\n"
+                f"    with:\n      toolchain-image: {image}:2.2.0{digest}\n"
+                f"  retired:\n    container:\n      image: {image}:0.9.1\n",
+            ("erfbeeld", "package.json"): '{"devDependencies": {"@webgrip/semantic-release-config": "2.5.0"}}',
+            ("homelab-cluster", ".forgejo/workflows/release.yml"):
+                f"jobs:\n  release:\n    container: '{image}:v2.5.1'\n",
+        })
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        self.assertEqual(self.repository_info(metrics, "erfbeeld")["semantic_release_config"],
+                         "v2.2.0, v2.4.0, v2.5.0 · 3 behind")
+        self.assertEqual(self.repository_info(metrics, "homelab-cluster")["semantic_release_config"], "v2.5.1")
+
+    def test_each_release_style_is_told_apart(self):
+        self.world.repositories += [repository(name) for name in ("direct", "shared", "old-path", "own", "quiet")]
+        composite = "uses: https://forgejo.webgrip.dev/webgrip/workflows/.forgejo/composite-actions"
+        self.world.files.update({
+            ("direct", ".forgejo/workflows/release.yml"):
+                "on: push\njobs:\n  release:\n    steps:\n      - uses: ./.forgejo/actions/release\n",
+            ("direct", ".forgejo/actions/release/action.yml"):
+                "runs:\n  using: composite\n  steps:\n    - shell: sh\n"
+                "      run: \"${GITHUB_WORKSPACE}/node_modules/.bin/webgrip-release\" --forge-url x\n",
+            ("shared", ".forgejo/workflows/release.yml"):
+                f"jobs:\n  release:\n    container:\n      image: harbor.webgrip.dev/webgrip/semantic-release:2.5.0\n"
+                f"    steps:\n      - {composite}/semantic-release@v4.0.0\n"
+                f"      - {composite}/renovate-trigger@v4.0.0\n",
+            ("old-path", ".forgejo/workflows/release.yml"):
+                f"jobs:\n  release:\n    steps:\n      - {composite}/semantic-release-monorepo@v3.4.0\n"
+                f"      - run: node bin/webgrip-release.cjs\n",
+            ("own", ".forgejo/workflows/release.yml"):
+                "jobs:\n  release:\n    steps:\n      - run: npx semantic-release\n",
+            ("quiet", ".forgejo/workflows/ci.yml"):
+                "jobs:\n  test:\n    container:\n      image: harbor.webgrip.dev/webgrip/semantic-release:2.5.0\n"
+                "    steps:\n      # semantic-release runs elsewhere; webgrip-release too\n      - run: make test\n",
+            ("quiet", ".forgejo/workflows/library.yml"):
+                f"on:\n  workflow_call:\njobs:\n  release:\n    steps:\n      - {composite}/semantic-release-monorepo@main\n",
+            ("semantic-release-config", ".forgejo/workflows/release.yml"):
+                "jobs:\n  release:\n    steps:\n      - run: |\n          node bin/webgrip-release.cjs --forge-url x\n",
+        })
+        self.world.repositories.append(repository("semantic-release-config"))
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        expected = {"direct": "webgrip-release", "semantic-release-config": "webgrip-release",
+                    "shared": "shared semantic-release", "old-path": "monorepo (old path)",
+                    "own": "own semantic-release", "quiet": "none"}
+        for name, style in expected.items():
+            self.assertEqual(self.repository_info(metrics, name)["releases"], style, name)
+
+    def pull(self, number, title, branch="renovate/webgrip", body="", created="2026-10-31T10:00:00Z"):
+        sha = f"{number:040x}"
+        return {"number": number, "title": title, "body": body, "created_at": created,
+                "head": {"ref": branch, "sha": sha}}
+
+    def update(self, metrics, name, package):
+        rows = [labels for metric, labels in metrics
+                if metric == "repo_config_shared_pin_update" and f'repository="{name}"' in labels
+                and f'package="{package}"' in labels]
+        self.assertEqual(len(rows), 1, rows)
+        return dict(re.findall(r'(\w+)="([^"]*)"', rows[0]))
+
+    def test_each_behind_pin_states_whether_an_update_is_on_its_way(self):
+        self.world.tags["workflows"] = ["v4.0.0", "v3.5.1", "v3.4.0"]
+        self.world.tags["renovate-config"] = ["v1.19.3", "v1.19.2"]
+        self.world.tags["agent-standards"] = ["v0.6.1", "v0.5.3"]
+        self.world.tags["semantic-release-config"] = ["v2.5.1", "v2.4.0"]
+        image = "harbor.webgrip.dev/webgrip/semantic-release"
+        for name in ("homelab-cluster", "erfbeeld", ".profile"):
+            self.world.files.update({
+                (name, ".forgejo/workflows/ci.yml"):
+                    f"jobs:\n  a:\n    container:\n      image: {image}:2.4.0\n"
+                    "    steps:\n      - uses: https://forgejo.webgrip.dev/webgrip/workflows/.forgejo/"
+                    "composite-actions/semantic-release@v3.4.0\n",
+                (name, "renovate.json"): '{"extends": ["local>webgrip/renovate-config:reviewed#v1.19.2"]}',
+                (name, "apm.yml"): "dependencies:\n  - git: https://forgejo.webgrip.dev/webgrip/agent-standards.git\n"
+                                   "    path: packages/baseline\n    ref: v0.5.3\n",
+            })
+        table = ("| Package | Type | Update | Change |\n|---|---|---|---|\n"
+                 "| [webgrip/workflows](https://forgejo.webgrip.dev/webgrip/workflows) | action | minor | "
+                 "`v3.4.0` → `v3.5.1` |\n")
+        self.world.pulls["homelab-cluster"] = [
+            self.pull(16, "fix(deps): update webgrip dependencies", body=table),
+            self.pull(17, "feat(actions): Update dependency webgrip/workflows to v4.0.0",
+                      branch="renovate/webgrip-workflows-4.x", created="2026-11-01T09:00:00Z"),
+            self.pull(18, "chore(renovate): update dependency webgrip/renovate-config ( v1.19.2 ➔ v1.19.3 )",
+                      branch="renovate/webgrip-renovate-config-1.x"),
+            self.pull(19, "chore(agents): update agent packages",
+                      branch="renovate/agent-package-webgrip-agent-standards",
+                      body="| Package | Update | Change |\n|---|---|---|\n| [webgrip/agent-standards]"
+                           "(https://forgejo.webgrip.dev/webgrip/agent-standards) | minor | `v0.5.3` → `v0.6.1` |\n"),
+            self.pull(20, "chore: update webgrip/workflows to v9.9.9", branch="feature/x"),
+        ]
+        self.world.check_states.update({f"{17:040x}": "success", f"{18:040x}": "failure", f"{19:040x}": "pending"})
+        self.world.issues["homelab-cluster"] = [{"title": "Renovate Dependency Dashboard", "body":
+            "## Pending Approval\n\n - [ ] <!-- approve-branch=renovate/webgrip -->ci(actions): Update "
+            f"{image} Docker tag ( 2.4.0 ➔ 2.5.1 )\n"}]
+        self.world.issues["erfbeeld"] = [{"title": "Renovate Dependency Dashboard", "body":
+            "## Rate-Limited\n\n - [ ] <!-- unlimit-branch=renovate/webgrip-workflows-4.x -->feat(actions): Update "
+            "dependency webgrip/workflows ( v3.4.0 ➔ v4.0.0 )\n\n## Open\n\n - [ ] <!-- rebase-branch=renovate/x -->"
+            "[chore(renovate): update dependency webgrip/renovate-config ( v1.19.2 ➔ v1.19.3 )](pulls/3)\n"}]
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        green = self.update(metrics, "homelab-cluster", "workflows")
+        self.assertEqual((green["state"], green["proposed"], green["pull"]), ("pr_green", "v4.0.0", "17"))
+        red = self.update(metrics, "homelab-cluster", "renovate-config")
+        self.assertEqual((red["state"], red["proposed"], red["pull"]), ("pr_red", "v1.19.3", "18"))
+        pending = self.update(metrics, "homelab-cluster", "agent-standards")
+        self.assertEqual((pending["state"], pending["proposed"]), ("pr_pending", "v0.6.1"))
+        approval = self.update(metrics, "homelab-cluster", "semantic-release-config")
+        self.assertEqual((approval["state"], approval["proposed"], approval["pull"]),
+                         ("awaits_approval", "v2.5.1", ""))
+        queued = self.update(metrics, "erfbeeld", "workflows")
+        self.assertEqual((queued["state"], queued["proposed"]), ("queued", "v4.0.0"))
+        self.assertEqual(self.update(metrics, "erfbeeld", "renovate-config")["state"], "no_pr")
+        self.assertEqual(self.update(metrics, ".profile", "workflows")["state"], "no_pr")
+        age = metrics[("repo_config_shared_pin_update_age_seconds",
+                       'package="workflows",repository="homelab-cluster"')]
+        self.assertGreater(age, 0)
+        self.assertNotIn(("repo_config_shared_pin_update_age_seconds",
+                          'package="semantic-release-config",repository="homelab-cluster"'), metrics)
+        listings = [path for path, _, _ in self.world.requests if path.endswith("/pulls")]
+        self.assertEqual(sorted(listings), ["/api/v1/repos/webgrip/.profile/pulls",
+                                            "/api/v1/repos/webgrip/erfbeeld/pulls",
+                                            "/api/v1/repos/webgrip/homelab-cluster/pulls"])
+
+    def test_a_repository_on_the_newest_releases_reads_no_pull_requests(self):
+        self.world.tags["workflows"] = ["v3.4.0"]
+        self.world.files[("erfbeeld", ".forgejo/workflows/ci.yml")] = (
+            "jobs:\n  a:\n    uses: webgrip/workflows/.forgejo/workflows/tests.yml@v3.4.0\n")
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        self.assertFalse([path for path, _, _ in self.world.requests if path.endswith(("/pulls", "/issues"))])
+        self.assertFalse([labels for metric, labels in metrics if metric == "repo_config_shared_pin_update"])
+
+    def test_unreadable_pull_requests_leave_the_pins_and_skip_the_update_state(self):
+        self.give_homelab_cluster_a_delivery_chain()
+        self.world.broken_pulls.add("homelab-cluster")
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        self.assertEqual(self.repository_info(metrics, "homelab-cluster")["workflows"], "v3.2.0 · 2 behind")
+        self.assertEqual(metrics[("repo_config_scan_failed", 'repository="homelab-cluster"')], 0)
+        self.assertFalse([labels for metric, labels in metrics if metric == "repo_config_shared_pin_update"])
+        self.assertIn("could not read the open updates of homelab-cluster", output)
 
     def test_model_facts_match_yaml_on_the_real_model(self):
         import yaml
