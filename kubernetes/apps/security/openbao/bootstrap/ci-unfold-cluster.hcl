@@ -65,3 +65,7 @@ path "secret/data/cloudflare/unfold-tunnel" {
 path "secret/data/unfold-main/staging/cloudflare-tunnel" {
   capabilities = ["create", "read", "update"]
 }
+
+path "secret/data/unfold-main/staging/google-oidc" {
+  capabilities = ["read"]
+}
