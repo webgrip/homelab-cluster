@@ -94,11 +94,15 @@ spec:
       readOnly: true
   nodeSelector:
     node.webgrip.io/pool: worker
-  tolerations:
-    - key: dedicated
-      operator: Equal
-      value: fringe
-      effect: NoSchedule
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                  - fringe-workstation
   resources:
     requests:
       cpu: 250m

@@ -175,6 +175,19 @@ The in-cluster Renovate also runs against Forgejo (`webgrip-forgejo` RenovateJob
 
 Debugging trick for "which repos are skipped and why": `renovate --autodiscover --write-discovered-repos` with `LOG_LEVEL=debug`.
 
+## Where Renovate runs
+
+Every RenovateJob (`webgrip-forgejo`, `webgrip-gitops`, `ploeg-hq`, `wellhead-dev`) requires a node other than `fringe-workstation`. The operator copies `spec.affinity` into both its discovery and its executor Jobs.
+
+Why: on 2026-11-01 every Renovate pod in the namespace ran on `fringe-workstation`. The `dedicated=fringe` taint the jobs tolerated was retired on 2026-06-19, so nothing kept them off it, and the scheduler favours the node that already holds the multi-GB `renovate:*-full` image. Each repository run writes about 1 GB, about 300 GB a day in all. That node's 256 GB SATA SSD also holds Forgejo, its Postgres and the CI Docker daemon: it wrote 1.1 TB in a day against about 0.4-0.5 TB on worker-1 and worker-2, and spent 37% of the week stalled on disk IO against 1-2% on the other workers. Builds on it lost their BuildKit session halfway (`frontend grpc server closed unexpectedly`, `forwarding Ping: no such job`); all 17 such errors in two weeks came from that node.
+
+The rule is required, not preferred: the scheduler's image-locality score is what pulled the jobs there, and the workers have the room (Renovate runs one repository at a time at 250m CPU and 512Mi requested).
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Renovate executor pod `Pending` with `node(s) didn't match Pod's node affinity/selector` | worker-1 and worker-2 are both full | free room on the workers; do not drop the rule without checking fringe's disk stall first (`rate(node_pressure_io_stalled_seconds_total{instance="10.0.0.30:9100"}[5m])`) |
+| First run after the change is slow at image pull | the `-full` image is not yet on the workers | expected once per node per Renovate image |
+
 ## More detail
 
 - Full Renovate docs/config: [docs/techdocs/docs/renovate.md](../general/renovate.md)
