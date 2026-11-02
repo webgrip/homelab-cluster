@@ -13,7 +13,7 @@ Submit the post's own title:
 > **Tokens are cheap. Review isn't.**
 
 HN keeps original titles and strips editorializing; this one has no number, no superlative and no
-product name, so it should survive as is. Drop the subtitle. Do not add "Glide" or "Show HN" to it.
+product name, so it should survive as is. Drop the subtitle. Do not add "Unfold" or "Show HN" to it.
 
 Fallback, only if the original gets retitled or you prefer something more literal (it must still be
 defensible as the post's own framing):
@@ -21,7 +21,7 @@ defensible as the post's own framing):
 > Agent tokenomics, review debt and comprehension debt
 
 **Show HN?** Possible but not for this submission. Show HN is for something readers can try now,
-and the post's URL is an essay. A later `Show HN: Glide – turns tickets into agent-written pull
+and the post's URL is an essay. A later `Show HN: Unfold – turns tickets into agent-written pull
 requests you review` would point at the repository and lean on `mise run demo-unified`. Treat that
 as a separate piece at a later date, and only after someone other than you has run the demo on a
 clean machine.
@@ -40,7 +40,7 @@ the docs site.
 
 Facts to draw on, in no required order. Write it in your own words, short, no marketing.
 
-- You maintain Glide alone; it is pre-1.0, Apache-2.0, self-hosted on Kubernetes.
+- You maintain Unfold alone; it is pre-1.0, Apache-2.0, self-hosted on Kubernetes.
 - Works with Forgejo or GitLab, and Vikunja or ClickUp. No GitHub, Jira or Linear.
 - The starting point: a capacity plan for your homelab put review capacity first and CPU/memory
   last (point (a) of the publish checklist applies to how you describe who produced that plan).
@@ -50,12 +50,12 @@ Facts to draw on, in no required order. Write it in your own words, short, no ma
   the gateway's log, per-run capped keys that expire after four hours, one pull request, human merge.
 - What is not done: sandboxing (Kata/gVisor executor experimental), per-run forge tokens (designed,
   off), review-queue admission (proposed), no measured merge rate.
-- A code pointer for the curious: forgejo.webgrip.dev/webgrip/glide, and the no-spend demo.
+- A code pointer for the curious: forgejo.webgrip.dev/webgrip/unfold, and the no-spend demo.
 
 ## Likely objections, and the facts to answer them with
 
 **1. "LiteLLM already does budgets and expiring keys."**
-True, and Glide uses those keys. The addition: one pool per Work Item shared by all its runs, the
+True, and Unfold uses those keys. The addition: one pool per Work Item shared by all its runs, the
 reservation inside one database transaction before a key exists, and settlement that returns the
 unused hold. A monthly cap reports overspend afterwards; it can't say before a run whether this
 ticket may still cost another $2.40. Test: `TestAuthorizeIsAtomicUnderConcurrency` (five requests,
@@ -76,7 +76,7 @@ KPI page says nothing is measured yet. Your previous post also conceded the revi
 record; check whether what you said there still holds before repeating it.
 
 **4. "The review-debt formula is just a min(). Theory of constraints, nothing new."**
-Agree. The post attributes it to Glide's planning docs and uses it as arithmetic, not a discovery.
+Agree. The post attributes it to Unfold's planning docs and uses it as arithmetic, not a discovery.
 The point is the consequence: 20 tickets, 50 changes, 8 reviewed gives 8 shipped; 100 changes still
 gives 8 and 92 waiting.
 
@@ -95,11 +95,11 @@ All stated in the TL;DR. Don't soften it.
 Agent Substrate injects one credential per hostname, so no separate model key per run; on your
 cluster it would need a privileged daemon on every node, Kubernetes 1.37 and a beta API. Substrate
 also runs agent pods as root with 13 added capabilities. The post positions kagent's tool server as
-something Glide could consume over MCP, not a competitor to beat.
+something Unfold could consume over MCP, not a competitor to beat.
 
 **9. "Did an AI write this post?"**
 Answer honestly, in your own words, with whatever disclosure you're comfortable with. The post
-itself says agents commit to Glide under `agent-builder`, so the topic will come up.
+itself says agents commit to Unfold under `agent-builder`, so the topic will come up.
 
 ## Timing
 

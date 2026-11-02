@@ -35,7 +35,7 @@ Before I'd let any coding-agent tool open pull requests, I'd ask it these eight 
 
 Behind all eight sits the question an engineering lead eventually gets: who is responsible for this change? If the answer is "the agent", nobody is.
 
-I've been building an open-source tool around these questions, called Glide. It never merges. Whoever presses merge owns the change.
+I've been building an open-source tool around these questions, called Unfold. It never merges. Whoever presses merge owns the change.
 
 Who can use it today: teams on Forgejo or GitLab with Vikunja or ClickUp, running their own Kubernetes. No GitHub, Jira or Linear yet. It is pre-1.0 and I'm the only maintainer. The checklist works for whatever tool you pick.
 
@@ -47,9 +47,9 @@ Which of the eight is hardest to get a straight answer to in your setup?
 
 ## First comment (post it yourself right after publishing)
 
-The full write-up, including Glide's own answer to each of the eight questions (some of them are "not yet"): CANONICAL_URL_TBD
+The full write-up, including Unfold's own answer to each of the eight questions (some of them are "not yet"): CANONICAL_URL_TBD
 
-Code: forgejo.webgrip.dev/webgrip/glide
+Code: forgejo.webgrip.dev/webgrip/unfold
 Docs: docs.webgrip.dev/glide
 
 ---
