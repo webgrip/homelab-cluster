@@ -1,8 +1,8 @@
 # Information radiators: walls, boards and playlists
 
 What goes on a screen that nobody is looking at directly, why each tile earns its place, and how
-to change one. The pattern comes from code14's staging cluster, adapted to what this cluster
-actually runs: Forgejo CI, Unfold, Flux, Talos, Longhorn, CloudNativePG and the Vikunja roadmap.
+to change one. The tiles are drawn from what this cluster actually runs: Forgejo CI, Unfold,
+Flux, Talos, Longhorn, CloudNativePG and the Vikunja roadmap.
 
 ## Glossary
 
@@ -86,8 +86,8 @@ fails a query leaves no trace, so "no signal" was decided on duplication, not on
 
 ## The Today wall
 
-`/d/today` is one Business Text panel across all 24 rows, ported from code14's Team C wall: the
-same night-blue ground, typefaces and layout, drawn from this cluster's sources. It answers three
+`/d/today` is one Business Text panel across all 24 rows: a night-blue ground with its own
+typefaces and layout, drawn from this cluster's sources. It answers three
 questions for whoever writes code here: what landed, where the work is and how fast it flows, what
 the machine did, and what needs a hand.
 
@@ -196,9 +196,8 @@ python3 scripts/dashboards/generate.py --check  # fail when a committed file is 
 **Playlists are `GrafanaManifest` CRs.** Grafana 13 serves playlists as an App Platform kind
 (`playlist.grafana.app/v1`), and grafana-operator 5.24's `GrafanaManifest` applies any App
 Platform object. So a playlist is reconciled like every other Grafana resource, Flux prunes it
-when it leaves git, and its uid (`metadata.name` of the template) is chosen here. code14's
-staging cluster uses an hourly CronJob with an Editor token instead, because its operator
-predates `GrafanaManifest`.
+when it leaves git, and its uid (`metadata.name` of the template) is chosen here. An operator
+that predates `GrafanaManifest` would need an hourly CronJob with an Editor token instead.
 
 **Alert walls read Alertmanager, not `ALERTS`.** The live counts and the Firing now table come
 from Alertmanager's API through the Infinity datasource `alertmanager-api`, with

@@ -5,8 +5,7 @@ date: 2026-10-04
 
 # The agent plane is daemonless: dind stays false everywhere, gates run in CI
 
-Technical Story: [RFC: CI isolation on Talos](../rfc/rfc-ci-isolation-talos.md); cross-estate
-alignment with code14 staging-cluster ADR-0038 (their twin of this record).
+Technical Story: [RFC: CI isolation on Talos](../rfc/rfc-ci-isolation-talos.md).
 
 ## Context and Problem Statement
 
@@ -24,19 +23,18 @@ The cost of that shape is no longer hypothetical:
   namespace by design, so DinD-nested containers land outside `kubepods`, invisible to
   kubelet eviction and the Talos OOMController. Sidero has said outright that privileged
   dind on Talos is unsupported.
-* code14's staging cluster (the other estate running ploeg) refused the shape at admission
-  from day one (their RFC-0013: `claude-code` harness, `dind: false`, "no privileged
-  container, no exception, smaller blast radius").
-* The estates were divergent on a security-load-bearing design for no capability reason:
-  every webgrip team that *explicitly* declared a harness already ran `dind: false`.
+* Refusing the shape at admission works from day one: a `claude-code` harness with
+  `dind: false` runs with no privileged container, no exception, and a smaller blast radius.
+* The privileged default carried no capability reason: every webgrip team that
+  *explicitly* declared a harness already ran `dind: false`.
 
-The owner decided (2026-08-28) that both estates adopt one design, choosing "daemonless"
-from three candidate paths (see options below).
+The owner decided (2026-08-28) on one design, choosing "daemonless" from three candidate
+paths (see options below).
 
 ## Decision Drivers
 
-* One design across webgrip homelab and code14 staging — identical policy floor, identical
-  worker pod shape, so a change proves itself in one estate and ports as a diff.
+* One design on every cluster that runs the agent plane — identical policy floor, identical
+  worker pod shape, so a change proves itself on one cluster and ports as a diff.
 * Remove the incident class, not contain it: no privileged container should exist in the
   agent plane at all.
 * Gates must still run in CI's exact images — the property the DinD design existed for —
@@ -59,7 +57,8 @@ from three candidate paths (see options below).
 Chosen option: **"Daemonless"**, because it is secure by construction rather than by
 containment — there is no privileged surface left to wall off — it needs zero node
 prerequisites (so it is the only option that is *identical* on any conformant cluster,
-including a future cloud one), and it matches where both estates were already converging.
+including a future cloud one), and it matches where the explicitly declared harnesses had
+already converged.
 
 Implemented in this repo and its siblings, one coherent change:
 
@@ -67,8 +66,7 @@ Implemented in this repo and its siblings, one coherent change:
   `harness: {name: openhands, dind: false}` becomes the estate default, overriding the
   chart's `dind: true`; the dormant `dindImage`/`dindResources` values are deleted.
 * `kubernetes/apps/ploeg/namespace.yaml` — PSA `enforce` returns from `privileged` to
-  `baseline`; the namespace sits under the same floor as every other app namespace and the
-  same floor as code14's ploeg namespace.
+  `baseline`; the namespace sits under the same floor as every other app namespace.
 * `kubernetes/apps/kyverno/exceptions/app/exception-pod-security-baseline-cel.yaml` — the
   `exception-ploeg-worker-privileged-cel` waiver is deleted. Its match-arm lore (the
   2026-07-30 inspection-based cleanup that broke every DinD dispatch) is honored, not
@@ -87,10 +85,11 @@ hard requirement, the Kata path via a new ADR; never a bare privileged sidecar. 
 
 ### Consequences
 
-* Good, because no pod in the agent plane is privileged, on either estate; the KEP-2254
+* Good, because no pod in the agent plane is privileged; the KEP-2254
   cgroup-invisibility class that took a node down twice cannot occur here.
-* Good, because the two estates now share one worker pod shape, one policy floor, and one
-  entrypoint contract — a fix or audit in one is a diff away from the other.
+* Good, because the design is one worker pod shape, one policy floor, and one entrypoint
+  contract that any conformant cluster can run — a fix or audit made here is a diff away from
+  every other install.
 * Good, because re-enabling DinD now requires an MR that must bring back three named things
   (values, waiver, PSA label) — it cannot happen by inheriting a chart default.
 * Bad, because bronze-builder and silver lose in-run gate execution: the agent-runner image
@@ -129,8 +128,8 @@ hard requirement, the Kata path via a new ADR; never a bare privileged sidecar. 
   standing smoke Job, real guest kernel verified) and it closes both the escape risk and
   the cgroup hole.
 * Bad, because ~160Mi/250m overhead per pod, the warm docker store needs a block volume,
-  a (defensible) Kyverno exception must still exist — and code14 staging would first have
-  to verify KVM on its workers, so estate-identity is conditional, not guaranteed.
+  a (defensible) Kyverno exception must still exist — and any other cluster would first
+  have to verify KVM on its workers, so an identical design is conditional, not guaranteed.
 
 ### Rootless dind + user namespaces
 
@@ -144,8 +143,7 @@ hard requirement, the Kata path via a new ADR; never a bare privileged sidecar. 
   record and options ranking this decision draws on).
 * 2026-08-28 — decided by the owner and implemented across
   `homelab-cluster` (namespace, HelmRelease, Kyverno waiver) and
-  `webgrip/infrastructure` (agent-runner image); code14 twin recorded as staging-cluster
-  ADR-0038.
+  `webgrip/infrastructure` (agent-runner image).
 * Refines [ADR-0048](adr-0048-dark-factory-execution-layer.md): the execution layer stands,
   its privileged-DinD plane aspect is retired.
 * Relates to [ADR-0050](adr-0050-per-repo-delivery-contract.md) (delivery contracts must

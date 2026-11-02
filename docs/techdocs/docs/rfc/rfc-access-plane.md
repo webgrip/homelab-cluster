@@ -1,17 +1,15 @@
 # RFC: The access plane — Google identity, one entitlement model, one reconciler
 
 > Status: **Accepted**, in rollout (stages 4 and 7 have a human step left) · Date: 2026-09-14 · Supersedes the open items of
-> [Identity & SSO](rfc-identity-sso.md) · Sibling of code14
-> [RFC-0018](https://gitlab.com/code14nl/internal/devops/staging-cluster/-/blob/main/docs/rfcs/rfc-0018-the-access-plane-is-a-provider-not-a-script.md)
-> (staging-cluster), which this deliberately builds past.
+> [Identity & SSO](rfc-identity-sso.md).
 
 > **TL;DR.** People sign in with their Google Workspace account and nothing else. Who may do what
 > is declared once, in four small YAML files, and one OpenTofu module run by Flux's
-> tofu-controller makes Authentik, OpenBao and the Kubernetes API agree with it. The staging
-> cluster reached the same shape through a 3,000-line Python+CUE renderer, a bash converger and a
-> membership CronJob, and then decided to replace the converger with the provider. This estate is
-> greenfield for all of it, so it skips straight to the end state and builds none of the
-> intermediate machinery: no CUE, no renderer, no CronJob, no generated files in Git.
+> tofu-controller makes Authentik, OpenBao and the Kubernetes API agree with it. The usual road
+> to that shape runs through a Python+CUE renderer, a bash converger and a membership CronJob,
+> each of which the provider later makes unnecessary. This estate is greenfield for all of it,
+> so it skips straight to the end state and builds none of the intermediate machinery: no CUE,
+> no renderer, no CronJob, no generated files in Git.
 
 ## Why
 
@@ -34,13 +32,11 @@ What exists today (verified in-tree 2026-09-14, [inventory](#appendix-a-what-exi
   a blueprint could never be revoked by deleting the line, which is the guarantee an access model
   exists to provide.
 
-The staging cluster answered the same questions between 2026-08-20 and 2026-09-14 and left a
-paper trail worth reading before repeating it: per-user Kubernetes identity via Google directly
-(ADR-0025), Google-only login with the password door unlisted (ADR-0027), one model rendered
-everywhere (ADR-0028), agents acting as a named human (ADR-0033), and finally the provider-backed
-reconciler (ADR-0048) that deleted 3,900 lines of shell and generated YAML. The shape is right.
-The build order was expensive because it was discovered, and the last step made three of the
-earlier ones unnecessary. This RFC starts where staging ended.
+The answers are known: per-user Kubernetes identity via Google directly, Google-only login with
+the password door unlisted, one model projected everywhere, agents acting as a named human, and
+a provider-backed reconciler. Built in the order they are usually discovered, the last step
+makes the renderer, the converger and the generated YAML unnecessary. This RFC starts at the
+end state.
 
 ## Decisions
 
@@ -48,12 +44,12 @@ earlier ones unnecessary. This RFC starts where staging ended.
 | --- | --- | --- | --- |
 | D1 | Upstream identity | Google Workspace (`webgrip.nl`), for every human, on every surface | Authentik local passwords (today); Keycloak as broker |
 | D2 | Broker | Authentik stays; Google is its only interactive source; the password flow survives unlisted as break-glass | Keycloak (CNCF); Dex; Zitadel; no broker |
-| D3 | Enrolment | **Closed.** Users are pre-created from the roster; the Google source links by email and has no enrollment flow | Open enrolment gated on an Internal consent screen (staging) |
-| D4 | Reconciler | One OpenTofu module, run in-cluster by tofu-controller (Flux), providers `authentik`, `vault`, `kubernetes` | Python renderer + CUE + CronJob converger (staging v1); Crossplane; Burrito; `tofu apply` from CI |
-| D5 | Model | Four YAML files, JSON Schema for shape, a 60-line validator for cross-file rules and dates, read directly by the module | CUE closed structs (staging); the model as CRDs; Backstage catalog as system of record |
-| D6 | State | tofu-controller's default: a Kubernetes Secret in `security`, etcd-encrypted at rest | S3 bucket on Garage with a seeded key (staging) |
+| D3 | Enrolment | **Closed.** Users are pre-created from the roster; the Google source links by email and has no enrollment flow | Open enrolment gated on an Internal consent screen |
+| D4 | Reconciler | One OpenTofu module, run in-cluster by tofu-controller (Flux), providers `authentik`, `vault`, `kubernetes` | Python renderer + CUE + CronJob converger; Crossplane; Burrito; `tofu apply` from CI |
+| D5 | Model | Four YAML files, JSON Schema for shape, a 60-line validator for cross-file rules and dates, read directly by the module | CUE closed structs; the model as CRDs; Backstage catalog as system of record |
+| D6 | State | tofu-controller's default: a Kubernetes Secret in `security`, etcd-encrypted at rest | S3 bucket on Garage with a seeded key |
 | D7 | Kubernetes API | OIDC flags on the API server pointing at Google **directly**, `hd=webgrip.nl` required, per-user bindings from the model, `kubectl oidc-login` | Via the broker; Pinniped (CNCF sandbox); Teleport; per-person client certs |
-| D8 | Effective access | `escalates_to` edges stay data in the capability catalogue; the closure and the matrix are a docs-build macro, never a committed file | Committed `access-matrix.md` with a drift gate (staging); OpenFGA / SpiceDB |
+| D8 | Effective access | `escalates_to` edges stay data in the capability catalogue; the closure and the matrix are a docs-build macro, never a committed file | Committed `access-matrix.md` with a drift gate; OpenFGA / SpiceDB |
 | D9 | Non-OIDC apps | Envoy Gateway `SecurityPolicy` OIDC against a broker client, one capability per audience | Authentik proxy outpost; per-app oauth2-proxy; accept LAN-only |
 | D10 | Machine identity | Inventory in the roster, no capabilities, reconciled by nothing here; agents run under the human's own credential until an in-cluster agent needs the API | Rostered service accounts in Authentik; impersonation now |
 
@@ -85,8 +81,8 @@ break-glass URL working. Neither failure locks the owner out.
 
 ### D3 · Enrolment is closed, and the roster is the allow-list
 
-Staging enrols anyone who passes Google's Internal consent screen and lets them land in no
-groups. That is safe for a company where the Workspace directory *is* the roster. Here the
+Open enrolment admits anyone who passes Google's Internal consent screen and lets them land in
+no groups. That is safe for a company where the Workspace directory *is* the roster. Here the
 roster is smaller than the directory could ever be, and it may one day include a client with a
 Gmail address that no Workspace rule can express. So the module creates every user from
 `people.yaml` before they ever sign in, the Google source uses `email_link` matching, and it has
@@ -94,28 +90,28 @@ no enrollment flow. A Google account not in the roster fails at Authentik with "
 configured for enrollment" and never obtains a session. Adding a person is one YAML entry;
 removing them deletes the user and every membership on the next reconcile.
 
-Two staging patches disappear with this: the shipped enrollment stage no longer needs its user
-type forced to `internal`, and the `hd` claim is no longer the thing keeping strangers out.
+Two patches open enrolment would need disappear with this: the shipped enrollment stage no
+longer needs its user type forced to `internal`, and the `hd` claim is no longer the thing
+keeping strangers out.
 
 ### D4 · The reconciler is a provider, not a script
 
-The staging cluster's ADR-0048 already makes the argument: comparing what a system has with what
-Git says, and fixing the difference, is what a provider does. Its module manages Authentik,
-OpenBao and Harbor with about 1,100 lines of HCL. This estate reuses the shape and drops Harbor
-(Harbor already maps OIDC groups to roles at login; robot accounts are inventory) and adds the
+Comparing what a system has with what Git says, and fixing the difference, is what a provider
+does. A module of this shape can manage Authentik, OpenBao and Harbor in about 1,100 lines of
+HCL. This estate drops Harbor (Harbor already maps OIDC groups to roles at login; robot accounts
+are inventory) and adds the
 `kubernetes` provider for the human RBAC bindings, so that a person's Kubernetes access and their
 broker groups are one resource graph with one plan.
 
 tofu-controller was checked, not assumed: v0.16.5 shipped 2026-08-06 with monthly patch releases
 through 2026, under `flux-iac`. The module is the investment; if the controller ever goes, the
-same module runs from a Forgejo Actions job with an OpenBao OIDC token, which is the fallback
-ADR-0048 names too.
+same module runs from a Forgejo Actions job with an OpenBao OIDC token.
 
 **Two `Terraform` objects, one module directory.** `access-broker` holds the `authentik` and
 `vault` providers; `access-kubernetes` holds only the `kubernetes` provider and reads the same
 model files. The split exists so that Kubernetes access keeps reconciling, and keeps revoking, on
-a day when Authentik or OpenBao is down. This is the same reason staging keeps `human-access`
-free of any `dependsOn` on the secrets platform.
+a day when Authentik or OpenBao is down, which is also why the Kubernetes half carries no
+`dependsOn` on the secrets platform.
 
 **Credentials.** The runner authenticates to OpenBao through the existing `kubernetes` auth mount
 as a new role `tofu`, with a policy limited to `auth/oidc/*`, `identity/*`, `sys/policies/acl/*`,
@@ -123,8 +119,8 @@ and reads on the two KV paths that hold the Authentik API token and the Google c
 Authentik token is read as an ephemeral value and never enters plan or state. No standing
 credential is created anywhere.
 
-**No comments in the HCL.** Staging's module carries its rationale as comments; this repository
-does not allow that in any language. Intent goes into resource names and this document, and the
+**No comments in the HCL.** This repository does not allow comments in any language, so the
+module cannot carry its rationale inline. Intent goes into resource names and this document, and the
 runbook carries the operator procedure.
 
 ### D5 · The model is four files and one schema
@@ -138,15 +134,13 @@ kubernetes/apps/security/access-plane/model/
   schema/*.schema.json
 ```
 
-`projects.yaml` replaces staging's `teams.yaml` on purpose. Staging's RFC-0017 found that the
-team was an indirection that kept being wrong, and that in the end a project is linked to a
-person. This estate is organised by product and customer (erfbeeld, unfold, twente.dev, the cluster itself), not by team, so the where-axis is the project. A person holds one
+`projects.yaml` instead of a `teams.yaml` is on purpose. A team is an indirection that keeps
+being wrong, and in the end a project is linked to a person. This estate is organised by product and customer (erfbeeld, unfold, twente.dev, the cluster itself), not by team, so the where-axis is the project. A person holds one
 role and a list of project memberships; a scoped capability resolves against the union of what
 those projects own. A dated grant can additionally name a project. Cluster scope is never
-inherited from a role: it is a dated grant on a person with a named owner and a reason, exactly
-as in staging.
+inherited from a role: it is a dated grant on a person with a named owner and a reason.
 
-Every rule staging encoded in CUE is either a shape rule or a cross-file rule. Shape rules
+Every rule a CUE schema would encode is either a shape rule or a cross-file rule. Shape rules
 (closed objects, enums, required fields, date formats) are JSON Schema 2020-12 with
 `additionalProperties: false`, which this repository's editors already understand through the
 `yaml-language-server` header and which `check-jsonschema` runs in the `lint` job and the
@@ -162,8 +156,8 @@ with the break-glass certificate and no checkout, which is the one argument for 
 
 ### D6 · State lives where the controller puts it
 
-Staging keeps state in a Garage bucket because the state names every OIDC client secret and a
-bucket has a backup story. Weighed again here: the bucket adds a key a person seeds, an S3
+A Garage bucket is the obvious place for state, because the state names every OIDC client
+secret and a bucket has a backup story. Weighed here: the bucket adds a key a person seeds, an S3
 backend stanza, and a dependency of the access plane on Garage being up, and what it protects is
 a cache of object ids that `import` blocks rebuild in minutes. The Kubernetes Secret backend is
 the controller's default, is encrypted at rest by Talos's secretbox key like every other Secret
@@ -187,7 +181,7 @@ reboot. **Revisit** when a second cluster exists. Kubernetes' structured
 but Talos exposes no field for it and placing the file needs `machine.files`, which is
 boot-only; flags it is, until Talos grows the field.
 
-Three aggregated ClusterRoles from staging come across as static YAML: `human-reader` (the
+Three aggregated ClusterRoles are static YAML: `human-reader` (the
 built-in `view` plus cluster-scoped reads, no Secrets, no RBAC), `human-operator` (restart,
 scale, exec, port-forward, reconcile Flux, cordon), and `cluster-admin`. They are not per-person
 and never change with the roster, so they are plain manifests Flux reconciles, not module
@@ -208,21 +202,21 @@ stop a `kubectl apply` from cluster-admin; admission can.
 
 `escalates_to` stays on every capability, with a mandatory `via`, because it is what turns
 "platform engineers cannot read Secrets" into "platform engineers can read every Secret through
-`pods/exec`, and here is the edge". The transitive closure is forty lines of Python. Staging
-committed the rendered matrix and gated it against drift; that gate exists only because a
-committed artefact can drift. `docs/techdocs/main.py` is already a build-time macro module that
+`pods/exec`, and here is the edge". The transitive closure is forty lines of Python. A
+committed matrix needs a drift gate, and that gate exists only because a committed artefact can
+drift. `docs/techdocs/main.py` is already a build-time macro module that
 renders inventories from the GitOps tree under Zensical, so the access matrix becomes one more
 macro: declared column, reachable column, surfaces with no authorization, break-glass census.
 Nothing is generated into Git, nothing can drift, and the page is exact on every docs build.
 
-OpenFGA and SpiceDB were considered for the reachability question and rejected for the reason
-staging's RFC-0017 records: the query they answer is already answered by a closure over a graph
+OpenFGA and SpiceDB were considered for the reachability question and rejected: the query they
+answer is already answered by a closure over a graph
 that fits in one file, and neither OpenBao nor the API server would consult them, so the policies
 would still need rendering afterwards.
 
 ### D9 · Apps without OIDC get the gateway, not an outpost
 
-The open decision of the [identity RFC](rfc-identity-sso.md) is closed the way staging closed it:
+The open decision of the [identity RFC](rfc-identity-sso.md) is closed with
 an Envoy Gateway `SecurityPolicy` with an OIDC client on the broker, one client per audience,
 authorization by an Authentik policy binding on the client's application. The first audiences
 are `storage-admin` (Longhorn, which deletes volumes) and `dashboards-view` (flux-ui, Hubble,
@@ -235,7 +229,7 @@ Every non-human principal that can reach anything is in `people.yaml` with `kind
 owner and a purpose, and holds no capability: `akadmin`, `gitea_admin`, the Harbor local admin,
 `webgrip-ci`, `renovate`, `agent-builder`, `agent-reviewer`, the Flux and External Secrets
 controllers, the `k8s-mcp` service account. Nothing here reconciles them; the matrix lists them
-so "what else can reach this?" has an answer. Staging's impersonation model for agents is not
+so "what else can reach this?" has an answer. An impersonation model for agents is not
 built yet: Claude Code sessions on the owner's machine will use the owner's OIDC context after
 D7 and are already attributed to the owner. **Trigger** for building `act-as-human`: the first
 in-cluster agent that needs the Kubernetes API.
@@ -244,7 +238,7 @@ The trigger fired on 2026-09-15 for the MCP servers; the design is
 
 ## The catalogue, sized for this estate
 
-Roles, five. Fewer than staging's nine because a role nobody holds is drift waiting to happen,
+Roles, five, because a role nobody holds is drift waiting to happen,
 and a dated grant covers the gap until a second holder makes a role worth writing.
 
 | Role | Holds | Who |
@@ -274,22 +268,22 @@ of `repo-admin` and `repo-contribute`, because Forgejo's `groupTeamMap` already 
 | `secrets-read-all`, `supply-chain-write`, `flux-suspend`, `db-admin` | derived | none; targets of edges only | — |
 
 `admins.hcl` is `path "*"` with `sudo` today. It narrows to the KV tree plus what the UI needs,
-the way staging's does, in the same change that moves the OIDC role into the module.
+in the same change that moves the OIDC role into the module.
 
 ## What is deleted, and what is never built
 
-| Never built here | Staging equivalent | Why not |
-| --- | --- | --- |
-| CUE schema, `cue.sh`, the `cue` tool | `schema.cue`, `load.cue` | JSON Schema does the shape; the module does the joins |
-| Python renderer (2,900 lines) | `scripts/entitlements/` | the provider reads the model directly |
-| Membership ConfigMap + reconcile CronJob | `authentik-reconcile` | `authentik_group.users` is authoritative |
-| Generated `bindings.yaml`, `rolebindings.yaml`, `agents.yaml` | `human-access/` | `kubernetes_*_binding_v1` resources |
-| Rendered `CODEOWNERS` | ADR-0030 | Forgejo's file is advisory and there is one reviewer; the plane is Forgejo teams via groups |
-| Committed `access-matrix.md` + drift check | ADR-0028 D6 | a docs macro |
-| `resources.yaml` inventory (1,465 lines) | ADR-0039 | surfaces are derived from HTTPRoutes and SecurityPolicies by the same macro; `authz: none` is a query, not a hand-kept row |
-| Backstage `entitlements.yaml` export | ADR-0028 D7 | nothing consumes it |
-| Metrics exporter + five alerts + dashboard | `entitlements/app` | expiry is enforced at plan time; recert by the nightly validator; drift by the controller's own condition |
-| Engagements app | `engagements-render` | a project with an `ends` date |
+| Never built here | Why not |
+| --- | --- |
+| CUE schema, `cue.sh`, the `cue` tool | JSON Schema does the shape; the module does the joins |
+| Python renderer | the provider reads the model directly |
+| Membership ConfigMap + reconcile CronJob | `authentik_group.users` is authoritative |
+| Generated `bindings.yaml`, `rolebindings.yaml`, `agents.yaml` | `kubernetes_*_binding_v1` resources |
+| Rendered `CODEOWNERS` | Forgejo's file is advisory and there is one reviewer; the plane is Forgejo teams via groups |
+| Committed `access-matrix.md` + drift check | a docs macro |
+| Hand-kept `resources.yaml` inventory | surfaces are derived from HTTPRoutes and SecurityPolicies by the same macro; `authz: none` is a query, not a hand-kept row |
+| Backstage `entitlements.yaml` export | nothing consumes it |
+| Metrics exporter + five alerts + dashboard | expiry is enforced at plan time; recert by the nightly validator; drift by the controller's own condition |
+| Engagements app | a project with an `ends` date |
 
 | Deleted from this repository | Replaced by |
 | --- | --- |
@@ -346,8 +340,6 @@ The first plan in stages 2, 3 and 5 is approved by a person. After stage 5, both
 
 ## References
 
-- code14 staging-cluster: ADR-0025, ADR-0027, ADR-0028, ADR-0033, ADR-0048, RFC-0012, RFC-0017,
-  RFC-0018 and the `feat/access-plane-tofu` branch, whose module this one is shaped after.
 - [tofu-controller](https://github.com/flux-iac/tofu-controller) v0.16.5 ·
   [goauthentik/authentik provider](https://registry.terraform.io/providers/goauthentik/authentik) ·
   [hashicorp/vault provider](https://registry.terraform.io/providers/hashicorp/vault) (OpenBao

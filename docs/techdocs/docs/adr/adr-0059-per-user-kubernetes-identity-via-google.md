@@ -103,7 +103,7 @@ without a node reboot.
 
 * Good, because a groups claim would let bindings name groups.
 * Bad, because the storage incident that takes Authentik down also takes down the credential
-  needed to fix it. Staging recorded the same reasoning and deferred it identically.
+  needed to fix it.
 * Bad, because the API server would need Authentik's certificate, which on Talos is a boot-only
   `machine.files` change.
 
@@ -125,7 +125,6 @@ without a node reboot.
   · [ADR-0057](adr-0057-google-only-login-closed-enrolment.md)
 * Runbooks: [Google OAuth clients](../runbooks/google-oauth-clients.md) ·
   [Kubeconfig setup](../general/kubeconfig-setup.md)
-* Sibling: code14 staging-cluster ADR-0025, ADR-0033 and `runbooks/kubernetes-login.md`.
 * 2026-09-14 — proposed; lands in stage 4 of the RFC rollout.
 * 2026-09-15 — accepted. All three API servers carry the flags; `kubectl auth whoami` from the working kubeconfig is `oidc:ryan@webgrip.nl`; the admin credential lives in `~/.kube/homelab-break-glass.yaml`; `KubernetesBreakGlassCertificateUsed` fired at 05:40Z on the drain calls made with that credential and reached Alertmanager. Two things surfaced: the Alloy pipeline dropped every read, so a break-glass `get nodes` left no trace, and Talos itself updates nodes with the admin credential during an apply. Reads by anyone outside `system:` are kept now, and the rule excludes the Talos calls by source and user agent. Confirmation 3 waits for the Kyverno rule in Enforce; confirmation 4 has no account outside `webgrip.nl` to try, and rests on the `hd` claim being required.
 * 2026-09-15 — confirmation 3 holds: the provenance rule denies at admission since 3a6900ad; a server dry-run of a hand-applied ClusterRoleBinding with a User subject is refused by the webhook, the same binding carrying the access-plane label is admitted, and `kubectl get clusterrolebinding -l access-plane.webgrip.io/managed=true` lists the one binding the roster implies.

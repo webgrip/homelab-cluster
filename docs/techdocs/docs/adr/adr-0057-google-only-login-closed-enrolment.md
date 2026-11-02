@@ -23,9 +23,8 @@ The one human account was created by hand in the admin UI and placed in `homelab
 `homelab-mfa` by hand. Nothing in Git says it exists. Removing a person means remembering to
 open the admin UI.
 
-The staging cluster of the sibling estate solved the same problem in ADR-0027 with a
-Google-only flow and open enrolment gated on Google's Internal consent screen. Open enrolment is
-right where the Workspace directory *is* the roster. Here the roster is smaller than the
+The usual answer is a Google-only flow with open enrolment gated on Google's Internal consent
+screen. Open enrolment is right where the Workspace directory *is* the roster. Here the roster is smaller than the
 directory could be, and may one day hold a client whose Google account is not on the company
 domain.
 
@@ -41,7 +40,7 @@ domain.
 
 * **Google source, a Google-only flow, closed enrolment from a roster, the password flow kept
   unlisted as break-glass**
-* Google source with open enrolment gated on an Internal consent screen (staging's ADR-0027)
+* Google source with open enrolment gated on an Internal consent screen
 * Keycloak as the broker, with the same Google federation
 * Keep Authentik passwords and add Google as a second button
 
@@ -117,7 +116,7 @@ and leaves the recovery path exactly where it already works.
 
 * Good, because it is one blueprint entry.
 * Bad, because it leaves the wrong door on the most-linked page in the estate, which is the
-  failure staging reported as user confusion within a day.
+  failure that shows up as user confusion within a day.
 
 ## More Information
 
