@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-11-01
+date: 2026-11-02
 ---
 
 # Tooling repositories release in layers
@@ -165,6 +165,20 @@ consumers.
   reusable `semantic-release-monorepo.yml` still calls its own composite at `@main`, which point 2
   does not cover. `semantic-release-config` cuts its tag on its own, but still builds and signs
   its image with `webgrip/workflows` composites pinned at v3.4.0 (Confirmation, second check).
+* 2026-11-02 — Progress on the open items of 2026-11-01:
+  * Release-triggered Renovate (point 6) is live: workflows
+    [#112](https://forgejo.webgrip.dev/webgrip/workflows/pulls/112) and
+    [#114](https://forgejo.webgrip.dev/webgrip/workflows/pulls/114) add the `renovate-trigger`
+    composite, which schedules Renovate only on the repositories that use the released package.
+    semantic-release-config 2.5.1 called it first.
+  * semantic-release-config [#56](https://forgejo.webgrip.dev/webgrip/semantic-release-config/pulls/56)
+    builds, signs and publishes its image without `webgrip/workflows` (Confirmation, second check).
+  * homelab-cluster pins its three TechDocs workflows to `v2.6.2`, the newest tag whose files
+    match the `# main` commit they ran. e2e CI now runs `scripts/check-tooling-pins.sh .` on this
+    repository.
+  * Unfold [#817](https://forgejo.webgrip.dev/webgrip/unfold/pulls/817) releases both trains with
+    `webgrip-release` and no longer uses the `semantic-release-monorepo` composite. Once that is
+    merged, the composite and the Harbor repository can be removed.
 * Refines [ADR-0088](adr-0088-one-branch-every-merge-releases-and-environments-promote-the-artifact.md):
   point 5's shared release action is the `webgrip-release` command in the config image, and the
   workflows composite only wraps it.
