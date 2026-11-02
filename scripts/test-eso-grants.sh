@@ -8,12 +8,23 @@ wrong=0
 grants=kubernetes/apps/security/openbao/bootstrap/eso-grants.txt
 stores=kubernetes/apps/security/external-secrets/tenants/stores.generated.yaml
 freshrss_secret=kubernetes/apps/freshrss/freshrss/app/freshrss-secrets.externalsecret.yaml
+harbor_push=kubernetes/apps/harbor/harbor/app/harbor-admin.pushsecret.yaml
 
 fresh() {
   rm -rf "${work:?}/$1"
   mkdir -p "$work/$1"
   cp -r "$root/kubernetes" "$root/scripts" "$work/$1/"
   echo "$work/$1"
+}
+
+mutate() {
+  local file=$1 script=$2 before
+  before=$(cat "$file")
+  sed -i "$script" "$file"
+  if [ "$(cat "$file")" = "$before" ]; then
+    echo "WRONG mutation '$script' changed nothing in ${file#"$work"/}"
+    wrong=$((wrong + 1))
+  fi
 }
 
 expect() {
@@ -32,11 +43,11 @@ d=$(fresh committed)
 expect pass "committed tree" "$d"
 
 d=$(fresh foreign-path)
-sed -i '0,/key: freshrss\/app/s//key: litellm/' "$d/$freshrss_secret"
+mutate "$d/$freshrss_secret" '0,/key: freshrss\/app/s//key: litellm/'
 expect fail "freshrss ExternalSecret reads the LiteLLM master key path" "$d"
 
 d=$(fresh regenerated)
-sed -i '0,/key: freshrss\/app/s//key: litellm/' "$d/$freshrss_secret"
+mutate "$d/$freshrss_secret" '0,/key: freshrss\/app/s//key: litellm/'
 "$python" "$d/scripts/eso_grants.py" "$d" --write >/dev/null
 expect pass "same change after --write records the grant" "$d"
 if ! grep -qx 'freshrss read litellm' "$d/$grants"; then
@@ -58,19 +69,19 @@ PY
 expect fail "grant nothing in the namespace uses" "$d"
 
 d=$(fresh moved-grant)
-sed -i 's/^freshrss read freshrss\/app$/ai read freshrss\/app/' "$d/$grants"
+mutate "$d/$grants" 's/^freshrss read freshrss\/app$/ai read freshrss\/app/'
 expect fail "grant moved to another namespace" "$d"
 
 d=$(fresh stale-stores)
-sed -i '0,/role: eso-read-freshrss/s//role: eso-read-ai/' "$d/$stores"
+mutate "$d/$stores" '0,/role: eso-read-freshrss/s//role: eso-read-ai/'
 expect fail "generated SecretStore authenticates as another namespace's role" "$d"
 
 d=$(fresh push-outside)
-sed -i '0,/remoteKey: freshrss\/app/s//remoteKey: forgejo\/admin/' "$d/kubernetes/apps/freshrss/freshrss/app/freshrss-secrets.pushsecret.yaml"
-expect fail "freshrss PushSecret writes another namespace's path" "$d"
+mutate "$d/$harbor_push" '0,/remoteKey: harbor\/admin/s//remoteKey: forgejo\/admin/'
+expect fail "harbor PushSecret writes another namespace's path" "$d"
 
 d=$(fresh cluster-store)
-sed -i '0,/kind: SecretStore, name: openbao}/s//kind: ClusterSecretStore, name: openbao}/' "$d/$freshrss_secret"
+mutate "$d/$freshrss_secret" '0,/kind: SecretStore, name: openbao}/s//kind: ClusterSecretStore, name: openbao}/'
 expect fail "ExternalSecret names the retired ClusterSecretStore" "$d"
 
 d=$(fresh find)
@@ -89,7 +100,7 @@ YAML
 expect error "dataFrom.find cannot be granted path by path" "$d"
 
 d=$(fresh substituted)
-sed -i '0,/key: freshrss\/app/s//key: "freshrss\/${APP_NAME}"/' "$d/$freshrss_secret"
+mutate "$d/$freshrss_secret" '0,/key: freshrss\/app/s//key: "freshrss\/${APP_NAME}"/'
 expect error "path built from a Flux substitution" "$d"
 
 d=$(fresh malformed)
