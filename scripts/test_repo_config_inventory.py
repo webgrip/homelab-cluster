@@ -47,8 +47,27 @@ repos:
 """
 
 
-def repository(name, private=False, archived=False, mirror=False):
-    return {"name": name, "private": private, "archived": archived, "mirror": mirror}
+def repository(name, private=False, archived=False, mirror=False, topics=None):
+    return {"name": name, "private": private, "archived": archived, "mirror": mirror, "topics": topics or []}
+
+
+def dashboard_issue(repo, *sections):
+    body = ("This issue lists Renovate updates and detected dependencies. Read the [Dependency Dashboard]"
+            "(https://docs.renovatebot.com/key-concepts/dashboard/) docs to learn more.\n\n" + "\n\n".join(sections))
+    return {"number": 7, "title": "Renovate Dashboard", "body": body,
+            "html_url": f"https://forgejo.example/webgrip/{repo}/issues/7"}
+
+
+def pending_approval(*branches):
+    lines = [f" - [ ] <!-- approve-branch=renovate/{branch} -->fix(deps): update {branch}" for branch in branches]
+    if branches:
+        lines.append(" - [ ] <!-- approve-all-pending-prs -->🔐 **Create all pending approval PRs at once** 🔐")
+    return "## Pending Approval\n\nThe following branches are pending approval.\n\n" + "\n".join(lines)
+
+
+def problems(*lines):
+    return ("## Repository Problems\n\nRenovate tried to run on this repository, but found these problems.\n\n"
+            + "\n".join(f" - {line}" for line in lines))
 
 
 class FakeWorld:
@@ -64,6 +83,7 @@ class FakeWorld:
         self.tags = {}
         self.pulls = {}
         self.issues = {}
+        self.issues_status = 200
         self.check_states = {}
         self.broken_pulls = set()
         self.broken_repositories = set()
@@ -110,7 +130,13 @@ def handler_for(world):
                 page = int(query.get("page", "1"))
                 return self.reply(200, world.pulls.get(repo, [])[(page - 1) * limit:page * limit])
             if kind == "issues":
-                return self.reply(200, world.issues.get(repo, []))
+                if world.issues_status != 200:
+                    return self.reply(world.issues_status, {"message": "token does not have the read:issue scope"})
+                if query.get("state") != "open" or query.get("type") != "issues":
+                    return self.reply(400, {"message": "only open issues are listed"})
+                limit = int(query.get("limit", "30"))
+                page = int(query.get("page", "1"))
+                return self.reply(200, world.issues.get(repo, [])[(page - 1) * limit:page * limit])
             if kind == "commits":
                 sha = path.removesuffix("/status")
                 return self.reply(200, {"state": world.check_states.get(sha, ""), "statuses": []})
@@ -607,8 +633,11 @@ class InventoryTest(unittest.TestCase):
         code, output = self.run_inventory()
         self.assertEqual(code, 0, output)
         metrics = self.pushed()
-        self.assertFalse([path for path, _, _ in self.world.requests if path.endswith(("/pulls", "/issues"))])
+        self.assertFalse([path for path, _, _ in self.world.requests if path.endswith("/pulls")])
         self.assertFalse([labels for metric, labels in metrics if metric == "repo_config_shared_pin_update"])
+        dashboards = sorted(path for path, _, _ in self.world.requests if path.endswith("/issues"))
+        self.assertEqual(dashboards, ["/api/v1/repos/webgrip/.profile/issues", "/api/v1/repos/webgrip/erfbeeld/issues",
+                                      "/api/v1/repos/webgrip/homelab-cluster/issues"])
 
     def test_unreadable_pull_requests_leave_the_pins_and_skip_the_update_state(self):
         self.give_homelab_cluster_a_delivery_chain()
@@ -620,6 +649,160 @@ class InventoryTest(unittest.TestCase):
         self.assertEqual(metrics[("repo_config_scan_failed", 'repository="homelab-cluster"')], 0)
         self.assertFalse([labels for metric, labels in metrics if metric == "repo_config_shared_pin_update"])
         self.assertIn("could not read the open updates of homelab-cluster", output)
+
+    def control(self, metrics, name):
+        rows = [labels for metric, labels in metrics
+                if metric == "repo_config_control_state" and f'repository="{name}"' in labels]
+        self.assertEqual(len(rows), 1, rows)
+        return dict(re.findall(r'(\w+)="([^"]*)"', rows[0]))
+
+    def schedule(self, name):
+        for entry in self.world.repositories:
+            if entry["name"] == name:
+                entry["topics"] = ["renovate"]
+
+    def test_repository_under_renovate_with_an_empty_queue_is_under_control(self):
+        self.give_homelab_cluster_a_delivery_chain()
+        self.schedule("homelab-cluster")
+        self.world.issues["homelab-cluster"] = [
+            {"number": 3, "title": "Docs drift report", "body": "## Pending Approval\n\n - [ ] <!-- approve-branch=x -->"},
+            dashboard_issue("homelab-cluster", pending_approval(), problems("⚠️ WARN: Merging of PR failed")),
+        ]
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        control = self.control(metrics, "homelab-cluster")
+        self.assertEqual(control["state"], "under control")
+        self.assertEqual(control["fix"], "")
+        self.assertEqual(control["dashboard"], "https://forgejo.example/webgrip/homelab-cluster/issues/7")
+        self.assertEqual(metrics[("repo_config_renovate_scheduled", 'repository="homelab-cluster"')], 1)
+        self.assertEqual(metrics[("repo_config_renovate_dashboard_items",
+                                  'repository="homelab-cluster",section="pending_approval"')], 0)
+        self.assertEqual(metrics[("repo_config_renovate_dashboard_items",
+                                  'repository="homelab-cluster",section="problems"')], 1)
+        self.assertEqual(metrics[("repo_config_renovate_dashboard_errors", 'repository="homelab-cluster"')], 0)
+
+    def test_repository_without_a_renovate_config_reads_as_no_renovate(self):
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        self.assertEqual(self.control(metrics, ".profile")["state"], "no renovate")
+        self.assertEqual(metrics[("repo_config_renovate_scheduled", 'repository=".profile"')], 0)
+
+    def test_model_opt_out_is_not_flagged(self):
+        self.model_path.write_text(MODEL.replace('    kind: none\n', '    kind: none\n    renovate:\n      absent: true\n', 1))
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.control(self.pushed(), ".profile")["state"], "opted out")
+
+    def test_config_without_the_renovate_topic_reads_as_not_scheduled(self):
+        self.give_homelab_cluster_a_delivery_chain()
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        control = self.control(metrics, "homelab-cluster")
+        self.assertEqual(control["state"], "not scheduled")
+        self.assertIn("renovate topic", control["fix"])
+        self.assertEqual(metrics[("repo_config_renovate_scheduled", 'repository="homelab-cluster"')], 0)
+
+    def test_scheduled_repository_without_a_dashboard_reads_as_no_dashboard(self):
+        self.give_homelab_cluster_a_delivery_chain()
+        self.schedule("homelab-cluster")
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        self.assertEqual(self.control(metrics, "homelab-cluster")["state"], "no dashboard")
+        self.assertNotIn(("repo_config_renovate_dashboard_errors", 'repository="homelab-cluster"'), metrics)
+
+    def test_renovate_error_on_the_dashboard_reads_as_renovate_errors(self):
+        self.give_homelab_cluster_a_delivery_chain()
+        self.schedule("homelab-cluster")
+        self.world.issues["homelab-cluster"] = [dashboard_issue(
+            "homelab-cluster", problems("⚠️ WARN: Merging of PR failed", "❌ ERROR: config-validation"),
+            pending_approval("lodash-4.x"))]
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        self.assertEqual(self.control(metrics, "homelab-cluster")["state"], "renovate errors")
+        self.assertEqual(metrics[("repo_config_renovate_dashboard_errors", 'repository="homelab-cluster"')], 1)
+
+    def test_pending_approvals_without_a_gate_say_the_gate_is_the_fix(self):
+        self.world.tags["renovate-config"] = ["v1.19.2"]
+        self.world.files[("erfbeeld", ".renovaterc.json5")] = (
+            "{\n  // shared presets only\n  extends: [\"local>webgrip/renovate-config#v1.19.2\"],\n}\n")
+        self.schedule("erfbeeld")
+        self.world.issues["erfbeeld"] = [dashboard_issue("erfbeeld", pending_approval("a", "b", "c"))]
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        self.assertEqual(self.repository_info(metrics, "erfbeeld")["renovate_gate"], "presets")
+        control = self.control(metrics, "erfbeeld")
+        self.assertEqual(control["state"], "parked")
+        self.assertIn("3 updates wait for a tick", control["fix"])
+        self.assertIn("no gate preset", control["fix"])
+        self.assertEqual(metrics[("repo_config_renovate_dashboard_items",
+                                  'repository="erfbeeld",section="pending_approval"')], 3)
+
+    def test_pending_approvals_under_a_gate_ask_for_a_tick(self):
+        self.give_homelab_cluster_a_delivery_chain()
+        self.schedule("homelab-cluster")
+        self.world.issues["homelab-cluster"] = [dashboard_issue("homelab-cluster", pending_approval("a"))]
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        control = self.control(self.pushed(), "homelab-cluster")
+        self.assertEqual(control["state"], "parked")
+        self.assertNotIn("no gate preset", control["fix"])
+
+    def test_pending_approvals_under_a_gate_alias_ask_for_a_tick(self):
+        self.world.files[("erfbeeld", "renovate.json")] = '{"extends": ["local>webgrip/renovate-config:profile-site#v1.15.0"]}'
+        self.schedule("erfbeeld")
+        self.world.issues["erfbeeld"] = [dashboard_issue("erfbeeld", pending_approval("a", "b"))]
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        control = self.control(self.pushed(), "erfbeeld")
+        self.assertEqual(control["state"], "parked")
+        self.assertIn("2 updates wait for a tick on the Dependency Dashboard", control["fix"])
+
+    def test_shared_pin_three_releases_behind_reads_as_drifting(self):
+        self.give_homelab_cluster_a_delivery_chain()
+        self.world.tags["workflows"] = ["v3.3.2", "v3.3.1", "v3.3.0", "v3.2.0"]
+        self.schedule("homelab-cluster")
+        self.world.issues["homelab-cluster"] = [dashboard_issue("homelab-cluster", pending_approval())]
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        control = self.control(self.pushed(), "homelab-cluster")
+        self.assertEqual(control["state"], "drifting")
+        self.assertIn("3 releases behind", control["fix"])
+
+    def test_unversioned_shared_pin_reads_as_drifting(self):
+        self.give_homelab_cluster_a_delivery_chain()
+        self.world.files[("homelab-cluster", ".forgejo/workflows/ci.yml")] = (
+            "jobs:\n  ci:\n    uses: webgrip/workflows/.forgejo/workflows/agents-check.yml@main\n")
+        self.schedule("homelab-cluster")
+        self.world.issues["homelab-cluster"] = [dashboard_issue("homelab-cluster", pending_approval())]
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.control(self.pushed(), "homelab-cluster")["state"], "drifting")
+
+    def test_unreadable_issues_keep_the_pins_and_read_as_unread(self):
+        self.give_homelab_cluster_a_delivery_chain()
+        self.schedule("homelab-cluster")
+        self.world.issues_status = 403
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        metrics = self.pushed()
+        self.assertEqual(self.repository_info(metrics, "homelab-cluster")["workflows"], "v3.2.0 · 2 behind")
+        self.assertEqual(metrics[("repo_config_scan_failed", 'repository="homelab-cluster"')], 0)
+        control = self.control(metrics, "homelab-cluster")
+        self.assertEqual(control["state"], "unread")
+        self.assertIn("read:issue", control["fix"])
+        self.assertIn("could not read the Dependency Dashboard of homelab-cluster", output)
+
+    def test_unreadable_repository_reads_as_unread(self):
+        self.world.broken_repositories.add("erfbeeld")
+        code, output = self.run_inventory()
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.control(self.pushed(), "erfbeeld")["state"], "unread")
 
     def test_model_facts_match_yaml_on_the_real_model(self):
         import yaml

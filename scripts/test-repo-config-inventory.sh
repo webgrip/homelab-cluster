@@ -169,4 +169,60 @@ mutate unreadable-pulls-abort test_unreadable_pull_requests_leave_the_pins_and_s
   'log(f"could not read the open updates of {name}: {failure}")' \
   'raise failure'
 
+mutate topic-ignored test_config_without_the_renovate_topic_reads_as_not_scheduled \
+  'if RENOVATE_TOPIC in (repository.get("topics") or []))' \
+  'if True)'
+mutate json5-config-unread test_pending_approvals_without_a_gate_say_the_gate_is_the_fix \
+  '".renovaterc", ".renovaterc.json", ".renovaterc.json5",' \
+  '".renovaterc", ".renovaterc.json",'
+mutate custom-titled-dashboard-missed test_repository_under_renovate_with_an_empty_queue_is_under_control \
+  ' or DASHBOARD_MARKER in (issue.get("body") or ""):' \
+  ':'
+mutate approve-all-counted test_pending_approvals_without_a_gate_say_the_gate_is_the_fix \
+  'DASHBOARD_ITEM = re.compile(r"^ - (?!\[ \] <!-- (?:approve|create|unlimit)-all)", re.M)' \
+  'DASHBOARD_ITEM = re.compile(r"^ - ", re.M)'
+mutate warnings-count-as-errors test_repository_under_renovate_with_an_empty_queue_is_under_control \
+  'DASHBOARD_ERROR = re.compile(r"^ - .*\bERROR\b", re.M)' \
+  'DASHBOARD_ERROR = re.compile(r"^ - ", re.M)'
+mutate errors-ignored test_renovate_error_on_the_dashboard_reads_as_renovate_errors \
+  'if dashboard["errors"] or dashboard["counts"]["errored"]:' \
+  'if False:'
+mutate missing-dashboard-tolerated test_scheduled_repository_without_a_dashboard_reads_as_no_dashboard \
+  '    if dashboard is None:
+        return "no dashboard"' \
+  '    if False:
+        return "no dashboard"'
+mutate gate-fix-everywhere test_pending_approvals_under_a_gate_ask_for_a_tick \
+  'if pending and not scan["gated"]:' \
+  'if pending:'
+mutate gate-fix-nowhere test_pending_approvals_without_a_gate_say_the_gate_is_the_fix \
+  'if pending and not scan["gated"]:' \
+  'if False:'
+mutate drift-threshold-exclusive test_shared_pin_three_releases_behind_reads_as_drifting \
+  'if worst >= DRIFT_RELEASES:' \
+  'if worst > DRIFT_RELEASES:'
+mutate unversioned-not-drifting test_unversioned_shared_pin_reads_as_drifting \
+  'if any(UNVERSIONED in pins for pins in scan["pins"].values()):' \
+  'if False:'
+mutate issue-scope-blanks-the-scan test_unreadable_issues_keep_the_pins_and_read_as_unread \
+  'log(f"could not read the Dependency Dashboard of {name}: {failure}")' \
+  'raise failure'
+mutate unread-dashboard-reads-as-missing test_unreadable_issues_keep_the_pins_and_read_as_unread \
+  'return DASHBOARD_UNREAD
+' \
+  'return None
+'
+mutate opt-out-ignored test_model_opt_out_is_not_flagged \
+  '    if fact.get("renovate_absent"):
+        return "opted out", ""' \
+  '    if False:
+        return "opted out", ""'
+mutate dashboard-read-twice test_a_repository_on_the_newest_releases_reads_no_pull_requests \
+  '        "dashboard": read_dashboard(forgejo, name),' \
+  '        "dashboard": (read_dashboard(forgejo, name), read_dashboard(forgejo, name))[1],'
+
+mutate gate-alias-not-a-gate test_pending_approvals_under_a_gate_alias_ask_for_a_tick \
+  'gated = bool(gates) or any(preset.startswith(GATE_ALIAS_PREFIX) for preset in presets)' \
+  'gated = bool(gates)'
+
 echo "all mutations killed"
