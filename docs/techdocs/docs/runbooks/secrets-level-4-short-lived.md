@@ -58,7 +58,8 @@ are the first roles of this shape.
 | `ci-twente-dev` | `webgrip/twente.dev` | `cloudflare/dns/twente-dev-ro` | same | same |
 | `ci-cloudflare` | `webgrip/cloudflare` | `cloudflare/dns/{unfoldhq-dev,webgrip-nl}-ro` | same | same |
 | `ci-cloudflare-registrar` | `webgrip/cloudflare` | `cloudflare/registrar/namecheap` | `repository`, `ref` = `main`, `event_name` = `push`, `actor` = `ryangr0`, `workflow` = `apply.yml`, `run_attempt` = 1; 5-minute token, 10 uses | the Namecheap key buys domains and has no read-only form, so only the Apply workflow on a push to `main` by Ryan gets it, once per run, and no re-run or dispatch does ([cloudflare ADR 0001](https://forgejo.webgrip.dev/webgrip/cloudflare/src/branch/main/docs/adrs/0001-domains-are-bought-and-delegated-from-domains-json.md)) |
-| `ci-unfold-cluster` | `webgrip/unfold-cluster` | `hetzner/unfold-{tofu,cluster,vip}`, `unfold-cluster/{tofu-state,etcd-backup}` | `repository`, `ref` = `main`, `event_name` in `push`, `schedule`, `workflow_dispatch`, `actor` in `ryangr0`, `yon`, `forgejo-actions` | production credentials: no `pull_request`, so a branch that adds a workflow gets no token, and a Developers member who dispatches `main` gets none either |
+| `ci-unfold-cluster` | `webgrip/unfold-cluster` | `hetzner/unfold-{tofu,cluster,vip}`, `unfold-cluster/{tofu-state,etcd-backup}` | `repository`, `ref` = `main`, `event_name` in `push`, `workflow_dispatch`, `actor` = `ryangr0`, `run_attempt` = 1 | production credentials: no `pull_request`, so a branch that adds a workflow gets no token; only the owner's own push or dispatch gets one, and a re-run gets none, because a re-run keeps the original actor and would let any writer repeat the owner's apply |
+| `ci-unfold-cluster-etcd-check` | `webgrip/unfold-cluster` | `unfold-cluster/etcd-backup` | `repository`, `ref` = `main`, `event_name` = `schedule`, `actor` = `forgejo-actions`, `workflow` = `etcd-backup-check.yml`, `run_attempt` = 1 | the scheduled etcd backup check runs as `forgejo-actions`, which any writer's dispatch also carries, so it gets its own role that reads only the backup identity |
 
 The first three come from the shared `write_ci_read_role` helper in `config.sh`.
 `ci-unfold-cluster` is its own JSON block because the helper binds no `ref` and admits
@@ -66,6 +67,13 @@ The first three come from the shared `write_ci_read_role` helper in `config.sh`.
 so any branch (Renovate's, an agent's) could add a workflow and read the Hetzner tokens, the
 state passphrase and the etcd backup identity. Only runs on `main`, where branch protection lets
 the owner alone push or merge, can mint it.
+
+#### A re-run of an unfold-cluster job fails to log in
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `OpenBao login as role ci-unfold-cluster HTTP 400: claim "run_attempt" does not match any associated bound claim values` | the job is a re-run (attempt 2 or later); the role admits only `run_attempt` = 1 | start a new run instead: dispatch the workflow on `main` (Actions, the workflow, *Run workflow*, the `apply` input set to what the failed run should have done). A new run is attempt 1 |
+| `curl: (7) Failed to connect to openbao.security.svc.cluster.local:8200` then `HTTP 000` | OpenBao had no ready pod when the job ran | check `kubectl -n security get pod openbao-0` and `bao status` until it is unsealed and active, then dispatch a new run; re-running the failed one hits the row above |
 
 These five paths were Forgejo Actions secrets delivered by the bridge
 ([level 3](secrets-level-3-bridge.md#production-cluster-webgripunfold-cluster)); they moved to
