@@ -4,7 +4,7 @@
 responsibility.*
 
 *Draft v1, 2026-09-27. Not published. Needs Ryan's ownership pass. Every claim traces to
-BLOGPOST-glide.research.md or to the Glide and homelab repositories.*
+BLOGPOST-unfold.research.md or to the Glide and homelab repositories.*
 
 > **TL;DR.** Glide turns a ticket into a pull request that AI agents write and a person reviews.
 > It authorizes the money before an agent gets a key, settles the bill from the model gateway

@@ -1,7 +1,7 @@
 ---
 title: "Tokens are cheap. Review isn't."
 published: false
-description: "Agent tokenomics, review debt and comprehension debt, and where Glide draws the line on responsibility: budgets reserved before a run, spend settled from the gateway, per-run keys that expire, and a human merge."
+description: "Agent tokenomics, review debt and comprehension debt, and where Unfold draws the line on responsibility: budgets reserved before a run, spend settled from the gateway, per-run keys that expire, and a human merge."
 tags: ai, kubernetes, devops, opensource
 canonical_url: CANONICAL_URL_TBD
 ---
@@ -13,14 +13,14 @@ On 8 August I checked the run records for my coding agents. There were 45 of the
 and they held zero usage figures. The agents' own books were empty. The LiteLLM gateway in front
 of the models had every token.
 
-Glide, the tool I build to turn tickets into pull requests that AI agents write and a person
+Unfold, the tool I build to turn tickets into pull requests that AI agents write and a person
 reviews, takes the bill from the gateway for exactly that reason, never from the agent's own
 report. In September a capacity plan answered a bigger question. I had asked how many agents my homelab could
 run at once, and the limits came back in this order:
 
 1. my own review capacity;
 2. the model providers' daily caps;
-3. Glide's own setting of one worker pod per agent team;
+3. Unfold's own setting of one worker pod per agent team;
 4. CPU and memory, where the three worker machines had room for seven writing agents in parallel.
 
 Per run, the electricity costs between a tenth of a euro cent and one cent, and a cheap model
@@ -29,7 +29,7 @@ by a second, cost **$0.019872** in total according to the gateway's ledger.
 
 Tokens are cheap. The scarce resource in an agent pipeline is the person at the end of it.
 
-**Scope, up front:** Glide is Apache-2.0, self-hosted on Kubernetes, pre-1.0, and I'm the only
+**Scope, up front:** Unfold is Apache-2.0, self-hosted on Kubernetes, pre-1.0, and I'm the only
 maintainer. It works with Forgejo or GitLab and Vikunja or ClickUp. No GitHub, Jira or Linear yet.
 The checklist near the end applies to any agent tool.
 
@@ -38,7 +38,7 @@ The checklist near the end applies to any agent tool.
 The token bill is visible and small per run. It can still surprise you, because an agent in a loop
 doesn't get tired.
 
-**Review debt** is the queue. Glide's planning docs reduce it to one line:
+**Review debt** is the queue. Unfold's planning docs reduce it to one line:
 
 ```text
 accepted results per week <= min(ready tickets, candidate changes produced, review capacity)
@@ -55,18 +55,18 @@ time.
 Behind all three sits the question a lead eventually asks: *who is responsible for this change?*
 "The agent" means nobody.
 
-## The shape of Glide
+## The shape of Unfold
 
-A **Work Item** is a ticket you've decided to do. You assign it to an agent **team**. Glide runs the
+A **Work Item** is a ticket you've decided to do. You assign it to an agent **team**. Unfold runs the
 team's roles (typically a writer, a reviewer and fix rounds) as short-lived Kubernetes jobs, each
 with its own budget and model key. The output is one pull request. You merge it or you don't.
 
 - **Ploeg** ("crew") is the Go controller that authorizes, budgets and runs every agent run.
-- **Vloer** ("floor") is the front end, in the browser or in VS Code.
+- **The Unfold application** is the front end, in the browser or in VS Code.
 - The harness is pluggable: OpenHands by default, Claude Code, any ACP agent such as opencode, or a
   plain command.
 
-Glide doesn't merge, deploy or host models. Models come through a LiteLLM gateway you run.
+Unfold doesn't merge, deploy or host models. Models come through a LiteLLM gateway you run.
 
 ## Reserve, spend, settle from the gateway
 
@@ -105,8 +105,8 @@ the 45 empty run records.
 
 {% enddetails %}
 
-**"LiteLLM already has budgets."** It does: capped, expiring keys, and Glide uses exactly those.
-What Glide adds is one pool per Work Item shared by all its runs, the reservation taken before a key
+**"LiteLLM already has budgets."** It does: capped, expiring keys, and Unfold uses exactly those.
+What Unfold adds is one pool per Work Item shared by all its runs, the reservation taken before a key
 exists, and a settlement that returns the unused hold. An org-wide monthly cap tells you afterwards
 that you spent too much. It can't tell you, before a run starts, whether this ticket may still cost
 another $2.40.
@@ -120,7 +120,7 @@ controller.
 
 The weak spot: the harness does see its per-run model key, and on my cluster it pushes with a
 shared forge token for the agent account. A prompt-injected agent could spend up to its run's cap
-within four hours and push to whatever that account can reach. Glide has a design (ADR-0034, with
+within four hours and push to whatever that account can reach. Unfold has a design (ADR-0034, with
 tests) that gives the harness only placeholders behind a local proxy, and one that mints a forge
 token per run. Both are opt-in and I haven't switched them on. Today the protection is the cap,
 the expiry, and the repository access of that one agent account.
@@ -142,16 +142,16 @@ written proposal.
 
 ## Comprehension debt stays yours
 
-Glide keeps the reasons next to the change: the Work Item says why and what, and the reviewer's
-verdict says what a second reader found. Vloer's stated goal is to put the ticket, the diff, the
+Unfold keeps the reasons next to the change: the Work Item says why and what, and the reviewer's
+verdict says what a second reader found. The Unfold application's stated goal is to put the ticket, the diff, the
 checks that ran and the open questions together, and to make weak evidence easy to spot. That
 lowers the cost of understanding. It doesn't create it.
 
 The success measures are defined (clean-merge rate, and the minutes I actively spend per pull
-request), and Glide's KPI page says *nothing on this page is measured yet*. So there is no success
+request), and Unfold's KPI page says *nothing on this page is measured yet*. So there is no success
 rate in this post.
 
-Glide never merges. Whoever presses merge owns the change, as with a colleague's pull request they
+Unfold never merges. Whoever presses merge owns the change, as with a colleague's pull request they
 approved. This week I decided the ledger should also record *who* started a run.
 
 ## Eight questions for any coding-agent tool
@@ -165,7 +165,7 @@ approved. This week I decided the ledger should also record *who* started a run.
 7. Can agents create new work, and who approves it before it runs?
 8. Who merges?
 
-Glide today: yes; the gateway; yes, after four hours; a shared account (per-run tokens designed but
+Unfold today: yes; the gateway; yes, after four hours; a shared account (per-run tokens designed but
 off); yes; yes; yes, with limits and a switch; you.
 
 ## Why not kagent?
@@ -175,10 +175,10 @@ a new layer, Agent Substrate, which injects one credential per hostname, so it c
 separate model key per run. On my cluster it would also need a privileged daemon on every node,
 Kubernetes 1.37 and a beta API.
 
-So I split the layers three ways. Glide is the engine: admission, budget, keys, reviewer, one pull
+So I split the layers three ways. Unfold is the engine: admission, budget, keys, reviewer, one pull
 request, human merge. The sandbox under each run is its own layer: Kata Containers or gVisor via
 the Kubernetes SIG project agent-sandbox. Tools come in over MCP, possibly including kagent's own
-tool server. Neither the sandbox nor MCP is wired into Glide today.
+tool server. Neither the sandbox nor MCP is wired into Unfold today.
 
 {% details Sandboxes, Talos and what's live %}
 
@@ -189,17 +189,17 @@ tool server. Neither the sandbox nor MCP is wired into Glide today.
 - Talos is immutable, so runtimes arrive as system extensions in the node image. My three workers
   run the `kata-containers` 3.32.0 extension, a `kata` RuntimeClass is live, and a standing smoke
   job boots a real guest kernel.
-- agent-sandbox (v1.0 since August) lets a template choose the RuntimeClass. Glide has had an
+- agent-sandbox (v1.0 since August) lets a template choose the RuntimeClass. Unfold has had an
   experimental executor for it since 26 September; production workers still use the node's default
   runtime.
-- Glide's harnesses pass no MCP servers today. The plan is a read-only role that reaches Grafana,
+- Unfold's harnesses pass no MCP servers today. The plan is a read-only role that reaches Grafana,
   logs and a read-only Kubernetes view through my existing MCP gateway, with its per-run key.
 - kagent's Substrate runs a privileged node agent, runs agent pods as root with 13 added Linux
   capabilities, and downloads its own `runsc` instead of using a pre-installed one.
 
 {% enddetails %}
 
-In Glide's own survey of the larger open-source agent orchestration projects (26 September),
+In Unfold's own survey of the larger open-source agent orchestration projects (26 September),
 per-run keys at a proxy with a budget reserved before the run and settled afterwards turned up in
 none of them. The same survey made me drop two claims I used to make: leases that survive a dead
 pod, and event-driven dispatch, are no longer unusual.
@@ -218,18 +218,18 @@ pod, and event-driven dispatch, are no longer unusual.
 
 ## Try it without spending anything
 
-Agents already commit to Glide under the worker's git identity, `agent-builder`. One July change is
+Agents already commit to Unfold under the worker's git identity, `agent-builder`. One July change is
 titled *"ploeg-worker owns the per-run LiteLLM key lifecycle (mint + always-revoke)"*: the agents
-changing how Glide hands out the keys that pay for them.
+changing how Unfold hands out the keys that pay for them.
 
-The repository has a deterministic demo that runs Ploeg, Vloer and PostgreSQL with no model calls:
+The repository has a deterministic demo that runs Ploeg, the Unfold application and PostgreSQL with no model calls:
 
 ```bash
 mise run demo-unified
 ```
 
-Code: [forgejo.webgrip.dev/webgrip/glide](https://forgejo.webgrip.dev/webgrip/glide) · Docs:
+Code: [forgejo.webgrip.dev/webgrip/unfold](https://forgejo.webgrip.dev/webgrip/unfold) · Docs:
 [docs.webgrip.dev/glide](https://docs.webgrip.dev/glide)
 
-The model spend was never the hard part of letting agents write code. Glide is my attempt at the
+The model spend was never the hard part of letting agents write code. Unfold is my attempt at the
 rest of it.
