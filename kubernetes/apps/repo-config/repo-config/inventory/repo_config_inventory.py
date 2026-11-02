@@ -539,8 +539,8 @@ def control_state(fact, scan, scheduled, behind):
     pending = dashboard["counts"]["pending_approval"]
     waiting = "1 update waits" if pending == 1 else f"{pending} updates wait"
     if pending and not scan["gated"]:
-        return "parked", (f"{waiting} for a tick because the config extends no gate preset; "
-                          "extend reviewed or unattended so non-majors flow on their own.")
+        return "parked", (f"{waiting} for a tick. The config extends no gate preset, so renovate-config's default "
+                          "holds every update its own rules do not release: extend reviewed or unattended, or tick them.")
     if pending:
         return "parked", f"{waiting} for a tick on the Dependency Dashboard: tick or close them."
     if any(UNVERSIONED in pins for pins in scan["pins"].values()):
