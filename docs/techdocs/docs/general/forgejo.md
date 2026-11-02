@@ -88,7 +88,13 @@ brew install cloudflared        # or: https://github.com/cloudflare/cloudflared/
 # k8s-gateway answers 10.0.0.11 on the LAN and on the VPN, public DNS answers the
 # tunnel CNAME everywhere else. ssh keeps the FIRST value it obtains for a keyword,
 # so this block must stay ABOVE the Host block.
-Match host forgejo-ssh.<your-domain> exec "dig +short +time=1 +tries=1 %h | grep -qx 10.0.0.11"
+#
+# Ask the system resolver, not dig: dig reads /etc/resolv.conf, and with Tailscale up
+# that is 100.100.100.100, which cannot reach the VPN's DNS and fails every name.
+# macOS:
+Match host forgejo-ssh.<your-domain> exec "dscacheutil -q host -a name %h | grep -qx 'ip_address: 10.0.0.11'"
+# Linux, instead of the line above:
+# Match host forgejo-ssh.<your-domain> exec "getent ahostsv4 %h | grep -q '^10\.0\.0\.11 '"
   ProxyCommand none
 
 Host forgejo-ssh.<your-domain>
@@ -128,10 +134,11 @@ HTTP.
 | Symptom | Cause |
 | --- | --- |
 | `ssh: connect to host ... port 22: Operation timed out` off-LAN | No `ProxyCommand` was applied — either the config block is missing on this machine, or the `Match` probe wrongly matched. Check with `ssh -G forgejo-ssh.<your-domain> \| grep proxycommand` |
-| Same timeout, and you are on a foreign `10.0.0.0/24` | The old reachability probe matching a stranger's host — see the danger note above; use the `dig`-based probe |
+| Same timeout, and you are on a foreign `10.0.0.0/24` | The old reachability probe matching a stranger's host — see the danger note above; use the resolution-based probe |
 | `ProxyCommand ... cloudflared: command not found` | `cloudflared` not installed on this machine |
 | `websocket: bad handshake`, or the proxy exits immediately | The public CNAME is missing or unproxied — a `cfargotunnel.com` target only resolves through Cloudflare's edge |
-| Off-LAN works but LAN pushes got slow | The `Match ... exec` probe is failing — run `dig +short forgejo-ssh.<your-domain>` on the LAN; it must return exactly `10.0.0.11`. If it returns the tunnel CNAME, your resolver is not k8s-gateway and LAN traffic is hairpinning through Cloudflare |
+| Off-LAN works but LAN pushes got slow | The `Match ... exec` probe is failing — run its command by hand on the LAN or VPN; it must find `10.0.0.11`. If it finds the tunnel's address, your resolver is not k8s-gateway and LAN traffic is hairpinning through Cloudflare |
+| On the VPN, pushes time out after 15 s while the browser reaches Forgejo | The probe uses `dig`, and Tailscale's `100.100.100.100` answers `SERVFAIL` because it cannot reach the VPN's DNS, so ssh takes the tunnel path. Use the system-resolver probe above |
 | `kex_exchange_identification: ... connection reset` | The tunnel's wildcard rule is matching first — the `ssh://` rule must stay **above** `*.${SECRET_DOMAIN}` in `cloudflare-tunnel/app/helmrelease.yaml` |
 
 ## Observability
