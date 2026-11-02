@@ -533,7 +533,7 @@ class ReconcilerTest(unittest.TestCase):
                           if repo["forge"] == "github" and key.startswith("webgrip/") and "mirror_of" in repo
                           and not (repo.get("settings") or {}).get("archived", False))
         self.assertEqual(module.tracked_mirrors(module.model_github_entries(text), "webgrip"), expected)
-        self.assertGreaterEqual(len(expected), 10)
+        self.assertIn(("homelab-cluster", "homelab-cluster"), expected)
         expected_keys = sorted(key for key, repo in repos.items() if repo["forge"] == "github")
         self.assertEqual(sorted(module.model_github_entries(text)), expected_keys)
 
