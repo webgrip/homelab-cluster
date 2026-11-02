@@ -5,8 +5,8 @@ from lib import (NEUTRAL, VERMILLION, alarm_at, bars, col, dashboard, grid_pos, 
 
 UID = "unfold-health"
 FOLDER = "boards"
-TAGS = ["board", "glide", "unfold"]
-GLIDE_DOCS = "https://docs.webgrip.dev/glide/"
+TAGS = ["board", "unfold"]
+UNFOLD_DOCS = "https://docs.webgrip.dev/glide/"
 
 KSM = 'job="kube-state-metrics", exported_namespace="ploeg"'
 UNFOLD_POD = 'exported_pod=~"unfold-.+"'
@@ -305,9 +305,9 @@ def placed():
     ]
 
 
-LINKS = [link("Unfold · Plant", "/d/glide-plant"), link("Unfold Loop", "/d/glide-loop"),
+LINKS = [link("Unfold · Plant", "/d/unfold-plant"), link("Unfold Loop", "/d/glide-loop"),
          link("Unfold · Needs-you insight", "/d/unfold-insight"),
-         link("Unfold docs", GLIDE_DOCS, icon="doc", blank=True), tag_links(["board"], "Boards")]
+         link("Unfold docs", UNFOLD_DOCS, icon="doc", blank=True), tag_links(["board"], "Boards")]
 
 
 def health():

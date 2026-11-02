@@ -453,11 +453,11 @@ function asks(series, now, cfg) {
   }
   const flux = scalar(series, 'FLUX');
   if (flux) out.push({ k: 'Flux not ready', v: plural(flux, 'object', 'objects'), s: 'Git is not what runs', url: cfg.links.gitops });
-  const glide = {};
-  for (const r of rows(series, 'GLIDE')) glide[r.state] = num(r.value);
-  if (glide.needs_human) {
-    out.push({ k: 'Unfold waits on you', v: plural(glide.needs_human, 'work item', 'work items'),
-      s: glide.awaiting_review ? glide.awaiting_review + ' more awaiting review' : 'needs a human decision', url: cfg.links.glide });
+  const unfold = {};
+  for (const r of rows(series, 'UNFOLD')) unfold[r.state] = num(r.value);
+  if (unfold.needs_human) {
+    out.push({ k: 'Unfold waits on you', v: plural(unfold.needs_human, 'work item', 'work items'),
+      s: unfold.awaiting_review ? unfold.awaiting_review + ' more awaiting review' : 'needs a human decision', url: cfg.links.unfold });
   }
   const stages = rows(series, 'STAGES');
   const reviewing = stages.reduce((sum, r) => sum + num(r.reviewing), 0);

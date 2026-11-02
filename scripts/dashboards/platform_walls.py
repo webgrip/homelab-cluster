@@ -210,7 +210,7 @@ def nodes_wall():
               unit="percentunit", decimals=0, maximum=1, thresholds=alarm_at(amber=0.9, vermillion=0.98),
               desc="Memory requests of running and pending pods as a share of each node's allocatable memory. The "
                    "scheduler places by requests, not usage: at 98 % a node takes no new pod that asks for real "
-                   "memory, which is what leaves CI runners and Glide workers Pending."), 0, 5, 8, 10),
+                   "memory, which is what leaves CI runners and Ploeg workers Pending."), 0, 5, 8, 10),
         (bars("CPU requested, per node", [target(requests("cpu"), "A", "{{node}}", instant=True)],
               unit="percentunit", decimals=0, maximum=1, thresholds=alarm_at(amber=0.9, vermillion=0.98),
               desc="CPU requests as a share of each node's allocatable CPU."), 8, 5, 8, 10),

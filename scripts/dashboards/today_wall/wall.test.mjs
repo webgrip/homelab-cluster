@@ -54,8 +54,8 @@ test('the shipped panel is a Business Text panel in data mode with inline render
   assert.equal(panel.gridPos.h, 24);
   assert.ok(!panel.options.styles.includes('$'));
   assert.deepEqual(panel.targets.map((t) => t.refId).sort(),
-    ['AGENTS', 'AGENT_PRS', 'AGING', 'ALERTS', 'CI_AGE', 'CI_FAILED', 'CI_NOW', 'FEED', 'FLOW', 'FLUX', 'GLIDE', 'PROBES',
-      'PULLS', 'RUN_KEYS', 'SPEND', 'STAGES', 'TRUNK_RED', 'WEEK', 'WINS']);
+    ['AGENTS', 'AGENT_PRS', 'AGING', 'ALERTS', 'CI_AGE', 'CI_FAILED', 'CI_NOW', 'FEED', 'FLOW', 'FLUX', 'PROBES',
+      'PULLS', 'RUN_KEYS', 'SPEND', 'STAGES', 'TRUNK_RED', 'UNFOLD', 'WEEK', 'WINS']);
 });
 
 test('the week clock counts Monday to Sunday in Amsterdam time', () => {
@@ -118,7 +118,7 @@ test('wins name agent pull requests merged and the tickets closed, and skip a st
   assert.equal(wall.wins[0].s, 'unfold #88 feat(vloer): link a Run by URL');
   const streak = { fields: [
     { name: 'kind', type: 'string', values: ['streak'] },
-    { name: 'repo', type: 'string', values: ['glide'] },
+    { name: 'repo', type: 'string', values: ['unfold'] },
     { name: 'workflow', type: 'string', values: ['ci.yaml'] },
     { name: 'value', type: 'number', values: [42] }] };
   const { wall: streaky } = render(replace('WINS', streak));
@@ -139,7 +139,7 @@ test('could-use-a-hand orders alerts first, caps at five and says how many more'
 });
 
 test('a calm estate asks for nothing', () => {
-  const calm = without('ALERTS', 'TRUNK_RED', 'GLIDE', 'PULLS', 'STAGES');
+  const calm = without('ALERTS', 'TRUNK_RED', 'UNFOLD', 'PULLS', 'STAGES');
   const { wall } = render(calm);
   assert.deepEqual(wall.hand, []);
   assert.equal(wall.more, 0);
