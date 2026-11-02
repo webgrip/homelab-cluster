@@ -31,7 +31,7 @@ flowchart LR
   subgraph Doors
     CH[Open WebUI chat]
     CC[Claude Code]
-    GL[Glide agents]
+    GL[Ploeg runs]
     EX[Explorer]
   end
   OB -->|vault importer, 15 min| OG
@@ -78,7 +78,7 @@ issues) goes straight into the graph; long or bulk text belongs in the archive o
 | **Forgejo** | Hourly importer over every repo you can see | `brain` `main`: repos as projects, READMEs, `docs/`, ADRs as decisions, issues, PRs, people | One-time: a read-only token, see [Forgejo projects](../runbooks/omnigraph.md#forgejo-projects) |
 | **Distiller** | Hourly, after the importers, over every new or changed note, artifact and project | `brain` `main`: `Topic` rows and links from documents to topics, people, organisations, projects, places and areas, all under `derived/` | Nothing |
 | **Meeting notes** | `just omnigraph-ingest-meeting <graph> extraction.json notes.txt` | An `ingest/*` branch of `webgrip` or a client graph | Review and merge |
-| **Glide agents** | Their own tools through LiteLLM | A `glide/<run>` branch of `memory`, `brain` or `webgrip` | Review and merge |
+| **Ploeg runs** | Their own tools through LiteLLM | A `glide/<run>` branch of `memory`, `brain` or `webgrip` | Review and merge |
 | **Mail, Slack, calls, documentation** | Through the archive | Archive first, distilled into the graph | Parked |
 
 ## How finding things works
@@ -131,7 +131,7 @@ When a row gets its vector:
 | Follow a topic | "Which notes and repos are about Magento?" · "What topics come up with Kubernetes?" |
 | Review | "What did I save this week?" |
 
-The chat's key sees `memory` and `brain` only. It cannot see `webgrip` or the Glide tools.
+The chat's key sees `memory` and `brain` only. It cannot see `webgrip` or the Ploeg tools.
 
 ### Claude Code
 
@@ -170,12 +170,12 @@ mode](../runbooks/omnigraph.md#review-mode).
 `~/.omnigraph/credentials`. After that the `omnigraph` CLI works against the `homelab` server, for
 example `omnigraph branch list --server homelab --graph brain`.
 
-### Glide agents
+### Ploeg runs
 
-A Glide run reaches `memory`, `brain` and `webgrip` through the `omnigraph_glide_*` tools in LiteLLM.
+A Ploeg run reaches `memory`, `brain` and `webgrip` through the `omnigraph_glide_*` tools in LiteLLM.
 It reads `main` freely and writes only on its own branch, `glide/<run>`. The cluster side is live; the
-Glide side (handing each run its tools) is VIK-1300, specified in
-[Glide runs on Omnigraph](../rfc/spec-glide-omnigraph.md).
+Ploeg side (handing each run its tools) is VIK-1300, specified in
+[Ploeg runs on Omnigraph](../rfc/spec-glide-omnigraph.md).
 
 ## Branches and review
 
@@ -188,7 +188,7 @@ Glide side (handing each run its tools) is VIK-1300, specified in
 | Obsidian importer | `act-vault-import` | Its own `obsidian/` notes on `brain` `main` | No |
 | Forgejo importer | `act-forge-import` | Its own `forge/` rows on `brain` `main` | No |
 | Distiller | `act-distill` | Its own `derived/` rows and `derived:` links on `brain` `main` | No |
-| Glide agents | `act-glide` | Unprotected branches (`glide/<run>`) of all three graphs | No |
+| Ploeg runs | `act-glide` | Unprotected branches (`glide/<run>`) of all three graphs | No |
 | Review mode | `act-review` | Any branch of all three graphs, on your click | Yes, on your click |
 | In-cluster agents on `memory` | `act-agent` | Their own branches of `memory` | No |
 | Meeting ingest | `act-ingest` | `ingest/*` branches; cannot read | No |
@@ -217,7 +217,7 @@ changes](../runbooks/omnigraph.md#open-glide-branches-block-schema-changes).
 | Who can reach it | LAN only, through `envoy-internal`. Nothing is on the internet. |
 | Who can log in | Authentik at the gateway. The chat also requires the `knowledge-graph-chatters` group, the explorer `knowledge-graph-viewers`; both hold only you. |
 | What an AI may do | Its identity's policy, enforced by Omnigraph on every request, whatever the model is told. |
-| Which tools a key sees | LiteLLM `object_permission.mcp_access_groups` per key: chat and Claude Code `memory` + `brain`; Glide runs `glide`. |
+| Which tools a key sees | LiteLLM `object_permission.mcp_access_groups` per key: chat and Claude Code `memory` + `brain`; Ploeg runs `glide`. |
 | Secrets | Generated in the cluster, stored in OpenBao, delivered by External Secrets. Never in git. |
 | Mistakes | Every write is a commit. Find it with `commit list`, undo it with a follow-up write or by restoring from history. |
 
@@ -225,13 +225,13 @@ changes](../runbooks/omnigraph.md#open-glide-branches-block-schema-changes).
 
 - **Prompt injection.** Imported text (an issue, a doc, a note) can carry instructions aimed at the
   model. Your chat and Claude Code write `brain` `main` directly, so an injected instruction could add or
-  change rows there. The commit history shows it and allows undo; it does not prevent it. Glide writes
+  change rows there. The commit history shows it and allows undo; it does not prevent it. Ploeg writes
   wait for your merge.
 - **Where your data goes.** Whatever the model reads is sent to the model's provider. The owner rule
   (2026-09-28): everything runs through LiteLLM, Fireworks first, the cheapest DeepSeek model as the
   fallback, Claude on request. Client content may reach all three, so a Fireworks outage sends chats,
   client material included, to DeepSeek.
-- **Branch names are a convention.** Omnigraph protects `main`, not a name prefix, so a Glide run could
+- **Branch names are a convention.** Omnigraph protects `main`, not a name prefix, so a Ploeg run could
   write on another unprotected branch. `main` stays protected.
 - **Deleting is not forgetting.** Old versions stay in the storage files until a cleanup runs. For real
   erasure follow [forget a meeting](../runbooks/omnigraph.md#forget-a-meeting).
@@ -243,7 +243,7 @@ changes](../runbooks/omnigraph.md#open-glide-branches-block-schema-changes).
 | Chat page reloads in a loop | A stale cached page from an expired session | Ctrl+Shift+R once; sessions now refresh themselves |
 | "Something went wrong" at Authentik | A leftover login attempt | Close all chat and Authentik tabs, open the chat again |
 | The model answers without calling a tool | Omnigraph is not switched on in that chat | Tools menu, switch on Omnigraph |
-| A tool call answers 403 | The identity is not allowed that action (for example a Glide write to `main`) | Expected; work on a branch and merge as yourself |
+| A tool call answers 403 | The identity is not allowed that action (for example a Ploeg write to `main`) | Expected; work on a branch and merge as yourself |
 | New or edited notes are found by keyword but not by meaning | Vectors are filled at the nightly restart, and an edit clears the row's vector | Wait until after 03:15; the [brain retrieval RFC](../rfc/rfc-brain-retrieval.md) makes writers supply vectors |
 | A Dutch question returns unrelated Dutch documents | The keyword search is English-only and treats Dutch function words as keywords | Ask with a few key words, or in English |
 | Text deep inside a long note is not found by meaning | Only the first 1,024 tokens of a note get a vector | Search with its exact words; chunked notes are phase P3 of the RFC |
@@ -258,7 +258,7 @@ changes](../runbooks/omnigraph.md#open-glide-branches-block-schema-changes).
 |---|---|
 | VIK-1259 | [Brain retrieval](../rfc/rfc-brain-retrieval.md): an eval set, chunked notes, vectors at write time, brain tools, the Brain preset, a search-first explorer |
 | VIK-1348 | Keep the nightly vector backfill from holding every graph offline |
-| VIK-1300 | Glide hands each run its Omnigraph tools |
+| VIK-1300 | Ploeg hands each run its Omnigraph tools |
 | VIK-1260 | The archive layer, then mail (VIK-1254), Slack (VIK-1290), calls (VIK-1253) |
 | VIK-1251 | Alert when Claude requests silently fall back |
 | VIK-1296 | Explorer camera on tiny graphs |
