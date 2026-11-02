@@ -491,9 +491,9 @@ Related managers of Forgejo state outside the script:
 | 16 | Team membership of the bots | same Jobs | covered: `forgejo_team_member` | model |
 | 17 | Per-repo team grants | click-ops | **gap** | model (§8.2) |
 | 18 | Bot users and their tokens (+ `PushSecret` to OpenBao) | same Jobs | covered (`forgejo_user`, `forgejo_personal_access_token`), but a token would sit in tofu state | stays in the provisioners (identity plane) |
-| 19 | Glide repo webhook to the ploeg receiver | `glide-forge-webhook.job.yaml` | covered | model |
-| 20 | Unfold SSH push mirror; GitHub repo and deploy key | `glide-distribution.job.yaml` | mirror **gap** (row 9); GitHub side needs `integrations/github` | model (mirror) |
-| 21 | Org and repo Actions secrets and variables | `forgejo-actions-secrets.cronjob.yaml`, `glide-docs-secrets.job.yaml` | covered (`*_action_secret`, `*_action_variable`), but values are write-only in Forgejo and would land in tofu state | stays: secret delivery is the bridge level of ADR-0055, not repo config |
+| 19 | Repo webhooks to the Ploeg receiver | `ploeg-forge-webhook-registration.job.yaml` | covered | model |
+| 20 | Unfold SSH push mirror; GitHub repo and deploy key | `unfold-distribution.job.yaml` | mirror **gap** (row 9); GitHub side needs `integrations/github` | model (mirror) |
+| 21 | Org and repo Actions secrets and variables | `forgejo-actions-secrets.cronjob.yaml` | covered (`*_action_secret`, `*_action_variable`), but values are write-only in Forgejo and would land in tofu state | stays: secret delivery is the bridge level of ADR-0055, not repo config |
 | 22 | Package → repo links | `forgejo-package-link-reconciler.cronjob.yaml` | **gap** | stays: links are derived from packages that CI creates, not declared |
 | 23 | Action-mirror pull repos | `scripts/bootstrap-action-mirrors.sh` | covered (`forgejo_repository` with `mirror`); caveats [#187](https://github.com/svalabs/terraform-provider-forgejo/issues/187), [#199](https://github.com/svalabs/terraform-provider-forgejo/pull/199) | later: not required to retire the script |
 | 24 | Runner registrations | runner provisioner Jobs | out of scope: runtime state, not repo config | stays |
