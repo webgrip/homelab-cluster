@@ -120,7 +120,7 @@ that passes every check or is opted out.
 | not scheduled | a config but no `renovate` topic, so the RenovateJob never runs on it | add the topic |
 | no dashboard | scheduled, but no Dependency Dashboard issue: Renovate has not finished a run | check the repository on the Renovate operator board |
 | renovate errors | Repository Problems lists an `ERROR` line, or the Errored section is not empty | read the dashboard |
-| parked | updates wait for a tick on the dashboard | with no gate preset (`reviewed`, `unattended`, or a `profile-*` alias of one) every update its own rules do not release waits, because `renovate-config`'s default preset requires approval for all of them: extend a gate, or tick them. Under a gate, majors, container and CI action updates and the always-review list wait by design: tick or close them |
+| parked | updates wait for a tick on the dashboard | with no gate preset (`reviewed`, `unattended`, or a `profile-*` alias of one) every update its own rules do not release waits, because `renovate-config`'s default preset requires approval for all of them: extend a gate, or tick them. Under a gate only majors and the always-review list wait: tick or close them |
 | drifting | a shared pin is unversioned, or three or more stable releases behind | add the `# vX.Y.Z` comment or tag, or merge its Renovate pull request |
 | under control | none of the above | — |
 
