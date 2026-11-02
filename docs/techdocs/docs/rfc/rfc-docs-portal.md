@@ -82,8 +82,12 @@ and mirrored to PyPI.
 - **Surfaces** as tokens (`--surface`, `--border`, `--shadow`), so both schemes stay one rule set
   and sites can draw their own panels the same way.
 - **Logo and favicon** from webgrip.nl's generated brand assets.
-- **Installed** into the techdocs-builder image's Zensical venv, so a repository opts in with
-  `theme.name` in its `mkdocs.yml` and nothing else.
+- **Installed** into the techdocs-builder image's Zensical venv and **switched on centrally**:
+  `techdocs-deploy-docs-site.yml` builds through an overlay that `INHERIT`s the repository's
+  `mkdocs.yml` and names the theme (`theme` input, default `webgrip`). No repository edits its
+  `mkdocs.yml`, and the MkDocs lane that reads the same file never meets a theme it cannot
+  load. A site's own `theme:` keys still win, key by key; the theme's colours win over a stock
+  palette.
 
 A theme cannot add markdown extensions; those stay in each `mkdocs.yml`, as the Bifrost theme
 documents.
@@ -135,12 +139,12 @@ Each step is a pull request; the next waits until the previous one is live.
 
 | Step | What | Done when |
 |---|---|---|
-| 1 | `webgrip-zensical-theme` repository, first release, installed in the techdocs-builder image | A repository building with `theme.name: webgrip` shows the brand in both schemes |
+| 1 | `webgrip-zensical-theme` repository, first release, installed in the techdocs-builder image, `theme` input in the deploy workflow | Every docs site shows the brand in both schemes on its next build |
 | 2 | `docs-portal` repository: catalogue and search, generated from the repo-config model, published to a staging prefix | The portal lists every publishing repository and finds pages across sites |
 | 3 | Swap: the portal to the root, homelab-cluster to `/homelab-cluster/`, redirect stubs | Old homelab-cluster links land on the new paths; the weekly link check stays green |
 | 4 | Public exposure: routes on `envoy-external` and public DNS for public repositories only, after the host-name review | A public site answers from outside the LAN; a private site does not |
 | 5 | Private sites: `SecurityPolicy` with per-path authorization from the access-plane model | Signed out: login. A reader with the capability: 200. Without: 403. Search leaves the site out |
-| 6 | Every repository's `mkdocs.yml` moves to the theme | No stock palette remains |
+| 6 | Repositories drop the stock `palette` from `mkdocs.yml` | No `mkdocs.yml` carries a palette the theme overrides anyway |
 
 ## Progress
 
@@ -151,6 +155,12 @@ Each step is a pull request; the next waits until the previous one is live.
   newest Zensical and on 0.0.53, the builder image's version; light and dark were checked in a
   headless browser. Not yet: the first release, the PyPI publish, and the builder image
   installing it.
+- **Step 1, theme switched on centrally (owner, 2026-11-02):** the deploy workflow gets a
+  `theme` input and builds through an `INHERIT` overlay, rather than each repository naming the
+  theme; step 6 shrinks to cleanup. A test builds a site whose `mkdocs.yml` names `material`
+  with a blue palette through the overlay and gets the brand colours. The release pipeline
+  (semantic-release, then a publish on the release event) is committed in the theme
+  repository; the workflow change waits on a builder image that ships the theme.
 
 ## Questions answered by the owner, 2026-10-31
 
