@@ -3,10 +3,10 @@ from __future__ import annotations
 from lib import (AMBER, NEUTRAL, SKY, VERMILLION, alarm_at, col, dashboard, grid_pos, link, number, sql, stat, table,
                  tag_links, target, text, timeseries)
 
-RUNS_UID = "glide-runs"
-KATA_UID = "glide-kata"
+RUNS_UID = "unfold-runs"
+KATA_UID = "unfold-kata"
 FOLDER = "boards"
-TAGS = ["board", "glide", "ploeg"]
+TAGS = ["board", "unfold", "ploeg"]
 PLOEG_DB = {"type": "grafana-postgresql-datasource", "uid": "ploeg-db"}
 
 KSM = 'job="kube-state-metrics", exported_namespace="ploeg"'
@@ -372,7 +372,7 @@ def pods_without_room_over_time():
              "keep coming back mean the Kata nodes are full: see node headroom on Unfold · Kata overhead.")
 
 
-LINKS = [link("Unfold · Plant", "/d/glide-plant"), link("Unfold · Kata overhead", f"/d/{KATA_UID}"),
+LINKS = [link("Unfold · Plant", "/d/unfold-plant"), link("Unfold · Kata overhead", f"/d/{KATA_UID}"),
          link("Unfold Loop", "/d/glide-loop"), tag_links(["board"], "Boards")]
 
 
@@ -651,7 +651,7 @@ def kata_board():
     ]
     return dashboard(
         KATA_UID, "Unfold · Kata overhead", number(place(items)), tags=TAGS + ["kata"], variables=[TEAM_VARIABLE],
-        links=[link("Unfold · Runs", f"/d/{RUNS_UID}"), link("Unfold · Plant", "/d/glide-plant"),
+        links=[link("Unfold · Runs", f"/d/{RUNS_UID}"), link("Unfold · Plant", "/d/unfold-plant"),
                tag_links(["board"], "Boards")],
         time_from="now-7d",
         description="What running Unfold's agents inside Kata virtual machines costs compared with plain runc "

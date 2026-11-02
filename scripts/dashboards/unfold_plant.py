@@ -4,11 +4,11 @@ from lib import (AMBER, CAT, LOGS, NEUTRAL, SKY, VERMILLION, alarm_at, bars, col
                  doc_link, grid_pos, kiosk_steps, link, number, stat, table, tag_links, target, timeseries, var_query)
 from forgejo_ci import lay_out_rows
 
-UID = "glide-plant"
-WALL_UID = "wall-glide"
+UID = "unfold-plant"
+WALL_UID = "wall-unfold"
 FOLDER = "boards"
-TAGS = ["board", "glide", "ploeg"]
-GLIDE_DOCS = "https://docs.webgrip.dev/glide/"
+TAGS = ["board", "unfold", "ploeg"]
+UNFOLD_DOCS = "https://docs.webgrip.dev/glide/"
 
 KSM = 'job="kube-state-metrics", exported_namespace="ploeg"'
 WORKER_POD = 'exported_pod=~"ploeg-worker-.+"'
@@ -325,8 +325,8 @@ def row_native():
     ]
 
 
-LINKS = [link("Unfold Loop", "/d/glide-loop"), link("Unfold · Runs", "/d/glide-runs"),
-         link("Unfold · Kata overhead", "/d/glide-kata"), link("Unfold docs", GLIDE_DOCS, icon="doc", blank=True),
+LINKS = [link("Unfold Loop", "/d/glide-loop"), link("Unfold · Runs", "/d/unfold-runs"),
+         link("Unfold · Kata overhead", "/d/unfold-kata"), link("Unfold docs", UNFOLD_DOCS, icon="doc", blank=True),
          tag_links(["board"], "Boards")]
 
 
@@ -343,7 +343,7 @@ def desk():
 
 def wall():
     return dashboard(
-        WALL_UID, "Wall · Unfold", number(first_screen()), tags=["wall", "glide"], kiosk=True,
+        WALL_UID, "Wall · Unfold", number(first_screen()), tags=["wall", "unfold"], kiosk=True,
         variables=[{**VARIABLES[0], "hide": 2}], description="The Unfold plant board's first screen, for a TV.",
         links=[link("Unfold · Plant", f"/d/{UID}")])
 

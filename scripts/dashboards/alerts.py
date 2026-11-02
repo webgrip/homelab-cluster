@@ -30,7 +30,7 @@ GROUPS = [
      "services": ["trivy-operator", "external-secrets", "authentik", "kyverno", "dependency-track-metrics-exporter",
                   "cert-manager"],
      "folders": ["Security"]},
-    {"slug": "ai", "name": "AI and Glide",
+    {"slug": "ai", "name": "AI and Unfold",
      "services": ["omnigraph", "omnigraph-explorer", "open-webui", "tei-embeddings", "litellm", "ploeg"],
      "folders": ["AI"]},
 ]
