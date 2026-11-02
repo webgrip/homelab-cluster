@@ -1,7 +1,7 @@
 # Information radiators: walls, boards and playlists
 
 What goes on a screen that nobody is looking at directly, why each tile earns its place, and how
-to change one. The tiles are drawn from what this cluster actually runs: Forgejo CI, Glide,
+to change one. The tiles are drawn from what this cluster actually runs: Forgejo CI, Unfold,
 Flux, Talos, Longhorn, CloudNativePG and the Vikunja roadmap.
 
 ## Glossary
@@ -39,7 +39,7 @@ Flux, Talos, Longhorn, CloudNativePG and the Vikunja roadmap.
 | Today | `today` | What landed on the trunks this week, where the work on each board is, wins, and what could use a hand |
 | Homelab now | `wall-now` | What is firing, is git what runs, are nodes, endpoints, volumes and backups whole, error budgets |
 | Forgejo CI | `wall-ci` | Runner capacity, queue wait, red trunks, running jobs against their usual time, builders, pulls around Harbor |
-| Glide | `wall-glide` | Runs and workers, what waits on a person, oldest queued Work Item, failed Runs with cost, model health |
+| Unfold | `wall-unfold` | Runs and workers, what waits on a person, oldest queued Work Item, failed Runs with cost, model health |
 | GitOps and Renovate | `wall-gitops` | Flux readiness, suspensions, drift behind git, Renovate freshness and failures |
 | Nodes | `wall-nodes` | Node readiness, pressure, Pending pods, memory and CPU **requested** per node, memory outside kubepods |
 | Data and backups | `wall-data` | Longhorn robustness and free space, CNPG backup age and lag, Garage health, backup CronJobs |
@@ -47,8 +47,8 @@ Flux, Talos, Longhorn, CloudNativePG and the Vikunja roadmap.
 | Roadmap | `wall-roadmap` | Vikunja stages per board, do-next, reviews waiting |
 | Alerts · Everything and per group | `alerts-all`, `alerts-platform`, `alerts-delivery`, `alerts-data`, `alerts-security`, `alerts-ai` | What is firing that nobody silenced |
 
-The Forgejo CI and Glide walls are the **first screens** of the desk boards `forgejo-ci` and
-`glide-plant`, built from the same panel functions, so a wall and its board can never disagree.
+The Forgejo CI and Unfold walls are the **first screens** of the desk boards `forgejo-ci` and
+`unfold-plant`, built from the same panel functions, so a wall and its board can never disagree.
 
 ## Which overview boards stay (VIK-2422, 2026-10-25)
 
@@ -61,7 +61,7 @@ question; a board that repeats another's tiles comes off.
 | Where in the cluster, by namespace and pod | `obs-stack-overview` | `k8s-cluster-health`, `k8s-workloads-capacity` (subsets) |
 | Security posture | `exec-security-supply-chain`, tool boards in **Security** | `security-overview` (posture duplicated; Falco panels read a source that is gone) |
 | Claude Code | `claude-code-command-center` | `claude-code-exec-summary` (same tiles) |
-| Unfold | `glide-loop` (KPIs), `glide-plant`, `glide-runs`, **Unfold · Run explorer** (one Run) | five `dark-factory-*` boards, named for the old program |
+| Unfold | `glide-loop` (KPIs; Ploeg reports and Unfold link this uid, so it keeps it), `unfold-plant`, `unfold-runs`, `unfold-kata`, **Unfold · Run explorer** (one Run) | five `dark-factory-*` boards, named for the old program |
 | Model gateway | `litellm-reliability`, `litellm-spend` | `dark-factory-llm-traffic` |
 | Forgejo CI | `forgejo-ci` (generated), `infra-forgejo-ci-runners` | `infra-forgejo-ci` |
 | How each repository ships, which shared versions it runs, where pull requests wait | `delivery-estate` (generated, [delivery estate](delivery-estate.md)) | nothing; new 2026-10-30 |
@@ -147,10 +147,10 @@ means the datasource, the role or the grants are missing.
 
 | Playlist | For | Rotation | Turns every |
 | --- | --- | --- | --- |
-| **Wall · Homelab** | the default TV | now, Today, alerts, CI, now, Glide, GitOps, now, data, nodes | 1 minute |
-| **Wall · Delivery** | a TV next to where code gets written | Today, CI, Glide, Today, delivery alerts, GitOps, AI alerts | 1 minute |
+| **Wall · Homelab** | the default TV | now, Today, alerts, CI, now, Unfold, GitOps, now, data, nodes | 1 minute |
+| **Wall · Delivery** | a TV next to where code gets written | Today, CI, Unfold, Today, delivery alerts, GitOps, AI alerts | 1 minute |
 | **Incident · Platform** | any TV during an incident | alerts, now, nodes, edge, data | 30 seconds |
-| **Weekly · Review** | the weekly look back | Today, roadmap, CI, Glide, GitOps, data, edge, nodes, security alerts | 2 minutes |
+| **Weekly · Review** | the weekly look back | Today, roadmap, CI, Unfold, GitOps, data, edge, nodes, security alerts | 2 minutes |
 
 Homelab now appears three times in its loop, so the board that says whether anything is wrong
 is never more than two boards away. Rotation removes information before it is read (engagement
@@ -184,7 +184,8 @@ python3 scripts/dashboards/generate.py --check  # fail when a committed file is 
 | --- | --- |
 | `scripts/dashboards/lib/` | Palette, panel builders, grid layout, the `GrafanaDashboard` emitter and `$$` escaping |
 | `scripts/dashboards/forgejo_ci.py` | The Forgejo CI board and its wall |
-| `scripts/dashboards/glide.py` | The Glide plant board and its wall |
+| `scripts/dashboards/unfold_plant.py` | The Unfold plant board and its wall |
+| `scripts/dashboards/unfold_runs.py` | The Unfold Runs and Kata overhead boards |
 | `scripts/dashboards/platform_walls.py` | Now, GitOps, nodes, data, edge and roadmap walls |
 | `scripts/dashboards/alerts.py` | The alert walls |
 | `scripts/dashboards/today.py`, `today_wall/` | The Today wall: queries, and the Business Text template, styles and view model |
@@ -230,7 +231,7 @@ them. The pre-commit hook re-runs `--check` when that manifest changes.
 | A KSM-based tile is empty | kube-state-metrics series carry the real namespace in `exported_namespace`, and OpenCost duplicates some of them. Pin `job="kube-state-metrics"` |
 | A node join returns nothing | cAdvisor's `instance` is the node name, node-exporter's is `IP:9100`. Join cAdvisor on `node`, node-exporter through `node_uname_info` |
 | A panel shows "No data" after a Flux reconcile | A single `$` was blanked by envsubst. Regenerate; never hand-edit the YAML |
-| The Glide "ploegd gauges" row says "ploegd not scraped" | The ploeg chart's ServiceMonitor is off, or its scrape is failing |
+| The Unfold plant's "ploegd gauges" row says "ploegd not scraped" | The ploeg chart's ServiceMonitor is off, or its scrape is failing |
 | Run wall-clock looks worse than time to green | It is every run, every outcome and event: the exporter's histogram has no status label |
 
 ## Panel health check

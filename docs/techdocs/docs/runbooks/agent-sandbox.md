@@ -1,6 +1,6 @@
 # agent-sandbox and Ploeg's sandbox executor
 
-[kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) runs one pod per `Sandbox` object and adds claims, templates and warm pools on top (the `extensions`). Ploeg's experimental `executor.type: sandbox` uses it: the KEDA ScaledJob's pod becomes a small launcher that creates one `SandboxClaim`, and the controller creates the worker pod from a chart-owned `SandboxTemplate`. Design and backstops are in Ploeg's [executor contract](https://forgejo.webgrip.dev/webgrip/glide/src/branch/development/apps/ploeg/docs/contracts/executor.md).
+[kubernetes-sigs/agent-sandbox](https://github.com/kubernetes-sigs/agent-sandbox) runs one pod per `Sandbox` object and adds claims, templates and warm pools on top (the `extensions`). Ploeg's experimental `executor.type: sandbox` uses it: the KEDA ScaledJob's pod becomes a small launcher that creates one `SandboxClaim`, and the controller creates the worker pod from a chart-owned `SandboxTemplate`. Design and backstops are in Ploeg's [executor contract](https://github.com/ploeg-hq/ploeg/blob/main/docs/contracts/executor.md).
 
 ## What is installed
 

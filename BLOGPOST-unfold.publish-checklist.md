@@ -1,6 +1,6 @@
 # Publish checklist: "Tokens are cheap. Review isn't."
 
-Canonical draft: `BLOGPOST-glide.draft-v2.md`. Variants: `.linkedin.md`, `.devto.md`, `.hn.md`.
+Canonical draft: `BLOGPOST-unfold.draft-v2.md`. Variants: `.linkedin.md`, `.devto.md`, `.hn.md`.
 Every variant carries only claims that are in draft-v2. If draft-v2 changes, re-check the variants.
 
 ## 0. Before anything goes out
@@ -19,14 +19,17 @@ Every variant carries only claims that are in draft-v2. If draft-v2 changes, re-
 
 ### Facts and links
 
+- [ ] The drafts were fact-checked on 2026-09-27, when the product was still called Glide and
+      Ploeg lived in the same repository. The names now say Unfold; re-check every repository
+      path, the demo task (now `mise run demo`) and the two-part description against today's
+      `webgrip/unfold` and `ploeg-hq/ploeg` before anything goes out.
 - [ ] Links reachable **from outside your LAN** (phone on mobile data, not home Wi-Fi; k8s-gateway
       can hand LAN clients an internal answer):
-  - [ ] https://forgejo.webgrip.dev/webgrip/glide loads the repository without signing in.
-        (2026-09-27 from the LAN: HTTP 200.)
+  - [ ] https://forgejo.webgrip.dev/webgrip/unfold loads the repository without signing in.
   - [ ] https://docs.webgrip.dev/glide loads the docs. (2026-09-27 from the LAN: 302 to
         `/glide/`, then 200.)
-- [ ] Demo command: `mise run demo-unified` runs on a clean clone and starts Ploeg, Vloer and
-      PostgreSQL without model calls. The task exists in `glide/mise.toml` and is documented in
+- [ ] Demo command: `mise run demo-unified` runs on a clean clone and starts Ploeg, the Unfold application and
+      PostgreSQL without model calls. The task exists in `unfold/mise.toml` and is documented in
       `docs/workflows/local-demo.md`; that is not the same as a stranger running it. Test it in a
       fresh checkout before any link goes out.
 - [ ] Figures still hold on the day: the "What isn't true yet" table, the four-hour key lifetime,

@@ -84,7 +84,7 @@ The rehearsal then opens no branch on `brain`. The variable is a statement that 
 | `act-vault-import` | `brain`: read and write on any branch including `main`, and run stored queries. No export, no branch create, merge or delete. Only the [Obsidian vault](#obsidian-vault) importer holds it |
 | `act-forge-import` | `brain`: the same rights as `act-vault-import`. Only the [Forgejo projects](#forgejo-projects) importer holds it |
 | `act-distill` | `brain`: the same rights as `act-vault-import`. Only the [distiller](#distiller) holds it |
-| `act-glide` | `brain`, `memory` and `webgrip`: read on any branch, write only on unprotected branches, create and delete unprotected branches, run stored queries. No merge, no export, never a write to `main`. Only the LiteLLM `omnigraph_glide_*` MCP servers hold it (see [Glide agents](#glide-agents)) |
+| `act-glide` | `brain`, `memory` and `webgrip`: read on any branch, write only on unprotected branches, create and delete unprotected branches, run stored queries. No merge, no export, never a write to `main`. Only the LiteLLM `omnigraph_glide_*` MCP servers hold it (see [Ploeg runs](#ploeg-runs)) |
 | `act-review` | `brain`, `memory` and `webgrip`: read and write on any branch including `main`, create, delete and merge any branch, run stored queries. No export. Only the explorer's review container holds it (see [Review mode](#review-mode)); client graphs stay CLI-reviewed as `act-ryan` |
 | `act-brain-eval` | `brain`: read and export on any branch, run stored queries. No writes, no branch actions. The [brain eval](#brain-eval) jobs and the `omnigraph_brain_eval` bridge hold it |
 | `act-brain-reader` | `brain`: read on any branch, run stored queries. Nothing else. Only [brain-tools](#brain-tools) holds it |
@@ -118,7 +118,7 @@ Give an in-cluster consumer its token with an ExternalSecret against the `openba
 - **What holds the write token.** A second container, `review` (image `omnigraph-explorer-review`), holds `act-review` from `omnigraph-explorer-review-upstream` (`secret/omnigraph/review`) and listens on `127.0.0.1:8090`. nginx on 8081 proxies `/review/api/` to it and never sees the token. The container never forwards a browser request: it calls a fixed list of Omnigraph endpoints and builds every write from rows it read itself. Every action logs one `review_action` line with the Authentik user, graph, branch and resulting commit, so an `act-review` commit is traced in VictoriaLogs with `review_action AND branch:"glide/..."`.
 - **Archive and sweep.** Reject archives the branch's commits and net diff as JSONL to the in-cluster Garage bucket `omnigraph-branch-archive` (key `omnigraph-branches/<graph>/<branch>/<time>.jsonl`), then deletes it. A branch older than 14 days is archived and deleted the same way. Without the archive keys nothing is deleted. The bucket and its key come from the `garage-omnigraph-archive-bootstrap` Job, pushed to `secret/garage/omnigraph-archive`.
 - **Monitoring.** The review container exports branch metrics on `:9464` (`omnigraph_branches_open`, `omnigraph_branch_age_seconds`, `omnigraph_branch_empty`, `omnigraph_branch_touches_importer_rows`, `omnigraph_review_refresh_success_timestamp_seconds`, `omnigraph_review_actions_total`), scraped by `VMServiceScrape/omnigraph-review` and shown on the Grafana dashboard *Omnigraph — Branch review*. Alerts: `OmnigraphReviewBacklog` (a branch older than 3 days), `OmnigraphBranchNotSwept` (older than 15 days), `OmnigraphBranchesPileUp` (more than 10 on one graph for an hour), `OmnigraphBranchMonitorStale` (no complete refresh for 30 minutes), `OmnigraphReviewGateOpen` (an anonymous request to the review route is not sent to the `omnigraph-review` client) and `OmnigraphExplorerServesReview` (port 8080 answers anything but 404 under `/review/api/`).
-- **Glide.** `act-glide` has no `branch_merge` (decision D3 in the RFC): the policy cannot limit it to a run's own branch. Syncing `main` into a branch is the review UI's **Update branch**.
+- **Ploeg runs.** `act-glide` has no `branch_merge` (decision D3 in the RFC): the policy cannot limit it to a run's own branch. Syncing `main` into a branch is the review UI's **Update branch**.
 
 ## Laptop setup
 
@@ -139,9 +139,9 @@ Two keys see both groups: `open-webui` for [Open WebUI](open-webui.md) and `clau
 
 Credentials, and descriptions of them, never belong in a graph (tier T5 in the [tiers RFC](../rfc/rfc-omnigraph-014-and-knowledge-tiers.md)). Agents write `webgrip-notes`, `webgrip-knowledge` and `memory`, and ploegd's filter on notes has let an observation about a token through, so the CronJob `omnigraph-scrub` ([app](../../../../kubernetes/apps/ai/omnigraph/scrub/app/)) runs at :20 every hour as `act-scrub`. It exports every branch of those graphs, deletes each row whose text matches a pattern in `patterns.json` (GitHub, GitLab, Forgejo, AWS, OpenAI-style, Slack and private-key shapes, and bearer values), and logs `omnigraph scrub removed <type> <key> from <graph>@<branch>: <field> matched <pattern>` without the text. `OmnigraphCredentialTextScrubbed` fires on such a line, `OmnigraphScrubFailing` on a refused call. Older commits keep a removed row until omnigraph-next's nightly cleanup reclaims versions older than 7 days. `brain` is not scrubbed: the importers copy repository documents that name token formats on purpose, and the next import would restore them.
 
-## Glide agents
+## Ploeg runs
 
-Glide runs read and write `memory`, `brain` and `webgrip` through three MCP servers, all running as `act-glide`:
+Ploeg runs read and write `memory`, `brain` and `webgrip` through three MCP servers, all running as `act-glide`:
 
 | Server | Graph | Served by |
 |---|---|---|
@@ -149,7 +149,7 @@ Glide runs read and write `memory`, `brain` and `webgrip` through three MCP serv
 | `omnigraph_glide_brain` | `brain` (pass `graph: brain`) | `omnigraph-next` `/mcp`, 0.14 |
 | `omnigraph_glide_webgrip` | `webgrip` (pass `graph: webgrip`) | `omnigraph-next` `/mcp`, 0.14 |
 
-The servers sit in access group `glide`. The token is `secret/omnigraph/glide`: LiteLLM holds it as `OMNIGRAPH_MCP_GLIDE_TOKEN`.
+The identifiers below still carry the name Glide, which the product had before it became Unfold; renaming them is a staged migration, not a text edit. The servers sit in access group `glide`. The token is `secret/omnigraph/glide`: LiteLLM holds it as `OMNIGRAPH_MCP_GLIDE_TOKEN`.
 
 **How a run gets the tools.** The run holds a LiteLLM virtual key whose `object_permission.mcp_access_groups` contains `glide`. The harness connects to the MCP endpoint `http://litellm.ai.svc.cluster.local:4000/mcp/` over streamable HTTP with `Authorization: Bearer <run key>`. A key without the `glide` group sees none of these tools.
 
@@ -704,7 +704,7 @@ The `omnigraph-company-view` CronJob runs at :10 every hour as `act-company-view
 3. `apply` deletes, then loads, on `company/main`.
 4. `report` pushes the embed report, then fails the job when a repository has no tier. That repository and every topic it touches stay out of the view until it is tiered.
 
-Who reads it: keys in the LiteLLM `company` access group through the read-only `omnigraph_company` MCP server (today the Claude Code key), the explorer, and `act-ryan`/`act-admin`. Ploeg runs, client users, the chat key and Glide agents cannot: no token of theirs is granted on `company`.
+Who reads it: keys in the LiteLLM `company` access group through the read-only `omnigraph_company` MCP server (today the Claude Code key), the explorer, and `act-ryan`/`act-admin`. Ploeg runs, client users and the chat key cannot: no token of theirs is granted on `company`.
 
 ### Monitoring and failures
 

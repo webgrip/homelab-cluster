@@ -86,7 +86,7 @@ The Claude runner (`app.kubernetes.io/name: claude-runner`, Kata) is left out of
 - Workers clone, push and call the PR API through `ploeg.executor.forgejo.url`, the in-cluster
   service. ploegd keeps the public `https://forgejo.<domain>` through a post-render env patch in
   [`unfold/app/kustomization.yaml`](unfold/app/kustomization.yaml),
-  because it checks Unfold's https repository URL against its own forge URL. Glide VIK-1298
+  because it checks Unfold's https repository URL against its own forge URL. VIK-1298
   asks the chart for a separate value so the patch can go.
 - `ploeg.executor.forgeTokenIsolation: proxy` and `ploeg.executor.litellm.keyIsolation: proxy`
   ([Ploeg ADR-0034](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md))
@@ -228,7 +228,7 @@ KEDA operator keeps 5432 from the `keda` namespace, the CNPG operator 5432 and 8
   ploegd 0.2.0-rc.13 and later refuse to start on it instead.
 - `bronze` and `silver` `forgeFollowUps`: a person's "request changes" on their pull request sends
   the Work Item back for a fix Round, and a failed check queues a bounded repair Follow-Up
-  (`maxRepairs: 2`). Forgejo cannot deliver check events yet (Glide #1280).
+  (`maxRepairs: 2`). Forgejo cannot deliver check events yet (VIK-1280).
 - `copper` has no assignees because it lends its tracker user to `pewter` for the self-hosted
   Claude Runs (since 2026-10-17). Hand it back once team labels route pewter's work without a user
   of its own
@@ -245,7 +245,7 @@ the board is just not updated.
 - `forgeTokenIsolation: proxy`: a writer's forge token stays inside `ploeg-worker`; the harness
   gets a placeholder and reaches only the Run's own repository through a loopback proxy
   ([Ploeg ADR-0034](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md),
-  Glide VIK-733). Every harness runs with `dind: false`, so none pushes from a sidecar that
+  VIK-733). Every harness runs with `dind: false`, so none pushes from a sidecar that
   cannot reach the proxy.
 - `harness.dind: false` is the estate default and overrides the chart's `dind: true`
   ([ADR-0053](../../../docs/techdocs/docs/adr/adr-0053-daemonless-agent-plane.md)). It is

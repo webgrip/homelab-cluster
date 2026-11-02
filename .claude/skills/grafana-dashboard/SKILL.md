@@ -13,7 +13,7 @@ All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or Hel
 - Datasource = `GrafanaDatasource` with `spec.datasource.editable: true`.
 
 ## Walls, boards and playlists are generated
-`wall-*`, `alerts-*`, `forgejo-ci`, `glide-plant` and every playlist come from `scripts/dashboards/` (`python3 scripts/dashboards/generate.py`, `--check` in CI Lint and pre-commit). Edit the Python builders, never `*.generated.yaml`. Playlists are `GrafanaManifest` CRs (`playlist.grafana.app/v1`) with the uid set in git. Rules, kiosk URLs and traps: `docs/techdocs/docs/general/information-radiators.md`.
+`wall-*`, `alerts-*`, `forgejo-ci`, `unfold-plant`, `unfold-runs` and every playlist come from `scripts/dashboards/` (`python3 scripts/dashboards/generate.py`, `--check` in CI Lint and pre-commit). Edit the Python builders, never `*.generated.yaml`. Playlists are `GrafanaManifest` CRs (`playlist.grafana.app/v1`) with the uid set in git. Rules, kiosk URLs and traps: `docs/techdocs/docs/general/information-radiators.md`.
 
 ## Add a dashboard
 1. `observability/grafana/app/dashboards/<name>.yaml`: `kind: GrafanaDashboard`, `spec.folderRef: <folder-crd-name>` (the GrafanaFolder `metadata.name`), `spec.json: |`.
@@ -22,7 +22,7 @@ All `grafana.integreatly.org/v1beta1` CRDs — never dashboard ConfigMaps or Hel
 
 **Bind folders by `folderRef`, never `spec.folder: "<Title>"`.** A title string makes the operator create+own a *second* folder separate from the GrafanaFolder CRD of the same title → two identical folders, each resurrected on reconcile (UI deletes never stick). `folderRef: <crd-name>` ties the dashboard to the CRD-owned folder. (Fixed 2026-06-20 across the Claude Code dashboards.)
 
-Folder CRD names (use as `folderRef`) = the files in `kubernetes/apps/observability/grafana/app/folders/` (e.g. `apps`, `infrastructure`, `executive` — the `exec-overview` home page + drill-downs).
+Folder CRD names (use as `folderRef`) = the files in `kubernetes/apps/observability/grafana/app/folders/` (e.g. `apps`, `infrastructure`, `executive` — the leadership KPI scorecard + drill-downs).
 
 ## Escaping (Flux envsubst) — enforced by `guard-skills.sh`
 Double **every** Grafana token (`$$__range`, `$$__rate_interval`, `$$var`, `$$__all`). Single `$` before `{`/`(` fails the *whole* grafana Kustomization; single `$model`/`$__range` is silently blanked → No data. Double as you write to avoid fix loops. No literal `$` in titles/`line_format` — write `USD`. The guard also fires on **pre-existing** single-`$` tokens anywhere in a file you edit — escape the legacy ones too (safe: `postBuild.substituteFrom` renders `$$`→`$`).

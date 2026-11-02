@@ -49,7 +49,7 @@ rm "$d/$dashboards/infra-harbor.yaml"
 expect fail "dashboard deleted while an alert still links it" "$d"
 
 d=$(fresh generated-target)
-rewrite 's|/d/forgejo-ci/forgejo-ci"|/d/glide-runs"|' "$d/$forgejo_ci_rule"
+rewrite 's|/d/forgejo-ci/forgejo-ci"|/d/unfold-runs"|' "$d/$forgejo_ci_rule"
 expect pass "alert links a uid defined only in a generated file" "$d"
 
 d=$(fresh other-namespace-target)

@@ -10,12 +10,12 @@ import alerts
 import delivery
 import executive
 import forgejo_ci
-import glide
-import glide_runs
 import platform_walls
 import playlists
 import today
 import unfold_health
+import unfold_plant
+import unfold_runs
 from lib import DASHBOARDS, check_args, dashboard_cr, screen_height, write_or_check
 
 GENERATOR = "scripts/dashboards/generate.py"
@@ -27,10 +27,10 @@ MODULES = {
     "delivery.generated.yaml": delivery,
     "executive.generated.yaml": executive,
     "forgejo-ci.generated.yaml": forgejo_ci,
-    "glide.generated.yaml": glide,
-    "glide-runs.generated.yaml": glide_runs,
     "walls.generated.yaml": platform_walls,
     "today.generated.yaml": today,
+    "unfold-plant.generated.yaml": unfold_plant,
+    "unfold-runs.generated.yaml": unfold_runs,
     "unfold-health.generated.yaml": unfold_health,
 }
 

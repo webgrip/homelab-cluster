@@ -11,7 +11,7 @@ The [deployment settings](../../../../kubernetes/apps/ploeg/unfold/app/helmrelea
 ## Start from a ticket
 
 1. Create a fresh ticket on the existing **Ploeg Test** board in Vikunja. Describe one small, verifiable change to the Ploeg repository.
-2. Assign it to any team user, for example **bronze**. The board determines the repository: `webgrip/glide`, branch `development`, and it pins the work to the `unfold` team whatever the assignee.
+2. Assign it to any team user, for example **bronze**. The board determines the repository: `webgrip/unfold`, branch `development`, and it pins the work to the `unfold` team whatever the assignee.
 3. In Unfold, select the **Ploeg Test** ticket source, preview the ticket, and import it.
 4. Choose the model and budget, then start the work. Follow its activity and inspect the resulting changes and checks.
 
