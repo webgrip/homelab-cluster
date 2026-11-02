@@ -33,11 +33,35 @@ spec:
     server:
       logLevel: info
       # Pin off the soyos onto the worker pool (ADR-0002). STS = clean ordered
-      # move; lands on fringe (WFFC-era longhorn-general volume predates worker-1).
+      # move; it first landed on fringe (WFFC-era longhorn-general volume predates worker-1).
       # gitops-critical soyo replica dropped 2026-06-21 (ADR-0008); DR = nightly
       # raft snapshot to external Garage S3.
       nodeSelector:
         node.webgrip.io/pool: worker
+      # Prefer worker-1 and worker-2 over fringe-workstation, whose disk stalls under
+      # Forgejo, Postgres and the CI Docker daemon (runbooks/renovate.md, "Where Renovate
+      # runs"). On 2026-11-02 openbao-0 there failed its probes, was killed and recreated
+      # three times in an hour, and CI logins failed with "Couldn't connect to server".
+      # Preferred, not required: one Pending pod would take every secret down with it.
+      # The podAntiAffinity is the chart default, kept because setting affinity replaces it.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: openbao
+                  app.kubernetes.io/instance: openbao
+                  component: server
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - fringe-workstation
       dataStorage:
         enabled: true
         size: 3Gi
