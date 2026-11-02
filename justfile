@@ -545,7 +545,7 @@ cloudflare-tofu-cred:
     just _need bao gum kubectl openssl
     BAO_ADDR="$(just bao-addr)"; export BAO_ADDR
     bao token lookup >/dev/null 2>&1 || bao login -no-print -method=oidc
-    tofu_token="$(gum input --password --placeholder 'forgejo-ci-tofu token VALUE (Zone Read + DNS Write op twente.dev + webgrip.nl, Single Redirect Write op webgrip.nl, Workers R2 Storage Write)')"
+    tofu_token="$(gum input --password --placeholder 'forgejo-ci-tofu token VALUE (Zone Read + DNS Write op twente.dev + webgrip.nl, Single Redirect Write op webgrip.nl, Workers R2 Storage Write, Zone Edit op alle zones)')"
     tofu_token_id="$(gum input --placeholder 'forgejo-ci-tofu token ID (uit de API Tokens-lijst, niet de waarde)')"
     state_key_id="$(gum input --placeholder 'R2 API token Access Key ID (Object Read & Write, alleen bucket tofu-state)')"
     state_secret="$(gum input --password --placeholder 'R2 API token Secret Access Key')"
