@@ -195,3 +195,33 @@ spec:
               - Open https://forgejo.webgrip.dev/webgrip/{{ $labels.repository }}/pulls/{{ $labels.pull }} and read the failing check
               - Compare with the newest run on the repository's default branch
               - docs/techdocs/docs/general/delivery-estate.md
+        - alert: ForgejoRepositoryOutsideRenovate
+          expr: |
+            max by (repository, state, fix) (
+              last_over_time(repo_config_control_state{job="repo-config-inventory",state=~"no renovate|not scheduled|no dashboard|renovate errors"}[2h])
+            ) == 1
+          for: 6h
+          labels:
+            severity: warning
+            owner: platform
+            service: renovate
+          annotations:
+            summary: "webgrip/{{ $labels.repository }} is outside Renovate: {{ $labels.state }} (repo-config/{{ $labels.repository }})"
+            description: |-
+              What's happening:
+              - The repo-config inventory reads webgrip/{{ $labels.repository }} as "{{ $labels.state }}" for six hours: Renovate either never runs on it or reports an error on its Dependency Dashboard.
+              - Fix: {{ $labels.fix }}
+
+              Impact/risk:
+              - Nothing updates this repository's dependencies or shared pins, and no pull request says so: it only drifts further behind.
+
+              Likely causes:
+              - no renovate: the repository has no Renovate config at all
+              - not scheduled: it has a config but not the renovate topic, which the webgrip-forgejo RenovateJob discovers by
+              - no dashboard: Renovate is scheduled but has not finished a run (onboarding, a crash, or the Dependency Dashboard is disabled)
+              - renovate errors: Repository Problems on the Dependency Dashboard lists an ERROR line
+
+              First actions:
+              - Open the Delivery estate board, table "Estate control", and click the repository
+              - kubectl -n renovate get jobs -l renovate-operator.mogenius.com/renovatejob=webgrip-forgejo
+              - Opt the repository out on purpose with renovate: absent: true in kubernetes/apps/repo-config/repo-config/model/repos.yaml

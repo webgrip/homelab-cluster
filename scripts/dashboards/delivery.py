@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import forgejo_ci
-from lib import (AMBER, GREEN, NEUTRAL, VERMILLION, alarm_at, bars, col, dashboard, doc_link, grid_pos, link, number,
-                 sql, stat, table, tag_links, target, target_met)
+from lib import (AMBER, GREEN, NEUTRAL, VERMILLION, alarm_at, bars, col, dashboard, doc_link, grid_pos, link,
+                 low_is_bad, number, sql, stat, table, tag_links, target, target_met)
 from today import FORGEJO_DB, FORGEJO_URL, ORG, ORG_REPO, runs_verdict
 
 UID = "delivery-estate"
@@ -16,6 +16,10 @@ WINDOW_DAYS = 30
 RENOVATE = "u.lower_name LIKE 'renovate%'"
 UPSTREAM = r"(@?webgrip/[A-Za-z0-9._-]+|webgrip dependencies)"
 APPROVE = 1
+CONTROLLED = 'state=~"under control|opted out"'
+CONTROL_COLOURS = {"under control": GREEN, "opted out": NEUTRAL, "parked": AMBER, "drifting": AMBER,
+                   "no renovate": VERMILLION, "not scheduled": VERMILLION, "no dashboard": VERMILLION,
+                   "renovate errors": VERMILLION, "unread": VERMILLION}
 OLD_RELEASE_PATH = "monorepo (old path)"
 SHARED_DEPENDENCY = r"(?:@|harbor\.webgrip\.dev/)?webgrip/(?:workflows|renovate-config|agent-standards|semantic-release[a-z-]*)"
 UPDATE_ROW = (r"\[(" + SHARED_DEPENDENCY + r")\]\([^)]*\)\s*\|(?:[^|`]*\|){1,2}\s*`[^`]*`\s*→\s*`v?([0-9]+\.[0-9]+\.[0-9]+)`")
@@ -224,6 +228,46 @@ def release_styles():
              "monorepo (old path) (semantic-release-monorepo, being retired), own semantic-release, or none.")
 
 
+def under_control():
+    return stat(
+        "Repositories under control",
+        f"count({fresh('repo_config_control_state', CONTROLLED)}) / "
+        f"count({fresh('repo_config_control_state')})",
+        unit="percentunit", decimals=0, no_value="0", thresholds=low_is_bad(0.5, 0.9),
+        desc="Share of active repositories whose verdict in the table beside it is under control (Renovate runs, "
+             "nothing waits for a tick, every shared pin is versioned and fewer than three releases behind) or "
+             "opted out (the repo-config model says renovate: absent). Vermillion under half, amber under 90%.")
+
+
+def control_by_state():
+    return bars(
+        "Verdicts",
+        [target(f"sort_desc(count by (state) ({fresh('repo_config_control_state')}))", legend="{{state}}",
+                instant=True)],
+        decimals=0,
+        desc="How many repositories have each verdict. The order of the checks, first match wins: unread, opted "
+             "out, no renovate, not scheduled, no dashboard, renovate errors, parked, drifting, under control.")
+
+
+def control_table():
+    states = [{"type": "value", "options": {state: {"color": colour} for state, colour in CONTROL_COLOURS.items()}}]
+    return table(
+        "Estate control: one verdict per repository and what fixes it",
+        [target(f"max by (repository, state, fix, dashboard) ({fresh('repo_config_control_state')})",
+                instant=True, fmt="table")],
+        hide=["Value", "dashboard"], order=["repository", "state", "fix"], sort_field="state", sort_desc=False,
+        overrides=[col("state", colour_text=True, width=140, mappings=states), col("repository", width=200,
+                   links=[{"title": "Open the Dependency Dashboard", "url": "${__data.fields.dashboard}",
+                           "targetBlank": True}])],
+        desc="The first failing check per repository, read hourly by the repo-config inventory. no renovate: no "
+             "Renovate config. not scheduled: a config but no renovate topic, so the Renovate job never runs. no "
+             "dashboard: scheduled but Renovate has not finished a run. renovate errors: Renovate lists an error "
+             "under Repository Problems. parked: updates wait for a tick on the Dependency Dashboard; when the "
+             "config extends no gate preset (reviewed, unattended or a profile-* alias) every update does, which "
+             "is the usual cause. drifting: a shared pin is unversioned or three or more releases behind. Click a "
+             "repository to open its dashboard.")
+
+
 def queue_table():
     query = f"SELECT repo, number, title, author, waits_on, age, url FROM ({open_pull_requests()}) q"
     order = ["repo", "number", "title", "author", "waits_on", "age"]
@@ -269,9 +313,10 @@ def first_screen():
         (active_repositories(), 0, 0, 3, 4), (behind_on_shared(), 3, 0, 3, 4), (unversioned_pins(), 6, 0, 3, 4),
         (waiting_on_a_person(), 9, 0, 4, 4), (red_pull_requests(), 13, 0, 4, 4), (oldest_renovate_pr(), 17, 0, 4, 4),
         (ci_queue(), 21, 0, 3, 4),
-        (estate(), 0, 4, 24, 12),
-        (update_state(), 0, 16, 16, 10), (old_release_path(), 16, 16, 8, 4), (release_styles(), 16, 20, 8, 6),
-        (queue_table(), 0, 26, 16, 10), (pile_up(), 16, 26, 8, 10),
+        (under_control(), 0, 4, 4, 4), (control_by_state(), 0, 8, 4, 8), (control_table(), 4, 4, 20, 12),
+        (estate(), 0, 16, 24, 12),
+        (update_state(), 0, 28, 16, 10), (old_release_path(), 16, 28, 8, 4), (release_styles(), 16, 32, 8, 6),
+        (queue_table(), 0, 38, 16, 10), (pile_up(), 16, 38, 8, 10),
     ]
     panels = []
     for panel, x, y, w, h in placed:
@@ -498,7 +543,7 @@ LINKS = [link("Forgejo CI", "/d/forgejo-ci"), link("Renovate operator", "/d/plat
 
 
 def desk():
-    panels = number(first_screen() + forgejo_ci.lay_out_rows(36, rows()))
+    panels = number(first_screen() + forgejo_ci.lay_out_rows(48, rows()))
     return dashboard(
         UID, "Delivery estate", panels, tags=TAGS, links=LINKS, time_from="now-24h", refresh="5m",
         description="How each repository builds, releases and ships, which version of each shared package it "

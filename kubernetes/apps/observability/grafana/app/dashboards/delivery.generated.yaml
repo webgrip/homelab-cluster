@@ -572,6 +572,302 @@ spec:
           "id": 7
         },
         {
+          "type": "stat",
+          "title": "Repositories under control",
+          "description": "Share of active repositories whose verdict in the table beside it is under control (Renovate runs, nothing waits for a tick, every shared pin is versioned and fewer than three releases behind) or opted out (the repo-config model says renovate: absent). Vermillion under half, amber under 90%.",
+          "gridPos": {
+            "h": 4,
+            "w": 4,
+            "x": 0,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "orientation": "auto",
+            "textMode": "auto",
+            "wideLayout": true,
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "center"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "0",
+              "unit": "percentunit",
+              "decimals": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#898781",
+                    "value": null
+                  },
+                  {
+                    "color": "#d55e00",
+                    "value": -1e+18
+                  },
+                  {
+                    "color": "#e69f00",
+                    "value": 0.5
+                  },
+                  {
+                    "color": "#898781",
+                    "value": 0.9
+                  }
+                ]
+              },
+              "color": {
+                "mode": "thresholds"
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "count((last_over_time(repo_config_control_state{job=\"repo-config-inventory\",state=~\"under control|opted out\"}[2h]) and (tlast_over_time(repo_config_control_state{job=\"repo-config-inventory\",state=~\"under control|opted out\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900))) / count((last_over_time(repo_config_control_state{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_control_state{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 8
+        },
+        {
+          "type": "bargauge",
+          "title": "Verdicts",
+          "description": "How many repositories have each verdict. The order of the checks, first match wins: unread, opted out, no renovate, not scheduled, no dashboard, renovate errors, parked, drifting, under control.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 4,
+            "x": 0,
+            "y": 8
+          },
+          "options": {
+            "orientation": "horizontal",
+            "displayMode": "basic",
+            "valueMode": "text",
+            "namePlacement": "left",
+            "showUnfilled": true,
+            "sizing": "auto",
+            "minVizWidth": 8,
+            "minVizHeight": 12,
+            "maxVizHeight": 26,
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "values": false
+            },
+            "text": {
+              "titleSize": 13,
+              "valueSize": 18
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "min": 0,
+              "noValue": "no data",
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "#3987e5"
+              },
+              "decimals": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sort_desc(count by (state) ((last_over_time(repo_config_control_state{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_control_state{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900))))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "legendFormat": "{{state}}",
+              "instant": true,
+              "range": false
+            }
+          ],
+          "id": 9
+        },
+        {
+          "type": "table",
+          "title": "Estate control: one verdict per repository and what fixes it",
+          "description": "The first failing check per repository, read hourly by the repo-config inventory. no renovate: no Renovate config. not scheduled: a config but no renovate topic, so the Renovate job never runs. no dashboard: scheduled but Renovate has not finished a run. renovate errors: Renovate lists an error under Repository Problems. parked: updates wait for a tick on the Dependency Dashboard; when the config extends no gate preset (reviewed, unattended or a profile-* alias) every update does, which is the usual cause. drifting: a shared pin is unversioned or three or more releases behind. Click a repository to open its dashboard.",
+          "gridPos": {
+            "h": 12,
+            "w": 20,
+            "x": 4,
+            "y": 4
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "align": "auto",
+                "cellOptions": {
+                  "type": "auto"
+                },
+                "filterable": false
+              },
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "text"
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "state"
+                },
+                "properties": [
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "under control": {
+                            "color": "#009e73"
+                          },
+                          "opted out": {
+                            "color": "#898781"
+                          },
+                          "parked": {
+                            "color": "#e69f00"
+                          },
+                          "drifting": {
+                            "color": "#e69f00"
+                          },
+                          "no renovate": {
+                            "color": "#d55e00"
+                          },
+                          "not scheduled": {
+                            "color": "#d55e00"
+                          },
+                          "no dashboard": {
+                            "color": "#d55e00"
+                          },
+                          "renovate errors": {
+                            "color": "#d55e00"
+                          },
+                          "unread": {
+                            "color": "#d55e00"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 140
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "repository"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 200
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open the Dependency Dashboard",
+                        "url": "$${__data.fields.dashboard}",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": {
+                  "Time": true,
+                  "Value": true,
+                  "dashboard": true
+                },
+                "renameByName": {},
+                "indexByName": {
+                  "repository": 0,
+                  "state": 1,
+                  "fix": 2
+                }
+              }
+            },
+            {
+              "id": "sortBy",
+              "options": {
+                "sort": [
+                  {
+                    "field": "state",
+                    "desc": false
+                  }
+                ]
+              }
+            }
+          ],
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "max by (repository, state, fix, dashboard) ((last_over_time(repo_config_control_state{job=\"repo-config-inventory\"}[2h]) and (tlast_over_time(repo_config_control_state{job=\"repo-config-inventory\"}[2h]) > scalar(max(tlast_over_time(repo_config_inventory_last_success_timestamp_seconds{job=\"repo-config-inventory\"}[2h]))) - 900)))",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "instant": true,
+              "range": false,
+              "format": "table"
+            }
+          ],
+          "id": 10
+        },
+        {
           "type": "table",
           "title": "Estate: how each repository builds, releases and ships",
           "description": "One row per active repository. kind, branching (staged or trunk), core and GitHub mirror come from the repo-config model; everything else is read from the repository's default branch every hour. Renovate gate is the gate its renovate.json extends (reviewed, unattended), presets when it composes presets without a gate, own when it has config but no shared preset, none without a config. releases is the release style: webgrip-release, shared semantic-release, monorepo (old path, amber), own semantic-release or none. ships lists what the workflows publish (cloudflare, image, chart, npm, docs), from shared workflow and composite action calls and well-known publish steps. Pins show every version found, the semantic-release toolchain image counting as a semantic-release-config pin; amber when the oldest is behind the newest stable release, vermillion when one has no version Renovate can read.",
@@ -579,7 +875,7 @@ spec:
             "h": 12,
             "w": 24,
             "x": 0,
-            "y": 4
+            "y": 16
           },
           "datasource": {
             "type": "prometheus",
@@ -899,7 +1195,7 @@ spec:
               "format": "table"
             }
           ],
-          "id": 8
+          "id": 11
         },
         {
           "type": "table",
@@ -909,7 +1205,7 @@ spec:
             "h": 10,
             "w": 16,
             "x": 0,
-            "y": 16
+            "y": 28
           },
           "datasource": {
             "type": "prometheus",
@@ -1136,7 +1432,7 @@ spec:
               "format": "table"
             }
           ],
-          "id": 9
+          "id": 12
         },
         {
           "type": "stat",
@@ -1146,7 +1442,7 @@ spec:
             "h": 4,
             "w": 8,
             "x": 16,
-            "y": 16
+            "y": 28
           },
           "datasource": {
             "type": "prometheus",
@@ -1206,7 +1502,7 @@ spec:
               "range": false
             }
           ],
-          "id": 10
+          "id": 13
         },
         {
           "type": "table",
@@ -1216,7 +1512,7 @@ spec:
             "h": 6,
             "w": 8,
             "x": 16,
-            "y": 20
+            "y": 32
           },
           "datasource": {
             "type": "prometheus",
@@ -1315,7 +1611,7 @@ spec:
               "format": "table"
             }
           ],
-          "id": 11
+          "id": 14
         },
         {
           "type": "table",
@@ -1325,7 +1621,7 @@ spec:
             "h": 10,
             "w": 16,
             "x": 0,
-            "y": 26
+            "y": 38
           },
           "datasource": {
             "type": "grafana-postgresql-datasource",
@@ -1516,7 +1812,7 @@ spec:
               "rawSql": "SELECT repo, number, title, author, waits_on, age, url FROM ( WITH open_prs AS ( SELECT r.name AS repo, i.index AS number, i.name AS title, coalesce(u.lower_name, '?') AS author, 'https://forgejo.webgrip.dev/webgrip/' || r.name || '/pulls/' || i.index AS url, extract(epoch FROM now())::bigint - i.created_unix AS age, coalesce(u.lower_name LIKE 'renovate%', false) AS renovate, EXISTS (SELECT 1 FROM issue_label il JOIN label l ON l.id = il.label_id WHERE il.issue_id = i.id AND l.name = 'automerge') AS automerge, EXISTS (SELECT 1 FROM review rv WHERE rv.issue_id = i.id AND rv.type = 1 AND rv.official AND NOT rv.dismissed) AS approved, (SELECT CASE WHEN count(*) = 0 THEN NULL WHEN bool_or(x.status = 2) THEN 'failure' WHEN bool_or(x.status IN (5, 6, 7)) THEN 'running' WHEN bool_and(x.status IN (1, 4)) THEN 'success' ELSE 'cancelled' END FROM (SELECT DISTINCT ON (ar.workflow_id) ar.status FROM action_run ar WHERE ar.repo_id = r.id AND ar.ref = 'refs/pull/' || i.index || '/head' ORDER BY ar.workflow_id, ar.status = 3, ar.id DESC) x) AS ci FROM issue i JOIN repository r ON r.id = i.repo_id LEFT JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND NOT i.is_closed AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror ) SELECT *, CASE WHEN ci = 'failure' THEN 'red checks' WHEN ci = 'running' THEN 'checks running' WHEN ci IS NULL THEN 'no checks ran' WHEN automerge AND renovate THEN 'automerge due' WHEN approved THEN 'approved, not merged' ELSE 'waiting for review' END AS waits_on FROM open_prs ) q"
             }
           ],
-          "id": 12
+          "id": 15
         },
         {
           "type": "table",
@@ -1526,7 +1822,7 @@ spec:
             "h": 10,
             "w": 8,
             "x": 16,
-            "y": 26
+            "y": 38
           },
           "datasource": {
             "type": "grafana-postgresql-datasource",
@@ -1690,7 +1986,7 @@ spec:
               "rawSql": "SELECT repo, count(*) AS open, count(*) FILTER (WHERE waits_on IN ('waiting for review', 'approved, not merged', 'no checks ran')) AS person, count(*) FILTER (WHERE waits_on = 'red checks') AS red, count(*) FILTER (WHERE renovate) AS renovate, max(age) AS oldest FROM ( WITH open_prs AS ( SELECT r.name AS repo, i.index AS number, i.name AS title, coalesce(u.lower_name, '?') AS author, 'https://forgejo.webgrip.dev/webgrip/' || r.name || '/pulls/' || i.index AS url, extract(epoch FROM now())::bigint - i.created_unix AS age, coalesce(u.lower_name LIKE 'renovate%', false) AS renovate, EXISTS (SELECT 1 FROM issue_label il JOIN label l ON l.id = il.label_id WHERE il.issue_id = i.id AND l.name = 'automerge') AS automerge, EXISTS (SELECT 1 FROM review rv WHERE rv.issue_id = i.id AND rv.type = 1 AND rv.official AND NOT rv.dismissed) AS approved, (SELECT CASE WHEN count(*) = 0 THEN NULL WHEN bool_or(x.status = 2) THEN 'failure' WHEN bool_or(x.status IN (5, 6, 7)) THEN 'running' WHEN bool_and(x.status IN (1, 4)) THEN 'success' ELSE 'cancelled' END FROM (SELECT DISTINCT ON (ar.workflow_id) ar.status FROM action_run ar WHERE ar.repo_id = r.id AND ar.ref = 'refs/pull/' || i.index || '/head' ORDER BY ar.workflow_id, ar.status = 3, ar.id DESC) x) AS ci FROM issue i JOIN repository r ON r.id = i.repo_id LEFT JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND NOT i.is_closed AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror ) SELECT *, CASE WHEN ci = 'failure' THEN 'red checks' WHEN ci = 'running' THEN 'checks running' WHEN ci IS NULL THEN 'no checks ran' WHEN automerge AND renovate THEN 'automerge due' WHEN approved THEN 'approved, not merged' ELSE 'waiting for review' END AS waits_on FROM open_prs ) q GROUP BY repo"
             }
           ],
-          "id": 13
+          "id": 16
         },
         {
           "type": "row",
@@ -1700,7 +1996,7 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 36
+            "y": 48
           },
           "panels": [
             {
@@ -1711,7 +2007,7 @@ spec:
                 "h": 9,
                 "w": 24,
                 "x": 0,
-                "y": 37
+                "y": 49
               },
               "datasource": {
                 "type": "grafana-postgresql-datasource",
@@ -1841,7 +2137,7 @@ spec:
                   "rawSql": "SELECT coalesce(substring(i.name from '(@?webgrip/[A-Za-z0-9._-]+|webgrip dependencies)'), 'third-party') AS upstream, count(*) AS opened, count(DISTINCT i.repo_id) AS repositories, count(*) FILTER (WHERE pr.has_merged) AS merged, count(*) FILTER (WHERE NOT i.is_closed) AS still_open, count(*) FILTER (WHERE i.is_closed AND NOT pr.has_merged) AS closed_unmerged, percentile_cont(0.5) WITHIN GROUP (ORDER BY pr.merged_unix - i.created_unix) FILTER (WHERE pr.has_merged) AS median_to_merge FROM issue i JOIN pull_request pr ON pr.issue_id = i.id JOIN repository r ON r.id = i.repo_id JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND u.lower_name LIKE 'renovate%' AND i.created_unix > extract(epoch FROM now() - interval '30 days') AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror GROUP BY 1"
                 }
               ],
-              "id": 15
+              "id": 18
             },
             {
               "type": "table",
@@ -1851,7 +2147,7 @@ spec:
                 "h": 8,
                 "w": 12,
                 "x": 0,
-                "y": 46
+                "y": 58
               },
               "datasource": {
                 "type": "prometheus",
@@ -1991,7 +2287,7 @@ spec:
                   "format": "table"
                 }
               ],
-              "id": 16
+              "id": 19
             },
             {
               "type": "table",
@@ -2001,7 +2297,7 @@ spec:
                 "h": 8,
                 "w": 12,
                 "x": 12,
-                "y": 46
+                "y": 58
               },
               "datasource": {
                 "type": "prometheus",
@@ -2072,7 +2368,7 @@ spec:
                   "format": "table"
                 }
               ],
-              "id": 17
+              "id": 20
             },
             {
               "type": "bargauge",
@@ -2086,7 +2382,7 @@ spec:
                 "h": 9,
                 "w": 24,
                 "x": 0,
-                "y": 54
+                "y": 66
               },
               "options": {
                 "orientation": "horizontal",
@@ -2134,7 +2430,7 @@ spec:
                   "range": false
                 }
               ],
-              "id": 18
+              "id": 21
             },
             {
               "type": "table",
@@ -2144,7 +2440,7 @@ spec:
                 "h": 8,
                 "w": 24,
                 "x": 0,
-                "y": 63
+                "y": 75
               },
               "datasource": {
                 "type": "grafana-postgresql-datasource",
@@ -2298,10 +2594,10 @@ spec:
                   "rawSql": "WITH proposals AS ( SELECT DISTINCT i.id, r.name AS consumer, i.created_unix AS opened, CASE WHEN m[1] LIKE '%semantic-release%' THEN 'semantic-release-config' ELSE regexp_replace(m[1], '^.*/', '') END AS package, 'v' || m[2] AS version FROM issue i JOIN repository r ON r.id = i.repo_id JOIN \"user\" u ON u.id = i.poster_id CROSS JOIN LATERAL regexp_matches(i.content, '\\[((?:@|harbor\\.webgrip\\.dev/)?webgrip/(?:workflows|renovate-config|agent-standards|semantic-release[a-z-]*))\\]\\([^)]*\\)\\s*\\|(?:[^|`]*\\|){1,2}\\s*`[^`]*`\\s*→\\s*`v?([0-9]+\\.[0-9]+\\.[0-9]+)`', 'g') AS m WHERE i.is_pull AND u.lower_name LIKE 'renovate%' AND i.created_unix > extract(epoch FROM now() - interval '30 days') AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror ) SELECT p.package, count(*) AS pull_requests, count(DISTINCT p.consumer) AS repositories, percentile_cont(0.5) WITHIN GROUP (ORDER BY p.opened - rl.created_unix) AS median, percentile_cont(0.5) WITHIN GROUP (ORDER BY p.opened - rl.created_unix) FILTER (WHERE rl.created_unix > extract(epoch FROM now() - interval '7 days')) AS median_week, percentile_cont(0.9) WITHIN GROUP (ORDER BY p.opened - rl.created_unix) AS p90 FROM proposals p JOIN repository src ON src.owner_name = 'webgrip' AND src.name = p.package JOIN release rl ON rl.repo_id = src.id AND rl.tag_name = p.version AND NOT rl.is_draft WHERE p.opened >= rl.created_unix GROUP BY p.package"
                 }
               ],
-              "id": 19
+              "id": 22
             }
           ],
-          "id": 14
+          "id": 17
         },
         {
           "type": "row",
@@ -2311,7 +2607,7 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 71
+            "y": 83
           },
           "panels": [
             {
@@ -2322,7 +2618,7 @@ spec:
                 "h": 10,
                 "w": 14,
                 "x": 0,
-                "y": 72
+                "y": 84
               },
               "datasource": {
                 "type": "grafana-postgresql-datasource",
@@ -2459,7 +2755,7 @@ spec:
                   "rawSql": "SELECT r.name AS repo, count(*) FILTER (WHERE u.lower_name LIKE 'renovate%') AS renovate_merged, percentile_cont(0.5) WITHIN GROUP (ORDER BY pr.merged_unix - i.created_unix) FILTER (WHERE u.lower_name LIKE 'renovate%') AS renovate_median, count(*) FILTER (WHERE NOT u.lower_name LIKE 'renovate%') AS people_merged, percentile_cont(0.5) WITHIN GROUP (ORDER BY pr.merged_unix - i.created_unix) FILTER (WHERE NOT u.lower_name LIKE 'renovate%') AS people_median FROM issue i JOIN pull_request pr ON pr.issue_id = i.id JOIN repository r ON r.id = i.repo_id JOIN \"user\" u ON u.id = i.poster_id WHERE i.is_pull AND pr.has_merged AND pr.merged_unix > extract(epoch FROM now() - interval '30 days') AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror GROUP BY r.name"
                 }
               ],
-              "id": 21
+              "id": 24
             },
             {
               "type": "table",
@@ -2469,7 +2765,7 @@ spec:
                 "h": 10,
                 "w": 10,
                 "x": 14,
-                "y": 72
+                "y": 84
               },
               "datasource": {
                 "type": "grafana-postgresql-datasource",
@@ -2573,10 +2869,10 @@ spec:
                   "rawSql": "SELECT r.name AS repo, (SELECT count(*) FROM regexp_matches(i.content, 'approve-branch=', 'g')) AS pending_approval, i.updated_unix * 1000 AS dashboard_updated, 'https://forgejo.webgrip.dev/webgrip/' || r.name || '/issues/' || i.index AS url FROM issue i JOIN repository r ON r.id = i.repo_id WHERE NOT i.is_pull AND NOT i.is_closed AND i.name LIKE '%Dependency Dashboard%' AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror"
                 }
               ],
-              "id": 22
+              "id": 25
             }
           ],
-          "id": 20
+          "id": 23
         },
         {
           "type": "row",
@@ -2586,7 +2882,7 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 82
+            "y": 94
           },
           "panels": [
             {
@@ -2597,7 +2893,7 @@ spec:
                 "h": 9,
                 "w": 24,
                 "x": 0,
-                "y": 83
+                "y": 95
               },
               "datasource": {
                 "type": "grafana-postgresql-datasource",
@@ -2684,10 +2980,10 @@ spec:
                   "rawSql": "SELECT r.name AS repo, count(*) FILTER (WHERE NOT rl.is_prerelease) AS stable, count(*) FILTER (WHERE rl.is_prerelease) AS candidates, (array_agg(rl.tag_name ORDER BY rl.created_unix DESC))[1] AS last_tag, max(rl.created_unix) * 1000 AS last_at FROM release rl JOIN repository r ON r.id = rl.repo_id WHERE NOT rl.is_draft AND rl.created_unix > extract(epoch FROM now() - interval '30 days') AND r.owner_name = 'webgrip' AND NOT r.is_archived AND NOT r.is_mirror GROUP BY r.name"
                 }
               ],
-              "id": 24
+              "id": 27
             }
           ],
-          "id": 23
+          "id": 26
         },
         {
           "type": "row",
@@ -2697,7 +2993,7 @@ spec:
             "h": 1,
             "w": 24,
             "x": 0,
-            "y": 92
+            "y": 104
           },
           "panels": [
             {
@@ -2708,7 +3004,7 @@ spec:
                 "h": 4,
                 "w": 6,
                 "x": 0,
-                "y": 93
+                "y": 105
               },
               "datasource": {
                 "type": "prometheus",
@@ -2769,7 +3065,7 @@ spec:
                   "range": false
                 }
               ],
-              "id": 26
+              "id": 29
             },
             {
               "type": "stat",
@@ -2779,7 +3075,7 @@ spec:
                 "h": 4,
                 "w": 6,
                 "x": 6,
-                "y": 93
+                "y": 105
               },
               "datasource": {
                 "type": "prometheus",
@@ -2835,10 +3131,10 @@ spec:
                   "range": false
                 }
               ],
-              "id": 27
+              "id": 30
             }
           ],
-          "id": 25
+          "id": 28
         }
       ]
     }

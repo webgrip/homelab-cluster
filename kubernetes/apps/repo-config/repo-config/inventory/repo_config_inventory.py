@@ -22,8 +22,10 @@ SHARED_PACKAGES = ("workflows", "renovate-config", "agent-standards", "semantic-
 UNVERSIONED = "unversioned"
 TAG_PAGES = 10
 WORKFLOW_DIRECTORIES = (".forgejo/workflows", ".github/workflows")
-RENOVATE_FILES = ("renovate.json", "renovate.json5", ".renovaterc.json", ".forgejo/renovate.json",
-                  ".github/renovate.json")
+RENOVATE_FILES = ("renovate.json", "renovate.json5", ".renovaterc", ".renovaterc.json", ".renovaterc.json5",
+                  ".forgejo/renovate.json", ".forgejo/renovate.json5", ".github/renovate.json",
+                  ".github/renovate.json5")
+RENOVATE_TOPIC = "renovate"
 RENOVATE_GATES = ("reviewed", "unattended")
 STABLE_TAG = re.compile(r"^v?(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)$")
 RENOVATE_PRESET = re.compile(
@@ -100,6 +102,23 @@ UPDATE_TITLE = re.compile(
     r"[Uu]pdate\s+(?:dependency\s+)?(?P<dependency>\S+)(?:\s+(?:Docker\s+tag|action))?\s+"
     r"(?:\(\s*\S+\s*" + ARROW + r"\s*(?P<version>[^\s)]+)\s*\)|to\s+(?P<to>\S+))")
 DASHBOARD_TITLE = "Dependency Dashboard"
+DASHBOARD_MARKER = "docs.renovatebot.com/key-concepts/dashboard"
+DASHBOARD_PAGES = 4
+DASHBOARD_SECTION = re.compile(r"^## (?P<title>.+?)\s*$", re.M)
+DASHBOARD_SECTIONS = {
+    "Repository Problems": "problems",
+    "Errored": "errored",
+    "Pending Approval": "pending_approval",
+    "Awaiting Schedule": "awaiting_schedule",
+    "Rate-Limited": "rate_limited",
+    "Pending Status Checks": "pending_status_checks",
+    "Open": "open",
+}
+DASHBOARD_ITEM = re.compile(r"^ - (?!\[ \] <!-- (?:approve|create|unlimit)-all)", re.M)
+DASHBOARD_ERROR = re.compile(r"^ - .*\bERROR\b", re.M)
+DASHBOARD_UNREAD = {"unread": True}
+DRIFT_RELEASES = 3
+GATE_ALIAS_PREFIX = "profile-"
 DASHBOARD_LINE = re.compile(r"<!--\s*(?P<action>[a-z]+)-branch=\S+\s*-->(?P<title>[^\n]*)")
 DASHBOARD_HAS_A_PULL = ("rebase", "retry", "recreate")
 CHECK_STATES = {"success": "pr_green", "failure": "pr_red", "error": "pr_red"}
@@ -212,6 +231,11 @@ def active_sources(repositories):
                   if not repository.get("archived") and not repository.get("mirror"))
 
 
+def renovate_scheduled(repositories):
+    return frozenset(repository["name"] for repository in repositories
+                     if RENOVATE_TOPIC in (repository.get("topics") or []))
+
+
 def unmodelled(active, modelled):
     return sorted(set(active) - set(modelled))
 
@@ -301,13 +325,18 @@ class Forgejo:
         return (json.loads(body) or {}).get("state", "") if body else ""
 
     def dependency_dashboard(self, repository):
-        query = urllib.parse.quote(DASHBOARD_TITLE)
-        body = self.get(f"/repos/{self.owner}/{repository}/issues?state=open&type=issues&q={query}&limit=10")
-        issues = json.loads(body) if body else []
-        for issue in issues if isinstance(issues, list) else []:
-            if DASHBOARD_TITLE in (issue.get("title") or ""):
-                return issue.get("body") or ""
-        return ""
+        for page in range(1, DASHBOARD_PAGES + 1):
+            body = self.get(f"/repos/{self.owner}/{repository}/issues?state=open&type=issues"
+                            f"&limit={PAGE_SIZE}&page={page}")
+            batch = json.loads(body) if body else []
+            if not isinstance(batch, list):
+                return None
+            for issue in batch:
+                if DASHBOARD_TITLE in (issue.get("title") or "") or DASHBOARD_MARKER in (issue.get("body") or ""):
+                    return issue
+            if len(batch) < PAGE_SIZE:
+                return None
+        return None
 
 
 def latest_releases(forgejo, package):
@@ -329,7 +358,7 @@ def normalise(version):
 
 def renovate_reading(text):
     if text is None:
-        return {"gate": "none", "pins": set()}
+        return {"gate": "none", "pins": set(), "gated": False}
     presets = [match.group("preset") or "default" for match in RENOVATE_PRESET.finditer(text)]
     pins = {match.group("version") or UNVERSIONED for match in RENOVATE_PRESET.finditer(text)}
     gates = [preset for preset in presets if preset in RENOVATE_GATES]
@@ -339,7 +368,8 @@ def renovate_reading(text):
         gate = "presets"
     else:
         gate = "own"
-    return {"gate": gate, "pins": pins}
+    gated = bool(gates) or any(preset.startswith(GATE_ALIAS_PREFIX) for preset in presets)
+    return {"gate": gate, "pins": pins, "gated": gated}
 
 
 def call_pin(ref, rest):
@@ -433,6 +463,8 @@ def scan_repository(forgejo, name):
     }
     return {
         "gate": renovate["gate"],
+        "gated": renovate["gated"],
+        "dashboard": read_dashboard(forgejo, name),
         "calls": workflows["calls"],
         "ships": workflows["ships"],
         "releases": workflows["releases"],
@@ -455,6 +487,82 @@ def pin_cell(pins, behind):
     if behind:
         return f"{text} · {behind} behind"
     return text
+
+
+def read_dashboard(forgejo, name):
+    try:
+        return dashboard_reading(forgejo.dependency_dashboard(name))
+    except (InventoryFailure, ValueError) as failure:
+        log(f"could not read the Dependency Dashboard of {name}: {failure}")
+        return DASHBOARD_UNREAD
+
+
+def dashboard_reading(issue):
+    if issue is None:
+        return None
+    body = issue.get("body") or ""
+    counts = dict.fromkeys(DASHBOARD_SECTIONS.values(), 0)
+    errors = 0
+    sections = list(DASHBOARD_SECTION.finditer(body))
+    for index, section in enumerate(sections):
+        key = DASHBOARD_SECTIONS.get(section.group("title"))
+        if key is None:
+            continue
+        end = sections[index + 1].start() if index + 1 < len(sections) else len(body)
+        text = body[section.end():end]
+        counts[key] = len(DASHBOARD_ITEM.findall(text))
+        if key == "problems":
+            errors = len(DASHBOARD_ERROR.findall(text))
+    return {"counts": counts, "errors": errors, "url": issue.get("html_url") or "", "body": body}
+
+
+def dashboard_readable(dashboard):
+    return dashboard is not None and dashboard is not DASHBOARD_UNREAD
+
+
+def control_state(fact, scan, scheduled, behind):
+    if scan is None:
+        return "unread", "The inventory could not read this repository's files; its CronJob log names the read."
+    dashboard = scan["dashboard"]
+    if fact.get("renovate_absent"):
+        return "opted out", ""
+    if scan["gate"] == "none":
+        return "no renovate", "Add a Renovate config that extends the reviewed or unattended gate of renovate-config."
+    if not scheduled:
+        return "not scheduled", f"Add the {RENOVATE_TOPIC} topic: the Renovate job only runs on repositories with it."
+    if dashboard is DASHBOARD_UNREAD:
+        return "unread", "The inventory could not read the issues; its token needs read:issue. The CronJob log names the read."
+    if dashboard is None:
+        return "no dashboard", "Renovate has not finished a run here: check this repository on the Renovate operator board."
+    if dashboard["errors"] or dashboard["counts"]["errored"]:
+        return "renovate errors", "Renovate reports errors on the Dependency Dashboard: read Repository Problems there."
+    pending = dashboard["counts"]["pending_approval"]
+    waiting = "1 update waits" if pending == 1 else f"{pending} updates wait"
+    if pending and not scan["gated"]:
+        return "parked", (f"{waiting} for a tick. The config extends no gate preset, so renovate-config's default "
+                          "holds every update its own rules do not release: extend reviewed or unattended, or tick them.")
+    if pending:
+        return "parked", f"{waiting} for a tick on the Dependency Dashboard: tick or close them."
+    if any(UNVERSIONED in pins for pins in scan["pins"].values()):
+        return "drifting", "A shared pin has no version Renovate can read: add the # vX.Y.Z comment or the tag."
+    worst = max(behind.values(), default=0)
+    if worst >= DRIFT_RELEASES:
+        return "drifting", f"A shared pin is {worst} releases behind: merge or unblock its Renovate pull request."
+    return "under control", ""
+
+
+def record_control(metrics, name, fact, scan, scheduled, behind):
+    state, fix = control_state(fact, scan, scheduled, behind)
+    dashboard = scan["dashboard"] if scan else None
+    readable = dashboard_readable(dashboard)
+    metrics.set("control_state", {"repository": name, "state": state, "fix": fix,
+                                  "dashboard": dashboard["url"] if readable else ""}, 1)
+    metrics.set("renovate_scheduled", {"repository": name}, 1 if scheduled else 0)
+    if not readable:
+        return
+    for section, count in dashboard["counts"].items():
+        metrics.set("renovate_dashboard_items", {"repository": name, "section": section}, count)
+    metrics.set("renovate_dashboard_errors", {"repository": name}, dashboard["errors"])
 
 
 def dependency_package(dependency):
@@ -518,7 +626,7 @@ def dashboard_waits(body):
     return waits
 
 
-def update_status(forgejo, name, behind_packages, now):
+def update_status(forgejo, name, behind_packages, now, dashboard_body):
     proposals = renovate_proposals(forgejo.open_pulls(name))
     statuses = {}
     waiting = None
@@ -530,7 +638,7 @@ def update_status(forgejo, name, behind_packages, now):
                                  "age": max(0, now - proposal["created"]) if proposal["created"] else None}
             continue
         if waiting is None:
-            waiting = dashboard_waits(forgejo.dependency_dashboard(name))
+            waiting = dashboard_waits(dashboard_body)
         wait = waiting.get(package, {"state": "no_pr", "proposed": None})
         statuses[package] = {"state": wait["state"], "proposed": wait["proposed"], "pull": None, "age": None}
     return statuses
@@ -540,13 +648,14 @@ def label_name(package):
     return package.replace("-", "_")
 
 
-def record_scans(metrics, active, facts, mirrors, scans, latest, updates):
+def record_scans(metrics, active, facts, mirrors, scans, latest, updates, scheduled):
     for package, stable in latest.items():
         if stable:
             metrics.set("shared_latest", {"package": package, "version": stable[-1]}, 1)
     for name in active:
         fact = facts.get(name, {})
         scan = scans.get(name)
+        behind_by_package = {}
         labels = {
             "repository": name,
             "kind": fact.get("kind") or ("unset" if name in facts else "unmodelled"),
@@ -559,6 +668,7 @@ def record_scans(metrics, active, facts, mirrors, scans, latest, updates):
             labels.update({label_name(package): "unread" for package in SHARED_PACKAGES})
             metrics.set("repository_info", labels, 1)
             metrics.set("scan_failed", {"repository": name}, 1)
+            record_control(metrics, name, fact, None, name in scheduled, behind_by_package)
             continue
         metrics.set("scan_failed", {"repository": name}, 0)
         labels.update({"renovate_gate": scan["gate"], "releases": scan["releases"],
@@ -569,6 +679,7 @@ def record_scans(metrics, active, facts, mirrors, scans, latest, updates):
             behind = releases_behind(pins, latest.get(package, []))
             labels[label_name(package)] = pin_cell(pins, behind)
             if behind is not None:
+                behind_by_package[package] = behind
                 metrics.set("shared_pin_releases_behind", {"repository": name, "package": package}, behind)
             if UNVERSIONED in pins:
                 metrics.set("shared_pin_unversioned", {"repository": name, "package": package}, 1)
@@ -581,6 +692,7 @@ def record_scans(metrics, active, facts, mirrors, scans, latest, updates):
         for form, call in sorted(scan["calls"]):
             metrics.set("workflow_call", {"repository": name, "workflow": call, "form": form}, 1)
         metrics.set("repository_info", labels, 1)
+        record_control(metrics, name, fact, scan, name in scheduled, behind_by_package)
 
 
 def behind_packages(scan, latest):
@@ -594,8 +706,12 @@ def read_update_statuses(forgejo, scans, latest, now):
         behind = behind_packages(scan, latest)
         if not behind:
             continue
+        if scan["dashboard"] is DASHBOARD_UNREAD:
+            log(f"could not read the open updates of {name}: its Dependency Dashboard is unreadable")
+            continue
+        body = scan["dashboard"]["body"] if scan["dashboard"] else ""
         try:
-            updates[name] = update_status(forgejo, name, behind, now)
+            updates[name] = update_status(forgejo, name, behind, now, body)
         except (InventoryFailure, ValueError) as failure:
             log(f"could not read the open updates of {name}: {failure}")
     return updates
@@ -668,7 +784,8 @@ def run():
         except (InventoryFailure, ValueError) as failure:
             log(f"could not read the delivery files of {name}: {failure}")
     updates = read_update_statuses(forgejo, scans, latest, int(time.time()))
-    record_scans(metrics, active, facts, github_mirrors(facts), scans, latest, updates)
+    record_scans(metrics, active, facts, github_mirrors(facts), scans, latest, updates,
+                 renovate_scheduled(repositories))
     metrics.set("inventory_scan_failed_repositories", {}, len(active) - len(scans))
     metrics.set("inventory_active_repositories", {}, len(active))
     metrics.set("inventory_private_repositories_visible", {}, len(visible_private))
