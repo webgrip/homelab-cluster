@@ -8,3 +8,4 @@
 - [2026-09-25 — Kyverno denies the CNPG primary relabel → empty `-rw` services → GitOps deadlock](2026-09-25-cnpg-relabel-denied-gitops-deadlock.md)
 - [2026-09-27 — Longhorn 1.11.3 rotates its webhook CA mid-upgrade → every manager crash-loops](2026-09-27-longhorn-webhook-ca-deadlock.md)
 - [2026-10-23 — Meta's crawler downloads a git bundle per commit → `forgejo-data` full → releases and PR checks fail](2026-10-23-forgejo-disk-full-meta-crawler-bundles.md)
+- [2026-11-03 — Talos OOMController kills Longhorn's instance-manager on fringe → Forgejo DB down in cycles](2026-11-03-talos-oom-kills-longhorn-instance-manager.md)
