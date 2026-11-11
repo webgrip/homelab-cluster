@@ -17,7 +17,7 @@ spec:
             _time:1h namespace:=renovate
             (_msg:"Renovate is exiting with a non-zero code" or msg:"Renovate is exiting with a non-zero code")
             | join by (logContext) (_time:1h namespace:=renovate repository:* | uniq by (logContext, repository))
-            | extract_regexp "^(?P<renovate_job>webgrip-forgejo|webgrip-gitops|ploeg-hq)-(?P<project>.+?)-[0-9a-f]{8}" from pod
+            | extract_regexp "^(?P<renovate_job>webgrip-forgejo|webgrip-gitops|ploeg-hq|unfold-hq)-(?P<project>.+?)-[0-9a-f]{8}" from pod
             | format if (project:"") "<pod>" as project
             | format if (repository:"") "<project>" as repository
             | extract_regexp "\"msg\":\"(?P<first_error>[^\"]+)\"" from loggerErrors
