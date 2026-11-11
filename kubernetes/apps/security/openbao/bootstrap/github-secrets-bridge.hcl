@@ -13,3 +13,6 @@ path "secret/data/cloudflare/deploy" {
 path "secret/data/cloudflare/dns/unfoldhq-dev-ro" {
   capabilities = ["read"]
 }
+path "secret/data/docker/hub-unfold-hq" {
+  capabilities = ["read"]
+}

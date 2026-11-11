@@ -147,6 +147,8 @@ does not stop the others, and the run exits 1 once all have been tried.
 | `unfold-hq/unfold` | `CLOUDFLARE_API_TOKEN` | `cloudflare/deploy` `CLOUDFLARE_API_TOKEN` | `unfold-hq-gitops` |
 | `unfold-hq/unfold` | `CLOUDFLARE_ACCOUNT_ID` | `cloudflare/deploy` `CLOUDFLARE_ACCOUNT_ID` | `unfold-hq-gitops` |
 | `unfold-hq/unfold` | `CLOUDFLARE_DNS_READ_TOKEN` | `cloudflare/dns/unfoldhq-dev-ro` `token` | `unfold-hq-gitops` |
+| `unfold-hq/unfold` | `DOCKERHUB_USERNAME` | `docker/hub-unfold-hq` `DOCKERHUB_USERNAME` | `unfold-hq-gitops` |
+| `unfold-hq/unfold` | `DOCKERHUB_TOKEN` | `docker/hub-unfold-hq` `DOCKERHUB_TOKEN` | `unfold-hq-gitops` |
 
 The Cloudflare deploy token is the one the Forgejo org secrets use today. The token roller
 replaces it every month, so a hand-set GitHub secret would go stale; the bridge sees the new
@@ -154,6 +156,21 @@ fingerprint and rewrites the secret within the hour. The DNS read token is minte
 `cloudflare-dns-token-minter`. New sources are read straight from OpenBao by the bridge's own
 Kubernetes-auth role, so a source that does not exist yet is a clean skip, not a failing
 ExternalSecret.
+
+The Docker Hub pair lets the release workflows log in to `dhi.io`, which serves the Docker
+Hardened Images the Dockerfiles build from. It is a read-only personal access token named
+`unfold-hq-ci`, kept apart from Harbor's proxy credential so either can be revoked alone. Store it
+once; it does not expire unless you set an expiry:
+
+```bash
+mise exec -- just bao-login
+export BAO_ADDR="$(mise exec -- just bao-addr)"
+mise exec -- bao kv put secret/docker/hub-unfold-hq \
+  DOCKERHUB_USERNAME=<Docker Hub username> DOCKERHUB_TOKEN=-
+```
+
+`DOCKERHUB_TOKEN=-` reads the token from standard input, so it stays out of shell history: paste
+it and press Ctrl-D.
 
 Each target keeps only a SHA-256 fingerprint of its source, in its own state ConfigMap
 (`state_configmap` in `targets.json`; the Role lists each name). The Ploeg target keeps the
