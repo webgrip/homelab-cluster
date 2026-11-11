@@ -32,6 +32,7 @@ Links-only index. Each runbook is its own page; authoring recipes live in skills
 - [Level 2 — the cluster: generator or ExternalSecret, and Reloader](secrets-level-2-cluster.md)
 - [Level 3 — bridges: a repo-scoped Forgejo Actions secret, end to end](secrets-level-3-bridge.md)
 - [The ploeg-hq GitHub App: rulesets, settings and Actions secrets from git](github-app-ploeg-hq.md)
+- [The unfold-hq GitHub Apps: Unfold moves to its own GitHub organisation](github-app-unfold-hq.md)
 - [The wellhead-dev Renovate GitHub App](github-app-wellhead-dev.md)
 - [The webgrip GitHub App: archive the dead GitHub mirrors from git](github-app-webgrip.md)
 - [GitHub mirrors: drift, release copies, and what to do when one stops](github-mirrors.md)
