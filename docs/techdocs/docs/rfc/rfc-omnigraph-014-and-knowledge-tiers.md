@@ -9,7 +9,7 @@
 > **TL;DR.** The homelab runs Omnigraph **0.11.0**; upstream released **0.12.0** (2026-10-05),
 > **0.13.0** (2026-10-07) and **0.14.0** (2026-10-22). The release notes were read in full
 > (about 140 items) and every item that touches this estate has a verdict in
-> [section 3](#3-release-notes-012--014-verdicts). Three things decide the shape of the work:
+> [section 3](#3-release-notes-012-014-verdicts). Three things decide the shape of the work:
 >
 > 1. **The upgrade is a rebuild, not a bump.** Measured locally ([section 4](#4-the-upgrade-path-measured)):
 >    a 0.11 *cluster-managed* graph cannot be converted in place by any 0.14 command, and an
