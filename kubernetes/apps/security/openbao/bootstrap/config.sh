@@ -36,10 +36,12 @@ bao policy write unfold-main-reader /scripts/unfold-main-reader.hcl
 bao policy write forgejo-repo-config /scripts/forgejo-repo-config.hcl
 bao policy write github-config-ploeg-hq /scripts/github-config-ploeg-hq.hcl
 bao policy write github-config-webgrip /scripts/github-config-webgrip.hcl
+bao policy write github-config-unfold-hq /scripts/github-config-unfold-hq.hcl
 bao policy write github-secrets-bridge /scripts/github-secrets-bridge.hcl
 bao policy write github-mirrors /scripts/github-mirrors.hcl
 bao policy write renovate-github-app-token-ploeg-hq /scripts/renovate-github-app-token-ploeg-hq.hcl
 bao policy write renovate-github-app-token-wellhead-dev /scripts/renovate-github-app-token-wellhead-dev.hcl
+bao policy write renovate-github-app-token-unfold-hq /scripts/renovate-github-app-token-unfold-hq.hcl
 bao policy write homelab-etcd-age-keygen /scripts/homelab-etcd-age-keygen.hcl
 bao policy write unfold-audit-checkpoints /scripts/unfold-audit-checkpoints.hcl
 
@@ -70,6 +72,9 @@ bao write auth/kubernetes/role/github-config-ploeg-hq \
 bao write auth/kubernetes/role/github-config-webgrip \
   bound_service_account_names=github-config-webgrip-runner bound_service_account_namespaces=github-config \
   policies=github-config-webgrip ttl=30m >/dev/null
+bao write auth/kubernetes/role/github-config-unfold-hq \
+  bound_service_account_names=github-config-unfold-hq-runner bound_service_account_namespaces=github-config \
+  policies=github-config-unfold-hq ttl=30m >/dev/null
 bao write auth/kubernetes/role/github-secrets-bridge \
   bound_service_account_names=github-secrets-bridge bound_service_account_namespaces=github-secrets-bridge \
   policies=github-secrets-bridge ttl=10m >/dev/null
@@ -82,6 +87,9 @@ bao write auth/kubernetes/role/renovate-github-app-token-ploeg-hq \
 bao write auth/kubernetes/role/renovate-github-app-token-wellhead-dev \
   bound_service_account_names=renovate-github-app-token-wellhead-dev bound_service_account_namespaces=renovate \
   policies=renovate-github-app-token-wellhead-dev ttl=10m >/dev/null
+bao write auth/kubernetes/role/renovate-github-app-token-unfold-hq \
+  bound_service_account_names=renovate-github-app-token-unfold-hq bound_service_account_namespaces=renovate \
+  policies=renovate-github-app-token-unfold-hq ttl=10m >/dev/null
 bao write auth/kubernetes/role/homelab-etcd-age-keygen \
   bound_service_account_names=homelab-etcd-age-keygen bound_service_account_namespaces=backup \
   policies=homelab-etcd-age-keygen ttl=5m >/dev/null

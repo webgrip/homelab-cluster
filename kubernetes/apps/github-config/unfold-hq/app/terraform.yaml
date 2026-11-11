@@ -1,0 +1,36 @@
+---
+apiVersion: infra.contrib.fluxcd.io/v1alpha2
+kind: Terraform
+metadata:
+  name: unfold-hq
+  labels:
+    app.kubernetes.io/name: github-config-unfold-hq
+spec:
+  suspend: true
+  interval: 1h
+  retryInterval: 15m
+  path: ./kubernetes/apps/repo-config/repo-config/tofu-github
+  vars:
+    - name: github_owner
+      value: unfold-hq
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  serviceAccountName: github-config-unfold-hq-runner
+  storeReadablePlan: human
+  alwaysCleanupRunnerPod: true
+  runnerPodTemplate:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: github-config-unfold-hq
+    spec:
+      priorityClassName: background-batch
+      nodeSelector:
+        node.webgrip.io/pool: worker
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          memory: 1Gi

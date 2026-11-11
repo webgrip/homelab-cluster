@@ -13,7 +13,15 @@ GITHUB_API_VERSION = "2022-11-28"
 USER_AGENT = "webgrip-github-secrets-bridge"
 
 
+class OpenBaoSecretAbsent(Exception):
+    pass
+
+
 class AppCredentialsAbsent(Exception):
+    pass
+
+
+class SourceAbsent(Exception):
     pass
 
 
@@ -289,14 +297,14 @@ class OpenBao:
         status, body = http_request("GET", f"{self.address}/v1/secret/data/{path}",
                                     headers={"X-Vault-Token": token})
         if status == 404:
-            raise AppCredentialsAbsent(f"secret/{path} does not exist")
+            raise OpenBaoSecretAbsent(f"secret/{path} does not exist")
         if status == 403:
             raise BridgeFailure(f"OpenBao denied reading secret/{path} (403)")
         if status != 200 or not body:
             raise BridgeFailure(f"OpenBao read of secret/{path} returned {status}")
         data = (body.get("data") or {}).get("data")
         if data is None:
-            raise AppCredentialsAbsent(f"secret/{path} has no live version")
+            raise OpenBaoSecretAbsent(f"secret/{path} has no live version")
         return data
 
 
@@ -398,7 +406,7 @@ def push_metrics(url, labels, samples):
         log(f"metrics push failed ({type(error).__name__}); the CronJob status still carries the result")
 
 
-def read_source(path):
+def read_file_source(path):
     try:
         with open(path) as handle:
             value = handle.read().strip()
@@ -410,43 +418,93 @@ def read_source(path):
     return value
 
 
+def read_openbao_source(vault, vault_token, path, field):
+    try:
+        data = vault.read_kv(vault_token, path)
+    except OpenBaoSecretAbsent as absent:
+        raise SourceAbsent(str(absent)) from None
+    value = str(data.get(field) or "").strip()
+    forbid_in_output(value)
+    if not value:
+        raise BridgeFailure(f"source secret/{path} has no value under {field}")
+    return value
+
+
+def read_source(source, vault, vault_token):
+    if "file" in source:
+        return read_file_source(source["file"])
+    return read_openbao_source(vault, vault_token, source["openbao"], source["property"])
+
+
+def read_app_credentials(vault, vault_token, path):
+    try:
+        app = vault.read_kv(vault_token, path)
+    except OpenBaoSecretAbsent as absent:
+        raise AppCredentialsAbsent(str(absent)) from None
+    app_id = str(app.get("app_id") or "").strip()
+    installation_id = str(app.get("installation_id") or "").strip()
+    private_key = str(app.get("private_key") or "")
+    forbid_in_output(private_key)
+    if not (app_id and installation_id and private_key.strip()):
+        raise AppCredentialsAbsent(f"secret/{path} lacks app_id, installation_id or private_key")
+    return app_id, installation_id, private_key
+
+
+TARGET_FIELDS = ("owner", "repository", "secret", "app_secret_path", "source", "state_configmap")
+
+
+def load_targets(path):
+    try:
+        with open(path) as handle:
+            targets = json.load(handle)
+    except (OSError, ValueError) as error:
+        raise BridgeFailure(f"targets file {path} is unreadable ({type(error).__name__})") from None
+    if not isinstance(targets, list) or not targets:
+        raise BridgeFailure(f"targets file {path} holds no target list")
+    for index, target in enumerate(targets):
+        missing = [field for field in TARGET_FIELDS if not target.get(field)]
+        source = target.get("source") or {}
+        if not ("file" in source or ("openbao" in source and "property" in source)):
+            missing.append("source.file or source.openbao with source.property")
+        if missing:
+            raise BridgeFailure(f"target {index} in {path} lacks {', '.join(missing)}")
+    return targets
+
+
 def sync_is_current(state, fingerprint, metadata):
     return (metadata is not None
             and state.get("source_fingerprint") == fingerprint
             and state.get("github_updated_at") == metadata.get("updated_at"))
 
 
-def run():
-    owner = env("GITHUB_OWNER")
-    repository = env("GITHUB_REPOSITORY")
-    secret_name = env("GITHUB_SECRET_NAME")
+def sync_target(spec, vault, vault_token, settings):
+    owner = spec["owner"]
+    repository = spec["repository"]
+    secret_name = spec["secret"]
     target = f"{owner}/{repository}/{secret_name}"
     labels = {"owner": owner, "repository": repository, "secret": secret_name}
-    metrics_url = os.environ.get("METRICS_URL", "")
-    service_account_token = env("SERVICE_ACCOUNT_TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token")
+    metrics_url = settings["metrics_url"]
 
-    source = read_source(env("SOURCE_PATH"))
-
-    vault = OpenBao(env("VAULT_ADDR"), env("VAULT_ROLE"), service_account_token)
     try:
-        app = vault.read_kv(vault.login(), env("APP_SECRET_PATH"))
-        app_id = str(app.get("app_id") or "").strip()
-        installation_id = str(app.get("installation_id") or "").strip()
-        private_key = str(app.get("private_key") or "")
-        forbid_in_output(private_key)
-        if not (app_id and installation_id and private_key.strip()):
-            raise AppCredentialsAbsent(f"secret/{env('APP_SECRET_PATH')} lacks app_id, installation_id or private_key")
+        app_id, installation_id, private_key = read_app_credentials(vault, vault_token, spec["app_secret_path"])
     except AppCredentialsAbsent as absent:
-        log(f"app credentials absent: {absent}; nothing written to {target}. Owner step: docs/techdocs/docs/runbooks/github-app-ploeg-hq.md")
+        log(f"app credentials absent: {absent}; nothing written to {target}. Owner step: docs/techdocs/docs/runbooks/github-app-{owner}.md")
         push_metrics(metrics_url, labels, {"app_credentials_present": 0, "run_success_timestamp_seconds": int(time.time())})
-        return 0
+        return
 
-    state_store = StateConfigMap(env("KUBERNETES_API", "https://kubernetes.default.svc"), env("NAMESPACE"),
-                                 env("STATE_CONFIGMAP"), service_account_token,
-                                 os.environ.get("KUBERNETES_CA_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"))
-    github = GitHub(env("GITHUB_API", "https://api.github.com"), owner, repository)
+    try:
+        source = read_source(spec["source"], vault, vault_token)
+    except SourceAbsent as absent:
+        log(f"source absent: {absent}; nothing written to {target}")
+        push_metrics(metrics_url, labels, {"app_credentials_present": 1, "source_present": 0,
+                                           "run_success_timestamp_seconds": int(time.time())})
+        return
+
+    state_store = StateConfigMap(settings["kubernetes_api"], settings["namespace"], spec["state_configmap"],
+                                 settings["service_account_token"], settings["kubernetes_ca_path"])
+    github = GitHub(settings["github_api"], owner, repository)
     fingerprint = source_fingerprint(target, source)
-    samples = {"app_credentials_present": 1}
+    samples = {"app_credentials_present": 1, "source_present": 1}
     try:
         github.mint_installation_token(github_app_jwt(app_id, private_key, time.time()), installation_id)
         state = state_store.read()
@@ -469,6 +527,36 @@ def run():
         github.revoke()
     samples["run_success_timestamp_seconds"] = int(time.time())
     push_metrics(metrics_url, labels, samples)
+
+
+def run():
+    targets = load_targets(env("TARGETS_PATH"))
+    service_account_token = env("SERVICE_ACCOUNT_TOKEN_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/token")
+    settings = {
+        "metrics_url": os.environ.get("METRICS_URL", ""),
+        "service_account_token": service_account_token,
+        "kubernetes_api": env("KUBERNETES_API", "https://kubernetes.default.svc"),
+        "kubernetes_ca_path": os.environ.get("KUBERNETES_CA_PATH", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"),
+        "namespace": env("NAMESPACE"),
+        "github_api": env("GITHUB_API", "https://api.github.com"),
+    }
+    vault = OpenBao(env("VAULT_ADDR"), env("VAULT_ROLE"), service_account_token)
+    vault_token = vault.login()
+
+    failed = []
+    for spec in targets:
+        target = f"{spec['owner']}/{spec['repository']}/{spec['secret']}"
+        try:
+            sync_target(spec, vault, vault_token, settings)
+        except BridgeFailure as failure:
+            log(f"bridge failed for {target}: {failure}")
+            failed.append(target)
+        except Exception as unexpected:
+            log(f"bridge failed for {target} with an unexpected {type(unexpected).__name__}")
+            failed.append(target)
+    if failed:
+        log(f"{len(failed)} of {len(targets)} targets failed: {', '.join(failed)}")
+        return 1
     return 0
 
 

@@ -1,0 +1,56 @@
+---
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: github-config-unfold-hq
+  labels:
+    app.kubernetes.io/name: github-config-unfold-hq
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: github-config-unfold-hq.rules
+      rules:
+        - alert: GitHubConfigUnfoldHqNotReady
+          expr: |
+            (
+              max by (terraform_namespace, terraform_name) (
+                tofu_terraform_status_condition{
+                  terraform_namespace="github-config",
+                  terraform_name="unfold-hq",
+                  type="Ready",
+                  status!="True",
+                  reason!="TerraformPlannedWithChanges"
+                }
+              ) == 1
+            )
+            and on ()
+            (
+              max(last_over_time(github_secrets_bridge_app_credentials_present{owner="unfold-hq"}[2h])) == 1
+            )
+          for: 3h
+          labels:
+            severity: warning
+            owner: platform
+            service: github-config
+          annotations:
+            summary: "GitHub unfold-hq Terraform not Ready for 3h (github-config/unfold-hq)"
+            description: |-
+              What's happening:
+              - The unfold-hq Terraform object in namespace github-config has not been Ready for three hourly reconciles.
+              - It only fires once the unfold-hq GitHub App credentials exist in OpenBao; before that GitHubAppUnfoldHqPending (info) is the signal.
+              - A plan waiting for approval is excluded: that is the deliberate plan-only state.
+
+              Impact/risk:
+              - Rulesets and repository settings on unfold-hq/unfold drift without being planned or corrected.
+
+              Likely causes:
+              - OpenBao login failed (role github-config-unfold-hq) or secret/github/unfold-hq-app lacks app_id, installation_id or private_key
+              - The App lost its installation on unfold-hq/unfold, or one of its permissions (Administration, Secrets, Variables)
+              - A model edit that fails the provider schema, a precondition, or prevent_destroy
+              - registry.opentofu.org or api.github.com unreachable (FQDN egress policy)
+
+              First actions:
+              - kubectl -n github-config get terraform unfold-hq -o yaml
+              - kubectl -n github-config logs -l app.kubernetes.io/part-of=github-config-unfold-hq,app.kubernetes.io/name=tf-runner
+              - docs/techdocs/docs/runbooks/github-app-unfold-hq.md

@@ -229,10 +229,15 @@ The image is `python:3.14-alpine` with the standard library only: the cluster ha
 index and the root filesystem is read-only. The RS256 signature and the sealed box are therefore
 implemented in the script. `scripts/test-github-secrets-bridge.sh` runs it against a fake GitHub,
 OpenBao and apiserver, where the fake verifies the JWT with `cryptography` and opens the sealed
-box with PyNaCl. The same script mutates the bridge ten ways (always write, ignore a source change,
+box with PyNaCl. The same script mutates the bridge (always write, ignore a source change,
 ignore drift on GitHub, store the value, log the source or the token without redaction, exit
-non-zero when the App is absent, treat a 403 as absent, an unscoped token, a wrong nonce) and fails
-if any mutant passes. It runs in the e2e workflow.
+non-zero when the App is absent, treat a 403 as absent, an unscoped token, a wrong nonce, and the
+multi-target cases) and fails if any mutant passes. It runs in the e2e workflow.
+
+Since the unfold-hq preparation the bridge serves a list of targets, `app/targets.json`, each with
+its own App, source and state ConfigMap; `RELEASE_CONSUMER_TOKEN_FORGEJO` is the first and keeps
+`github-secrets-bridge-state`. The list and how to add a target:
+[github-app-unfold-hq](github-app-unfold-hq.md#the-secrets-bridge).
 
 ## Troubleshooting
 

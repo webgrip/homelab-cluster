@@ -46,6 +46,7 @@ REPOS=()
 # pushes/PRs don't spawn stray in-repo runs (disabling the unit does NOT break `uses:` consumers —
 # the caller's runner resolves+executes the reusable workflow).
 ACTIONS_OFF_REPOS="workflows"
+GITHUB_IS_SOURCE_REPOS="unfold"
 # Renovate webhook receiver. Forgejo is IN-CLUSTER, so the hook targets the operator Service directly
 # (http, port 8082) — no envoy-external hairpin / public round-trip needed. The ?namespace=&job= params
 # route the inbound event to the Forgejo RenovateJob.
@@ -54,6 +55,7 @@ RENOVATE_WEBHOOK_URL="http://renovate-operator.renovate.svc.cluster.local:8082/w
 die() { echo "ERROR: $*" >&2; exit 1; }
 have() { echo ",$ONLY," | grep -q ",$1,"; }
 is_actions_off() { echo " $ACTIONS_OFF_REPOS " | grep -q " $1 "; }
+github_is_source() { echo " $GITHUB_IS_SOURCE_REPOS " | grep -q " $1 "; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -150,6 +152,10 @@ sync_releases() {
 sync_mirror() {
   local r="$1"
   local exists
+  if github_is_source "$r"; then
+    note "mirror: SKIP — $r moves to a GitHub organisation that is its source of truth; a push mirror would overwrite it (docs/techdocs/docs/runbooks/github-app-unfold-hq.md)"
+    return
+  fi
   exists=$(fj "$FORGEJO_API/repos/$ORG/$r/push_mirrors" \
     | python3 -c "import sys,json;print(any('$GITHUB_HOST' in m.get('remote_address','') for m in json.load(sys.stdin)))" 2>/dev/null || echo False)
   if [ "$exists" = "True" ]; then note "mirror: already mirrors to $GITHUB_HOST"; return; fi

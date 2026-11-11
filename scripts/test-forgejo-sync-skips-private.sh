@@ -9,6 +9,12 @@ cat > "$work/bin/curl" <<'FAKE'
 #!/usr/bin/env bash
 url="${*: -1}"
 [ -n "${CURL_LOG:-}" ] && echo "$url" >>"$CURL_LOG"
+[ -n "${CURL_ARGS_LOG:-}" ] && echo "$*" >>"$CURL_ARGS_LOG"
+case "$*" in
+  *"-X POST "*"/push_mirrors "*) printf '{}'; exit 0 ;;
+  *"/push_mirrors") printf '[]'; exit 0 ;;
+  *"https://api.github.com/user") printf '{"login":"mirror-bot"}'; exit 0 ;;
+esac
 case "$url" in
   *"/orgs/webgrip/repos?limit=50&page=1")
     printf '%s' '[{"name":"public-app","private":false,"mirror":false,"fork":false},{"name":"obsidian-vault","private":true,"mirror":false,"fork":false},{"name":"mirrored","private":false,"mirror":true,"fork":false},{"name":"forked","private":false,"mirror":false,"fork":true}]' ;;
@@ -42,7 +48,21 @@ for retired in protect settings protect,prs; do
     failures=$((failures + 1))
   fi
 done
+mirror_posts() {
+  : >"$work/args.log"
+  FORGEJO_TOKEN=test-token GH_MIRROR_TOKEN=test-mirror-token CURL_ARGS_LOG="$work/args.log" PATH="$work/bin:$PATH" \
+    bash "$sync_script" --repo "$1" --only mirror --apply >/dev/null 2>&1
+  grep -c -- "-X POST .*/repos/webgrip/$1/push_mirrors " "$work/args.log" || true
+}
+if [ "$(mirror_posts public-app)" != "1" ]; then
+  echo "FAIL: --only mirror --apply must add a push mirror for public-app"
+  failures=$((failures + 1))
+fi
+if [ "$(mirror_posts unfold)" != "0" ]; then
+  echo "FAIL: --only mirror --apply added a push mirror for unfold, whose source of truth moves to GitHub"
+  failures=$((failures + 1))
+fi
 if [ "$failures" -gt 0 ]; then
   exit 1
 fi
-echo "PASS: forgejo-sync --all manages public-app only; private, mirrored and forked repos are left alone; protect and settings refuse"
+echo "PASS: forgejo-sync --all manages public-app only; private, mirrored and forked repos are left alone; protect and settings refuse; unfold gets no push mirror"
