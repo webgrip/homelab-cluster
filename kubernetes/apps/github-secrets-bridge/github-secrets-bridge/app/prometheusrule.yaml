@@ -39,6 +39,61 @@ spec:
               First actions:
               - Follow docs/techdocs/docs/runbooks/github-app-ploeg-hq.md, section "Owner steps".
               - kubectl -n github-secrets-bridge create job --from=cronjob/github-secrets-bridge github-secrets-bridge-manual
+        - alert: GitHubAppUnfoldHqPending
+          expr: |
+            max by (owner, repository, secret) (
+              last_over_time(github_secrets_bridge_app_credentials_present{owner="unfold-hq"}[2h])
+            ) == 0
+          for: 0m
+          labels:
+            severity: info
+            owner: platform
+            service: github-config
+          annotations:
+            summary: "The unfold-hq GitHub App is not set up yet, so no Actions secret is bridged to unfold-hq/unfold (github-secrets-bridge/github-secrets-bridge)"
+            description: |
+              What's happening:
+              - The bridge found no App credentials at OpenBao secret/github/unfold-hq-app and exited cleanly without touching GitHub.
+              - Info only, routed to no receiver: this is the expected state until Unfold moves to the unfold-hq organisation and the owner stores the unfold-hq-gitops App key.
+
+              Impact/risk:
+              - CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_DNS_READ_TOKEN are not published on unfold-hq/unfold, so its site and DNS workflows on GitHub cannot reach Cloudflare.
+              - The unfold-hq Terraform object stays suspended.
+
+              Likely causes:
+              - The unfold-hq-gitops GitHub App has not been created, or not installed on unfold-hq/unfold yet (it can only be installed once the repository is transferred).
+              - The App exists but its id, installation id and key were not stored with bao kv put.
+
+              First actions:
+              - Follow docs/techdocs/docs/runbooks/github-app-unfold-hq.md, section "Owner steps".
+              - kubectl -n github-secrets-bridge create job --from=cronjob/github-secrets-bridge github-secrets-bridge-manual
+        - alert: GitHubSecretsBridgeSourcePending
+          expr: |
+            max by (owner, repository, secret) (
+              last_over_time(github_secrets_bridge_source_present[2h])
+            ) == 0
+          for: 0m
+          labels:
+            severity: info
+            owner: platform
+            service: github-config
+          annotations:
+            summary: "The bridge has no source value for {{ $labels.owner }}/{{ $labels.repository }} {{ $labels.secret }} yet (github-secrets-bridge/github-secrets-bridge)"
+            description: |
+              What's happening:
+              - The App for {{ $labels.owner }} exists, but the OpenBao path this secret is copied from does not, so the bridge wrote nothing and exited cleanly.
+              - Info only, routed to no receiver. RELEASE_CONSUMER_GITHUB_APP_ID and RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY on ploeg-hq/ploeg show this until the unfold-hq-bot App key is stored at secret/github/unfold-hq-bot-app.
+
+              Impact/risk:
+              - The GitHub Actions secret {{ $labels.secret }} on {{ $labels.owner }}/{{ $labels.repository }} is missing, so the workflow that reads it skips or fails.
+
+              Likely causes:
+              - The source value was never stored in OpenBao (the unfold-hq-bot App is not created yet).
+              - The OpenBao path in kubernetes/apps/github-secrets-bridge/github-secrets-bridge/app/targets.json is wrong.
+
+              First actions:
+              - Follow docs/techdocs/docs/runbooks/github-app-unfold-hq.md, section "The bot App".
+              - kubectl -n github-secrets-bridge logs job/<latest github-secrets-bridge job>; the line "source absent" names the OpenBao path.
         - alert: GitHubSecretsBridgeFailing
           expr: |
             (
@@ -62,15 +117,17 @@ spec:
             description: |
               What's happening:
               - The latest hourly run of the CronJob github-secrets-bridge/github-secrets-bridge has not succeeded for 20 minutes, or it has never succeeded.
-              - The job publishes the Forgejo token of ploeg-release as RELEASE_CONSUMER_TOKEN_FORGEJO on ploeg-hq/ploeg.
-              - Missing App credentials are not a failure: that run exits 0 and raises GitHubAppPloegHqPending instead.
+              - The job publishes the GitHub Actions secrets listed in its targets.json, such as the Forgejo token of ploeg-release as RELEASE_CONSUMER_TOKEN_FORGEJO on ploeg-hq/ploeg.
+              - One failing target does not stop the others; the log line "bridge failed for <owner>/<repository>/<secret>" names each failing one.
+              - Missing App credentials or a missing OpenBao source are not a failure: that target exits cleanly and raises GitHubAppPloegHqPending, GitHubAppUnfoldHqPending or GitHubSecretsBridgeSourcePending instead.
 
               Impact/risk:
               - Ploeg's release job may hold a stale or missing Forgejo token, so a Ploeg release opens no Unfold bump.
+              - A rotated Cloudflare deploy token may not reach unfold-hq/unfold, so its deploy workflow authenticates with a revoked token.
 
               Likely causes:
               - The source Secret github-secrets-bridge-source is empty (ExternalSecret on forgejo/ploeg-release not synced).
-              - OpenBao denied the github-secrets-bridge role (policy or role missing from the bootstrap config).
+              - OpenBao denied the github-secrets-bridge role (policy or role missing from the bootstrap config, or a new path in targets.json not granted in github-secrets-bridge.hcl).
               - GitHub refused the App JWT or the installation token (App uninstalled, key revoked, Secrets permission removed).
               - The state ConfigMap could not be written (RBAC or the apiserver CiliumNetworkPolicy).
 
@@ -93,6 +150,7 @@ spec:
 
               Impact/risk:
               - A rotated ploeg-release token is not republished to ploeg-hq/ploeg, so Ploeg's release hook authenticates with a revoked token.
+              - The monthly Cloudflare deploy token rotation is not republished to unfold-hq/unfold.
 
               Likely causes:
               - The CronJob is suspended, deleted, or cannot schedule a pod on the worker pool.
