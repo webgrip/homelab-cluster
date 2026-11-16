@@ -269,14 +269,15 @@ repos:
       allow_squash_merge: false
   unfold:
     forge: forgejo
-    kind: service
-    staged: true
-    renovate:
-      presets:
-        - "local>webgrip/renovate-config:unattended"
-        - "local>webgrip/renovate-config:platform-automerge"
+    settings:
+      archived: true
     branches:
       main:
+        push: []
+        merge:
+          - ryangr0
+          - yon
+          - renovate
         status_checks:
           - "* / gate (pull_request)"
       development:
@@ -406,7 +407,57 @@ repos:
         required_status_checks: []
         bypass_repository_role_ids: []
     release_consumers: >-
-      [{"forge":"forgejo","url":"https://forgejo.webgrip.dev","repo":"webgrip/unfold","base":"development","recipe":"scripts/consume-ploeg-release.sh","message":"fix(ploeg): update Ploeg to {version}","merge":"by-consumer"}]
+      [{"forge":"github","url":"https://github.com","repo":"unfold-hq/unfold","base":"development","recipe":"scripts/consume-ploeg-release.sh","message":"fix(ploeg): update Ploeg to {version}","merge":"by-consumer"}]
+  unfold-hq/unfold:
+    forge: github
+    kind: service
+    renovate:
+      config_file: renovate.json
+      presets:
+        - "config:recommended"
+        - "abandonments:recommended"
+        - "mergeConfidence:all-badges"
+    settings:
+      default_branch: development
+      has_discussions: true
+    rulesets:
+      protect-development:
+        name: Protect development
+        target: branch
+        include:
+          - refs/heads/development
+        deletion: true
+        non_fast_forward: true
+        update: false
+        required_status_checks:
+          - context: gate
+            integration_id: 15368
+        bypass_repository_role_ids:
+          - 5
+      protect-main:
+        name: Protect main
+        target: branch
+        include:
+          - refs/heads/main
+        deletion: true
+        non_fast_forward: true
+        update: false
+        required_status_checks:
+          - context: gate
+            integration_id: 15368
+        bypass_repository_role_ids:
+          - 5
+      release-tags-immutable:
+        name: Release tags are immutable
+        target: tag
+        include:
+          - refs/tags/unfold-v*
+          - refs/tags/unfold-site-v*
+        deletion: true
+        non_fast_forward: true
+        update: true
+        required_status_checks: []
+        bypass_repository_role_ids: []
   webgrip/action-typescript-template:
     forge: github
     mirror_of: action-typescript-template
@@ -502,9 +553,6 @@ repos:
     forge: github
     settings:
       archived: true
-  webgrip/unfold:
-    forge: github
-    mirror_of: unfold
   webgrip/unfold-cluster:
     forge: github
     mirror_of: unfold-cluster
