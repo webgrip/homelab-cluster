@@ -215,8 +215,10 @@ the GitHub and Forgejo UIs; step 5 is PR 2.
 
      It should import the repository, its default branch and its Actions and workflow
      permissions, change only the settings the model sets differently, and create the three
-     rulesets. Approve it by setting `spec.approvePlan` to the pending plan id in a follow-up
-     pull request, then `approvePlan: auto` once applied.
+     rulesets. Once a person has read it, set `spec.approvePlan: auto` in a follow-up pull
+     request, as `Terraform/ploeg-hq` has. A plan id names the Git revision it was planned at, so
+     the approving commit itself would make an exact id stale; the plan at the approving commit
+     is the same one, because `approvePlan` is not an input of the module.
 
 ### What PR 2 changes
 
@@ -225,7 +227,7 @@ the GitHub and Forgejo UIs; step 5 is PR 2.
 | Forgejo `unfold` entry becomes `forge: forgejo` plus `settings.archived: true`: it drops `kind` and `staged` (the validator refuses them on an archived repository) and `renovate`. It keeps `branches`, spelled out as the rules the `protected` profile and the `staged` layer gave it, because an archived repository is on `baseline`, which derives no branch rule, and every `forgejo_branch_protection` has `prevent_destroy`: dropping `unfold/main` and `unfold/development` would fail the whole `Terraform/repo-config` plan. With the rules spelled out they plan no change. The tag protection `unfold/*` has no `prevent_destroy` and is deleted, as for every archived repository. Do not rename the entry: `forgejo_repository` has `prevent_destroy` too, so a rename plans a destroy and fails | `kubernetes/apps/repo-config/repo-config/model/repos.yaml` | Forgejo `webgrip/unfold` becomes read-only history |
 | Remove the `webgrip/unfold` GitHub entry (`mirror_of: unfold`) | same | the GitHub repository is no longer a Webgrip mirror; the `github-mirrors` reconciler must stop copying releases to it |
 | Add the `unfold-hq/unfold` entry (below), together with the `tofu-github` change that lets a ruleset without an `id` be created instead of imported | same, and `kubernetes/apps/repo-config/repo-config/tofu-github/imports.tf`, `model/schema/github-rulesets.schema.json` | rulesets, settings and default branch from git |
-| Remove `spec.suspend: true` from `Terraform/unfold-hq` | `kubernetes/apps/github-config/unfold-hq/app/terraform.yaml` | first plan, approved by hand as above |
+| Remove `spec.suspend: true` from `Terraform/unfold-hq` | `kubernetes/apps/github-config/unfold-hq/app/terraform.yaml` | first plan, read by hand, then `approvePlan: auto` as above |
 | Switch `release_consumers` of `ploeg-hq/ploeg` to `[{"forge":"github","url":"https://github.com","repo":"unfold-hq/unfold","base":"development","recipe":"scripts/consume-ploeg-release.sh","message":"fix(ploeg): update Ploeg to {version}","merge":"by-consumer"}]` | `repos.yaml`, entry `ploeg-hq/ploeg` | Ploeg's release opens the pin PR on GitHub with the `unfold-hq-bot` token. Needs the matching change in `ploeg-hq/ploeg`'s workflow (`actions/create-github-app-token`): merged in [ploeg-hq/ploeg#415](https://github.com/ploeg-hq/ploeg/pull/415) and in releases from `v0.2.0-rc.106` |
 | Point the Unfold DNS source at the pull mirror: `unfoldhq-dev|webgrip/unfold-mirror|development|apps/site/ops/dns` | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/dns-reconciler.cronjob.yaml` | the archived repository stops changing; the mirror follows GitHub |
 | Two validator test cases that mutated the `unfold` entry's branch rules mutate `semantic-release-config` instead: the archived entry is skipped by the push and Renovate-gate checks, so the cases would no longer fail for the reason they name | `scripts/test-validate-repo-config-model.sh` | the test keeps testing what it says |
