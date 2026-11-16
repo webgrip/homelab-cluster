@@ -18,7 +18,8 @@ metadata:
     policies.kyverno.io/description: >-
       Unfold verifier check Pods are bare, run-to-completion kata Pods with
       nothing to probe. Waived only for Pods in unfold-verifier labelled as the
-      verifier with its deny-all network label.
+      verifier with its deny-all network label, unfoldhq.dev/network=none or the
+      former dev.webgrip.unfold/network=none.
 spec:
   policyRefs:
     - kind: ValidatingPolicy
@@ -29,7 +30,8 @@ spec:
         object.kind == 'Pod' &&
         object.metadata.namespace == 'unfold-verifier' &&
         object.metadata.?labels[?'app.kubernetes.io/name'].orValue('') == 'unfold-verifier' &&
-        object.metadata.?labels[?'dev.webgrip.unfold/network'].orValue('') == 'none'
+        (object.metadata.?labels[?'unfoldhq.dev/network'].orValue('') == 'none' ||
+         object.metadata.?labels[?'dev.webgrip.unfold/network'].orValue('') == 'none')
 ---
 apiVersion: policies.kyverno.io/v1
 kind: PolicyException
