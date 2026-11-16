@@ -59,35 +59,15 @@ Repo-scoped is the default. Org-wide is for values every release-path workflow n
 The first instance of this recipe is `BREVO_API_KEY` for `twente.dev`: `secret/brevo/twente-dev`,
 `forgejo-brevo`, verified against `GET https://api.brevo.com/v3/account`.
 
-## The Open VSX publish token
+## The Open VSX publish token (retired)
 
-Unfold ships a VS Code extension, and its publish token needs a verify call that is not the
-obvious one. Until 2026-11-16 this bridge published it to Forgejo `webgrip/unfold`. That
-repository is archived and Unfold builds on `unfold-hq/unfold` on GitHub, so the bridge no longer
-publishes or verifies it, and its copy on the archived repository is deleted
-([unfold-hq runbook](github-app-unfold-hq.md)). The vault path
-and the ExternalSecret stay until the owner decides whether the GitHub secrets bridge carries the
-token to `unfold-hq/unfold`. The verify call below is what that target needs.
-
-| Secret | Vault path | Secret name | Seed | Verify |
-| --- | --- | --- | --- | --- |
-| `OVSX_PAT` | `secret/openvsx/unfold` | `forgejo-openvsx-publish` | `just openvsx-cred` | `POST https://open-vsx.org/api/-/namespace/create` |
-
-The seed goes through `just openvsx-cred`, which prompts with `gum` so the token never reaches argv or shell history, and rejects a token Open VSX does not accept rather than writing a dead value into the vault.
-
-**Open VSX has no whoami.** `GET /user` is session-cookie based: it answers `200` with a body of
-`{"error":"Not logged in."}` for any bearer token, so its status code proves nothing. The
-namespace-create endpoint checks authentication before it checks whether the namespace exists, so
-it answers `401` for a dead token and something else for a live one. A verify therefore treats
-`401` as the only failure — a non-401 is success even when the body says the namespace already
-exists, which is the expected answer now that `webgrip` is claimed. The call is idempotent and
-creates nothing that should not already be there.
-
-There is deliberately no Visual Studio Marketplace row. Publishing there needs an Azure DevOps
-organization, which since 2026 requires an attached Azure subscription, and the PAT it would
-issue is retired on 2026-12-01 regardless. Unfold ships to Open VSX only until that trade is
-worth making; see its
-[ADR-0021](https://forgejo.webgrip.dev/webgrip/unfold/src/branch/development/apps/unfold/docs/adrs/0021-the-extension-ships-through-open-vsx-first.md).
+Unfold's VS Code extension publishes to Open VSX from `unfold-hq/unfold` on GitHub through
+Trusted Publishing: the release workflow proves its identity with GitHub OIDC, so there is no
+long-lived `OVSX_PAT` to bridge. This bridge published one to Forgejo `webgrip/unfold` until
+2026-11-16 and deletes that copy through `RETIRED_REPO_SECRETS`
+([unfold-hq runbook](github-app-unfold-hq.md)). The ExternalSecret `forgejo-openvsx-publish`, its
+ESO grant on `openvsx/unfold` and the `just openvsx-cred` recipe are gone. The value at
+`secret/openvsx/unfold` stays in OpenBao until the owner deletes it.
 
 ## The Talos image robot
 

@@ -142,7 +142,6 @@ does not stop the others, and the run exits 1 once all have been tried.
 
 | Repository | Secret | Source in OpenBao | App |
 | --- | --- | --- | --- |
-| `ploeg-hq/ploeg` | `RELEASE_CONSUMER_TOKEN_FORGEJO` | `forgejo/ploeg-release` `token`, through ExternalSecret `github-secrets-bridge-source` | `ploeg-hq-gitops` |
 | `ploeg-hq/ploeg` | `RELEASE_CONSUMER_GITHUB_APP_ID` | `github/unfold-hq-bot-app` `app_id` | `ploeg-hq-gitops` |
 | `ploeg-hq/ploeg` | `RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY` | `github/unfold-hq-bot-app` `private_key` | `ploeg-hq-gitops` |
 | `unfold-hq/unfold` | `CLOUDFLARE_API_TOKEN` | `cloudflare/deploy` `CLOUDFLARE_API_TOKEN` | `unfold-hq-gitops` |
@@ -157,11 +156,10 @@ Kubernetes-auth role, so a source that does not exist yet is a clean skip, not a
 ExternalSecret.
 
 Each target keeps only a SHA-256 fingerprint of its source, in its own state ConfigMap
-(`state_configmap` in `targets.json`; the Role lists each name). The Ploeg target keeps the
-existing `github-secrets-bridge-state`, so its first run after this change writes nothing.
-`scripts/test-github-secrets-bridge.sh` checks that every state ConfigMap is in the Role and
-every OpenBao path is in `github-secrets-bridge.hcl`, and mutates the bridge so each check is
-seen to fail.
+(`state_configmap` in `targets.json`; the Role lists each name). Every source is read straight
+from OpenBao; the bridge mounts no Secret. `scripts/test-github-secrets-bridge.sh` checks that
+every state ConfigMap is in the Role and every OpenBao path is in `github-secrets-bridge.hcl`,
+and mutates the bridge so each check is seen to fail.
 
 To add a target: add it to `targets.json`, its state ConfigMap to `app/rbac.yaml`, and any new
 OpenBao path to `kubernetes/apps/security/openbao/bootstrap/github-secrets-bridge.hcl`.
@@ -350,10 +348,25 @@ PolicyReports for the rc.132 Pods in `ploeg` and `unfold-workspaces` show `pass`
 | --- | --- | --- |
 | Ploeg's targets (`config.targets.unfold`, the Vikunja project `Ploeg Test`), the `silver` team and every task source with `ploeg.target` still name Forgejo `webgrip/unfold`; Runs against it cannot push | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` | this Ploeg has only a Forgejo forge (`executor.forge: forgejo`). Moving the targets to `unfold-hq/unfold` needs a GitHub forge for Ploeg with an App installed on `unfold-hq/unfold` ([Ploeg ADR-0086](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md)) |
 | Report a problem files issues on Forgejo `webgrip/unfold` (`config.reports`), and the `unfold-reports`, `ploeg-forge-webhook-registration` and `forge-revocation-probe` jobs act on it | `helmrelease.yaml`, `kubernetes/apps/forgejo/forgejo-actions-secrets/app/`, `kubernetes/apps/ploeg/ploeg/app/forge-revocation-probe/` | follows the forge decision above |
-| `RELEASE_CONSUMER_TOKEN_FORGEJO`, its bridge target and the `ploeg-release` bot | `github-secrets-bridge/.../targets.json`, `externalsecret.yaml`, `forgejo-actions-secrets/app/ploeg-release-*` | Ploeg no longer consumes on Forgejo (its only consumer is `unfold-hq/unfold`), so these can go; they still succeed and harm nothing |
-| `OVSX_PAT` for the VS Code extension on `unfold-hq/unfold`, and the agent-standards survey key | OpenBao `openvsx/unfold`, `litellm/keys/agent-standards-survey` | whether the GitHub secrets bridge carries them to `unfold-hq/unfold` |
+| The agent-standards survey key for `unfold-hq/unfold` | OpenBao `litellm/keys/agent-standards-survey` | whether the GitHub secrets bridge carries it to `unfold-hq/unfold` |
+| The Forgejo user `ploeg-release`, its token `ploeg-release-hook`, OpenBao `forgejo/ploeg-release` and `openvsx/unfold`, and the Actions secret `RELEASE_CONSUMER_TOKEN_FORGEJO` on `ploeg-hq/ploeg` | Forgejo, OpenBao, GitHub | left behind by the [clean-up](#what-the-clean-up-after-pr-3-changed); nothing reads them. The owner deletes them by hand |
 | The Garage buckets `docs-glide`, `docs-glide-trash`, the key `docs-publish-glide`, the `glide_*` properties of OpenBao `garage/docs-repo-keys`, and Harbor's `webgrip/unfold`, `webgrip/unfold-agent` and `webgrip/charts/unfold` repositories | Garage, OpenBao, Harbor | data; nothing in git deletes them. The owner removes them by hand, or lists the Harbor repositories in `retired-repositories`. Not `webgrip/unfold-delivery-inputs`: staging still pins it for governed delivery |
 | The TechDocs and Backstage entry for Unfold | the Backstage catalog location that registers Unfold's `catalog-info.yaml` | not in this repository |
+
+#### What the clean-up after PR 3 changed
+
+| Change | Where |
+| --- | --- |
+| The bridge target `RELEASE_CONSUMER_TOKEN_FORGEJO` on `ploeg-hq/ploeg`, its ExternalSecret `github-secrets-bridge-source`, its state ConfigMap in the Role, the Secret volume and the Flux dependency on `forgejo-actions-secrets` are gone. Ploeg's `release_consumers` names only `unfold-hq/unfold` on GitHub and its workflow reads the Forgejo token as optional | `kubernetes/apps/github-secrets-bridge/github-secrets-bridge/` |
+| The `ploeg-release` provisioner (CronJob, script, password ExternalSecret, token PushSecret, apiserver CiliumNetworkPolicy), its two alerts and their tests, and its e2e test are gone. Nothing else read `forgejo/ploeg-release` | `kubernetes/apps/forgejo/`, `prometheusrule-delivery-verify.yaml`, `scripts/vmalert-tests/delivery-verify.test.yaml`, `.forgejo/workflows/e2e.yml` |
+| The ExternalSecret `forgejo-openvsx-publish` and `just openvsx-cred` are gone: Unfold publishes to Open VSX with Trusted Publishing from GitHub | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/`, `justfile` |
+| The ESO grants `forgejo push forgejo/ploeg-release`, `forgejo read openvsx/unfold` and `github-secrets-bridge read forgejo/ploeg-release` are gone, and with them the generated SecretStore of `github-secrets-bridge` | `kubernetes/apps/security/openbao/bootstrap/eso-grants.txt`, `kubernetes/apps/security/external-secrets/tenants/stores.generated.yaml` |
+
+The archived `unfold` entry in `repos.yaml` keeps `ploeg-release` in its `development` merge
+list, so `Terraform/repo-config` plans no change on the archived repository. Remove it together
+with the Forgejo user. A PushSecret and an ExternalSecret leave their OpenBao data in place when
+they are deleted, so `forgejo/ploeg-release` and `openvsx/unfold` stay until the owner removes
+them.
 
 ## Rotate an App key
 

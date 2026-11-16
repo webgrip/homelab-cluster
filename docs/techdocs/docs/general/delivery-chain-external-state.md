@@ -39,8 +39,8 @@ Large parts of the chain already rebuild from git. They are listed so the gaps s
 | --- | --- | --- |
 | Harbor projects (`webgrip`, the proxy-cache projects), proxy registries, robots `webgrip+ci` and the Renovate robot, retention, immutability, scanning, GC | `kubernetes/apps/harbor/harbor/app/harbor-proxy-config.*` | hourly CronJob against the Harbor API; robot secrets from `password-generator-32`, pushed to OpenBao |
 | Forgejo bots `renovate`, `webgrip-ci`, `unfold-reports`, `agent-builder`, `agent-reviewer`, their team memberships and tokens | provisioner Jobs/CronJobs in `kubernetes/apps/renovate/renovate-operator/forgejo-provisioner` and `kubernetes/apps/forgejo/forgejo-actions-secrets/app` | idempotent API calls with the Forgejo admin credential; passwords from generators; tokens written to Secrets and PushSecret to OpenBao |
-| Forgejo producer bot `ploeg-release` (restricted user, Write collaborator on `webgrip/unfold` only, token `ploeg-release-hook` with `write:repository`, `write:issue`, `read:user`) | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/ploeg-release-provisioner.*` | hourly CronJob; password from `password-generator`; token kept while it authenticates with those scopes, else re-minted; PushSecret to OpenBao `forgejo/ploeg-release` property `token`; the run fails, and `DeliveryReleaseBotProvisionerFailing` fires, when the bot can reach any repository but `webgrip/unfold` or holds admin on it |
-| Forgejo org and repo Actions secrets (`WEBGRIP_CI_TOKEN`, `WEBGRIP_INVENTORY_TOKEN`, `HARBOR_ROBOT_*`, `GHCR_*`, `CLOUDFLARE_*`, `OVSX_PAT`, `TECHDOCS_S3_*`) | `forgejo-actions-secrets.cronjob.yaml` | L3 bridge, hourly, validated against the provider |
+| Forgejo producer bot `ploeg-release` | retired 2026-11-16 | Unfold moved to `unfold-hq/unfold`, so Ploeg's release consumer is GitHub-only and nothing reads the bot's token. Its provisioner, PushSecret and alerts are gone; the Forgejo user, its token `ploeg-release-hook` and OpenBao `forgejo/ploeg-release` are left for the owner to delete ([unfold-hq runbook](../runbooks/github-app-unfold-hq.md#still-open-after-pr-3)) |
+| Forgejo org and repo Actions secrets (`WEBGRIP_CI_TOKEN`, `WEBGRIP_INVENTORY_TOKEN`, `HARBOR_ROBOT_*`, `GHCR_*`, `CLOUDFLARE_*`, `TECHDOCS_S3_*`) | `forgejo-actions-secrets.cronjob.yaml` | L3 bridge, hourly, validated against the provider |
 | Forgejo package-to-repo links | `forgejo-package-link-reconciler.cronjob.yaml` | CronJob |
 | OpenBao policies, auth roles (`ci-unfold`, the Forgejo OIDC signing role, `access-plane`) | `kubernetes/apps/security/openbao/bootstrap/` | bootstrap CronJob running `config.sh` |
 | Authentik groups, Harbor group memberships, OIDC capability projections | `kubernetes/apps/security/access-plane/` | tofu-controller with the `authentik`, `harbor` and `vault` providers |
@@ -61,7 +61,7 @@ Large parts of the chain already rebuild from git. They are listed so the gaps s
 | G4 | Repo settings: public, default branch `development`, Actions on, default workflow permission `read`, Actions may not approve PRs | GitHub | hand; modelled (repository, default branch, Actions and workflow permissions), as G1 | after the App step | wrong default branch breaks the release workflows; write-default tokens widen every job |
 | G5 | Visibility of GHCR packages `ploegd`, `claude-runner`, `charts/ploeg`, `ploeg-contract` (all public today) | GHCR package settings | hand, per package, after its first push | no | Harbor's `ghcr` proxy and Unfold's bundle pull get 401/404; a new package is private until someone clicks |
 | G6 | Repo variable `RELEASE_CONSUMERS` (JSON consumer list, D5) | GitHub Actions variables | set since 2026-10-23 from the `release_consumers` field of `ploeg-hq/ploeg` in the repo-config model ([switch](../runbooks/github-app-ploeg-hq.md#switching-ploeg-unfold-bumps-to-the-producer-d5)); branch `ci/notify-release-consumers` (ploeg#173) reads it | after the App step and the switch | consumer job skips silently: no Unfold bump PR is opened |
-| G7 | Repo secret `RELEASE_CONSUMER_TOKEN_FORGEJO` (Forgejo token of the producer bot, D6) | GitHub Actions secrets | **not set**; CronJob `github-secrets-bridge/github-secrets-bridge` publishes it from `secret/forgejo/ploeg-release` and no-ops until the App exists | after the App step | consumer job cannot open or schedule the Unfold PR |
+| G7 | Repo secret `RELEASE_CONSUMER_TOKEN_FORGEJO` (Forgejo token of the producer bot, D6) | GitHub Actions secrets | **retired 2026-11-16**: the bridge no longer publishes it, because Ploeg's only release consumer is `unfold-hq/unfold` on GitHub (G15). The copy already on `ploeg-hq/ploeg` stays until the owner deletes it | n/a | none: Ploeg's release workflow reads it as optional |
 | G8 | Renovate GitHub App (registration, private key, installation on the `webgrip` org) | GitHub App settings; key in OpenBao `renovate/operator` | hand | key: provided L1; app: no | `webgrip-gitops` RenovateJob and GHCR lookups for Renovate fail (`RenovateTokenMinterFailing`) |
 | G9 | Classic PAT `github/ci-pat` (`repo` + `write:packages`) | GitHub user settings; OpenBao `github/ci-pat` | hand | provided L1 | Forgejo CI cannot mirror Unfold images to `ghcr.io/webgrip/*` or mirror Releases |
 | G10 | PAT `GH_MIRROR_TOKEN` for Forgejo → GitHub push mirrors | a person's shell when running `forgejo-sync.sh --only mirror` | hand | no | new push mirrors cannot be created; existing ones keep the token they were made with, and stop when it expires (2026-07-25). Since 2026-10-27 `GitHubMirrorError` and `GitHubMirrorStale` catch that ([runbook](../runbooks/github-mirrors.md)); replacing the token with model-managed SSH mirrors is the follow-up of [ADR-0085](../adr/adr-0085-github-push-mirrors-are-tracked-in-the-model-and-reconciled-for-drift-and-releases.md) |
@@ -85,7 +85,7 @@ Large parts of the chain already rebuild from git. They are listed so the gaps s
 | F7 | Push mirrors Forgejo → GitHub | Forgejo DB | script: `--only mirror` with G10 | no | GitHub copies go stale; watched by `github-config/github-mirrors` since 2026-10-27 |
 | F8 | Pull mirror of `ploeg-hq/ploeg` on Forgejo | Forgejo DB | hand, New Migration form | no | read-only copy only; nothing in the chain reads it after D2, so low impact |
 | F9 | Unfold repo Actions variables `UNFOLD_RELEASES_ENABLED`, `UNFOLD_DOCS_PUBLISH_ENABLED` | Forgejo DB | hand, repo settings | no | releases and docs publishing are skipped without an error |
-| F10 | Producer bot `ploeg-release`: merging on `unfold` `development`. The user, its collaboration and its token are reconciled since VIK-2222, see above | Forgejo, repo-config model | declarative: the `development` merge list in `repo-config/model/repos.yaml` names `ploeg-release`, and `forgejo-actions-secrets` publishes its token to `webgrip/unfold` only as `PLOEG_RELEASE_TOKEN`. Unfold's hourly release train merges the waiting pin with it (Unfold ADR-0046, amended 2026-10-30); Ploeg's release opens the pin and leaves the merge to the train (`"merge": "by-consumer"` in `release_consumers`) | n/a | the train's `merge-pin` fails with HTTP 405 and no Unfold release is cut |
+| F10 | Producer bot `ploeg-release`: merging on `unfold` `development` | Forgejo, repo-config model | **retired 2026-11-16** with the archive of `webgrip/unfold`. The archived entry in `repo-config/model/repos.yaml` still names `ploeg-release` in its `development` merge list, so that rule plans no change | n/a | none |
 
 ### OpenBao provided values (L1, typed once by a person)
 
@@ -99,7 +99,7 @@ These are read by ExternalSecrets in git, so the *wiring* is declarative; the *v
 | V4 | `renovate/webhook-auth` | bearer token list for the operator's webhook receiver | seeded from SOPS; OpenBao is the original since 2026-11-01, when the write-back PushSecret went | release relay and every F4 hook get 401; the chain falls back to the hourly schedule |
 | V5 | `harbor/registry-proxy` | Docker Hub and GHCR pull credentials for Harbor's proxy projects | provided | proxy pulls fall back to anonymous limits or fail for private GHCR |
 | V6 | `cloudflare/tunnel`, `cloudflare/manager` (and the tunnel object at Cloudflare) | tunnel token in front of `forgejo.webgrip.dev`; the token that mints the rolled deploy and DNS tokens | provided | GitHub-hosted runners cannot reach Forgejo (G6/G7 calls, npm registry, `semantic-release-config` clone); Unfold site deploys stop |
-| V7 | `openvsx/unfold`, VS Marketplace PAT and Azure ids | extension publishing for Unfold | provided | extension publish steps fail or skip |
+| V7 | `openvsx/unfold`, VS Marketplace PAT and Azure ids | extension publishing for Unfold, until 2026-11-16 | provided; nothing reads it since Unfold publishes to Open VSX with Trusted Publishing from GitHub | none |
 | V8 | `github/ci-pat` | see G9 | provided | see G9 |
 | V9 | `github/ploeg-hq-renovate-app` | App id, installation id, private key of the G12 App | provided, **not yet stored** | see G12 |
 | V10 | `github/wellhead-dev-renovate-app` | App id, installation id, private key of the G13 App | provided, stored 2026-10-27 | see G13 |
@@ -177,6 +177,9 @@ generator, and the webhook bearer list can be several generator outputs joined b
 ExternalSecret template.
 
 ### The `ploeg-release` bot today
+
+Retired on 2026-11-16 with the move of Unfold to `unfold-hq/unfold`; the table records the plan as
+it was.
 
 | Piece | Declarative with what exists? | How, or what is missing |
 | --- | --- | --- |

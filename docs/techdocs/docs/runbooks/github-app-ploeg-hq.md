@@ -9,15 +9,14 @@ waits for it.
 | Mechanism | Path | Owns | Runs |
 | --- | --- | --- | --- |
 | GitHub module | model: entry `ploeg-hq/ploeg` in `kubernetes/apps/repo-config/repo-config/model/repos.yaml` plus the `github` block of the `baseline` profile; module: `kubernetes/apps/repo-config/repo-config/tofu-github/`; object: `kubernetes/apps/github-config/ploeg-hq/` (namespace `github-config`, `vars.github_owner: ploeg-hq`) | the three rulesets, repository settings, default branch, Actions permissions, the `RELEASE_CONSUMERS` variable | tofu-controller `Terraform/ploeg-hq`, hourly, `approvePlan: auto` |
-| GitHub secrets bridge | `kubernetes/apps/github-secrets-bridge/` (namespace `github-secrets-bridge`) | Actions secret `RELEASE_CONSUMER_TOKEN_FORGEJO` | CronJob `github-secrets-bridge`, hourly at :41 |
+| GitHub secrets bridge | `kubernetes/apps/github-secrets-bridge/` (namespace `github-secrets-bridge`) | Actions secrets `RELEASE_CONSUMER_GITHUB_APP_ID` and `RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY` (the `unfold-hq-bot` App, [unfold-hq runbook](github-app-unfold-hq.md#the-secrets-bridge)) | CronJob `github-secrets-bridge`, hourly at :41 |
 
 They sit in separate namespaces on purpose: the tf-runner Role may read Secrets in its own
-namespace, so `github-config` holds no Secret but the runner's state and plan, and the Forgejo
-token the bridge publishes lives only in `github-secrets-bridge`. No secret value enters tofu state: the module owns shape, the bridge owns values (repo-config
+namespace, so `github-config` holds no Secret but the runner's state and plan, and the bridge's
+sources are read only by `github-secrets-bridge`. No secret value enters tofu state: the module owns shape, the bridge owns values (repo-config
 RFC §8.1). The module reads the App key through an ephemeral OpenBao read; the bridge reads it
-over OpenBao Kubernetes auth, encrypts the token with the repository public key (libsodium
-sealed box) and keeps only a SHA-256 fingerprint of the source in ConfigMap
-`github-secrets-bridge-state`.
+over OpenBao Kubernetes auth, encrypts each value with the repository public key (libsodium
+sealed box) and keeps only a SHA-256 fingerprint of the source in a state ConfigMap per target.
 
 ## One model for both forges (since 2026-10-24)
 
@@ -91,9 +90,10 @@ That is all the owner has to do. The rest can be done by an agent.
    mise exec -- kubectl -n github-secrets-bridge logs job/github-secrets-bridge-first
    ```
 
-   Expect `ploeg-hq/ploeg/RELEASE_CONSUMER_TOKEN_FORGEJO written (absent on GitHub)`. A second run
-   prints `already matches the source; no write`. Confirm on GitHub without reading the value:
-   `gh api repos/ploeg-hq/ploeg/actions/secrets/RELEASE_CONSUMER_TOKEN_FORGEJO` returns its
+   Expect `ploeg-hq/ploeg/RELEASE_CONSUMER_GITHUB_APP_ID written (absent on GitHub)` once the
+   `unfold-hq-bot` key is stored, and `source absent` until then. A second run prints `already
+   matches the source; no write`. Confirm on GitHub without reading the value:
+   `gh api repos/ploeg-hq/ploeg/actions/secrets/RELEASE_CONSUMER_GITHUB_APP_ID` returns its
    `updated_at`. `GitHubAppPloegHqPending` resolves.
 2. **Module, plan only.** Remove `suspend: true` from
    `kubernetes/apps/github-config/ploeg-hq/app/terraform.yaml`, commit, push. Read the plan:
@@ -208,10 +208,6 @@ owner to approve widened permissions). The next :11 run discovers `ploeg-hq/ploe
 3. Run the bridge job by hand (above) and check it succeeds; the next module plan uses the new key.
 4. Delete the old key on the App's settings page, and the `.pem` from your machine.
 
-The Forgejo token itself rotates on its own: `ploeg-release-provisioner` re-mints it, the
-PushSecret updates `secret/forgejo/ploeg-release`, the bridge sees a new fingerprint and rewrites
-the GitHub secret within the hour.
-
 ## How the bridge decides to write
 
 It writes when any of these holds, and otherwise makes no write call:
@@ -235,8 +231,9 @@ non-zero when the App is absent, treat a 403 as absent, an unscoped token, a wro
 multi-target cases) and fails if any mutant passes. It runs in the e2e workflow.
 
 Since the unfold-hq preparation the bridge serves a list of targets, `app/targets.json`, each with
-its own App, source and state ConfigMap; `RELEASE_CONSUMER_TOKEN_FORGEJO` is the first and keeps
-`github-secrets-bridge-state`. The list and how to add a target:
+its own App, source and state ConfigMap. Its first target, `RELEASE_CONSUMER_TOKEN_FORGEJO` from
+`secret/forgejo/ploeg-release`, was removed on 2026-11-16 when Ploeg's release consumer became
+GitHub-only. The list and how to add a target:
 [github-app-unfold-hq](github-app-unfold-hq.md#the-secrets-bridge).
 
 ## Troubleshooting
@@ -247,7 +244,6 @@ its own App, source and state ConfigMap; `RELEASE_CONSUMER_TOKEN_FORGEJO` is the
 | bridge log `OpenBao denied reading secret/github/ploeg-hq-app (403)` | policy or role missing | check `config.sh` in `security/openbao/bootstrap` ran (`openbao-config` CronJob) |
 | bridge log `GitHub refused an installation token … (401)` | App key revoked or wrong `app_id` | rotate the key, check the App ID |
 | bridge log `… (404)` or `(422)` on the token | App uninstalled, or `ploeg` not in the installation | reinstall on `ploeg-hq/ploeg` |
-| bridge log `source value … is empty` | ExternalSecret `github-secrets-bridge-source` not synced | `kubectl -n github-secrets-bridge get externalsecret`; check `secret/forgejo/ploeg-release` |
 | plan shows changes on a ruleset | someone edited it in the GitHub UI | decide which is right; change the model or let apply restore it |
 | runner cannot download providers | FQDN egress policy misses a GitHub download host | add it to `github-config-ploeg-hq-runner-egress` |
 | `GitHubAppPloegHqRenovatePending` | no `secret/github/ploeg-hq-renovate-app`, or one of its keys empty | [Renovate App](#the-renovate-app) owner steps |
