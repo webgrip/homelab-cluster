@@ -71,6 +71,7 @@ Large parts of the chain already rebuild from git. They are listed so the gaps s
 | G14 | GitHub App `unfold-hq-gitops` (registration, private key, installation on `unfold-hq/unfold`) | GitHub App settings; key in OpenBao `github/unfold-hq-app` (V11) | **not created**; `Terraform/unfold-hq` is suspended and the `unfold-hq/unfold` bridge targets no-op until it exists ([runbook](../runbooks/github-app-unfold-hq.md)) | key: provided L1; app: no | no rulesets or settings on `unfold-hq/unfold` from git; its Cloudflare secrets are not published (`GitHubAppUnfoldHqPending`, info) |
 | G15 | GitHub App `unfold-hq-bot` (registration, private key, installation on `unfold-hq/unfold`), separate from `unfold-hq-gitops` | GitHub App settings; key in OpenBao `github/unfold-hq-bot-app` (V12) | **not created**; CronJob `renovate/renovate-github-app-token-unfold-hq` and RenovateJob `unfold-hq` are built and no-op until it exists; the bridge publishes the key to `ploeg-hq/ploeg` as `RELEASE_CONSUMER_GITHUB_APP_ID` and `RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY` ([runbook](../runbooks/github-app-unfold-hq.md#the-secrets-bridge)) | key: provided L1; app: no | `unfold-hq/unfold` gets no Renovate PRs and Ploeg's release cannot open the pin PR there (`GitHubAppUnfoldHqBotPending`, `GitHubSecretsBridgeSourcePending`, info) |
 | G16 | Repo secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_DNS_READ_TOKEN` on `unfold-hq/unfold` | GitHub Actions secrets | **not set**; CronJob `github-secrets-bridge/github-secrets-bridge` publishes them from `secret/cloudflare/deploy` and `secret/cloudflare/dns/unfoldhq-dev-ro` once G14 exists | after the App step | Unfold's site deploy and DNS workflows on GitHub cannot reach Cloudflare; a hand-set copy would go stale with the monthly deploy-token rotation |
+| G17 | GitHub App `unfold-hq-ploeg` (registration, private key, webhook secret, installation on `unfold-hq/unfold`), the homelab Ploeg's forge identity | GitHub App settings; key in OpenBao `github/unfold-hq-ploeg-app` (V13) | **not created**; nothing reads it until Ploeg can span two forges ([runbook](../runbooks/github-app-unfold-hq.md#the-ploeg-app-unfold-hq-ploeg)) | key: provided L1; app: no | Ploeg Runs for Unfold cannot push to `unfold-hq/unfold` |
 
 ### Forgejo (`forgejo.webgrip.dev`)
 
@@ -105,6 +106,7 @@ These are read by ExternalSecrets in git, so the *wiring* is declarative; the *v
 | V10 | `github/wellhead-dev-renovate-app` | App id, installation id, private key of the G13 App | provided, stored 2026-10-27 | see G13 |
 | V11 | `github/unfold-hq-app` | App id, installation id, private key of the G14 App | provided, **not yet stored** | see G14 |
 | V12 | `github/unfold-hq-bot-app` | App id, installation id, private key of the G15 App | provided, **not yet stored** | see G15 |
+| V13 | `github/unfold-hq-ploeg-app` | App id, installation id, private key and webhook secret of the G17 App | provided, **not yet stored** | see G17 |
 
 V8 is the vault copy of G9 and is counted once below.
 
