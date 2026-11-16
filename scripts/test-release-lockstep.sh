@@ -63,11 +63,11 @@ expect pass "pins as committed" "" ""
 expect fail "Unfold chart ahead of its images" \
   kubernetes/apps/ploeg/unfold/app/ocirepository.yaml 's/(tag: )[0-9][^[:space:]]*/\19.9.9-rc.1/'
 expect fail "Unfold image ahead of its chart" \
-  kubernetes/apps/ploeg/unfold/app/helmrelease.yaml '/repository: harbor\.webgrip\.dev\/webgrip\/unfold$/{n;s/(tag: )[0-9][^[:space:]]*/\19.9.9-rc.1/}'
+  kubernetes/apps/ploeg/unfold/app/helmrelease.yaml '/repository: harbor\.webgrip\.dev\/ghcr\/unfold-hq\/unfold$/{n;s/(tag: )[0-9][^[:space:]]*/\19.9.9-rc.1/}'
 expect fail "Unfold workspace image ahead of its chart" \
   kubernetes/apps/ploeg/unfold/app/helmrelease.yaml 's/(unfold-agent:)[^@]+@/\19.9.9-rc.1@/'
 expect fail "Unfold image without a digest" \
-  kubernetes/apps/ploeg/unfold/app/helmrelease.yaml '/repository: harbor\.webgrip\.dev\/webgrip\/unfold$/{n;n;/digest:/d}'
+  kubernetes/apps/ploeg/unfold/app/helmrelease.yaml '/repository: harbor\.webgrip\.dev\/ghcr\/unfold-hq\/unfold$/{n;n;/digest:/d}'
 expect_with_standalone_ploeg
 
 if (( failures > 0 )); then
