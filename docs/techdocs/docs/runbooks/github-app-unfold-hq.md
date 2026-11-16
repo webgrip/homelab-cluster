@@ -28,6 +28,9 @@ They are separate for the reason given in
 edit the rulesets that require `gate`, the bot key can push code. On one App, whoever holds the
 key could switch off the required check and merge past it.
 
+A third App, `unfold-hq-ploeg`, is the homelab Ploeg's forge identity on `unfold-hq/unfold`
+([below](#the-ploeg-app-unfold-hq-ploeg)); its wiring is blocked on Ploeg.
+
 `unfold-hq` holds no Webgrip secret except what this repository's bridge writes. The Cloudflare
 account stays the current one for now.
 
@@ -346,8 +349,8 @@ PolicyReports for the rc.132 Pods in `ploeg` and `unfold-workspaces` show `pass`
 
 | Item | Where | Why it is open |
 | --- | --- | --- |
-| Ploeg's targets (`config.targets.unfold`, the Vikunja project `Ploeg Test`), the `silver` team and every task source with `ploeg.target` still name Forgejo `webgrip/unfold`; Runs against it cannot push | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` | this Ploeg has only a Forgejo forge (`executor.forge: forgejo`). Moving the targets to `unfold-hq/unfold` needs a GitHub forge for Ploeg with an App installed on `unfold-hq/unfold` ([Ploeg ADR-0086](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md)) |
-| Report a problem files issues on Forgejo `webgrip/unfold` (`config.reports`), and the `unfold-reports`, `ploeg-forge-webhook-registration` and `forge-revocation-probe` jobs act on it | `helmrelease.yaml`, `kubernetes/apps/forgejo/forgejo-actions-secrets/app/`, `kubernetes/apps/ploeg/ploeg/app/forge-revocation-probe/` | follows the forge decision above |
+| Ploeg's targets (`config.targets.unfold`, the Vikunja project `Ploeg Test`), the `silver` team and every task source with `ploeg.target` still name Forgejo `webgrip/unfold`; Runs against it cannot push | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` | blocked: one Ploeg release speaks one forge, and this one also serves Forgejo repositories. The App `unfold-hq-ploeg` can be created now; see [the Ploeg App](#the-ploeg-app-unfold-hq-ploeg) for the options |
+| Report a problem files issues on Forgejo `webgrip/unfold` (`config.reports`), and the `unfold-reports`, `ploeg-forge-webhook-registration` and `forge-revocation-probe` jobs act on it | `helmrelease.yaml`, `kubernetes/apps/forgejo/forgejo-actions-secrets/app/`, `kubernetes/apps/ploeg/ploeg/app/forge-revocation-probe/` | follows the forge decision above; Report a problem also needs Unfold to file GitHub issues |
 | The agent-standards survey key for `unfold-hq/unfold` | OpenBao `litellm/keys/agent-standards-survey` | whether the GitHub secrets bridge carries it to `unfold-hq/unfold` |
 | The Forgejo user `ploeg-release`, its token `ploeg-release-hook`, OpenBao `forgejo/ploeg-release` and `openvsx/unfold`, and the Actions secret `RELEASE_CONSUMER_TOKEN_FORGEJO` on `ploeg-hq/ploeg` | Forgejo, OpenBao, GitHub | left behind by the [clean-up](#what-the-clean-up-after-pr-3-changed); nothing reads them. The owner deletes them by hand |
 | The Garage buckets `docs-glide`, `docs-glide-trash`, the key `docs-publish-glide`, the `glide_*` properties of OpenBao `garage/docs-repo-keys`, and Harbor's `webgrip/unfold`, `webgrip/unfold-agent` and `webgrip/charts/unfold` repositories | Garage, OpenBao, Harbor | data; nothing in git deletes them. The owner removes them by hand, or lists the Harbor repositories in `retired-repositories`. Not `webgrip/unfold-delivery-inputs`: staging still pins it for governed delivery |
@@ -367,6 +370,115 @@ list, so `Terraform/repo-config` plans no change on the archived repository. Rem
 with the Forgejo user. A PushSecret and an ExternalSecret leave their OpenBao data in place when
 they are deleted, so `forgejo/ploeg-release` and `openvsx/unfold` stay until the owner removes
 them.
+
+## The Ploeg App: `unfold-hq-ploeg`
+
+The homelab Ploeg (the `ploeg` subchart of `HelmRelease/unfold` in namespace `ploeg`) should open
+the pull requests for Unfold work on `unfold-hq/unfold`. Ploeg's GitHub forge
+([Ploeg ADR-0086](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md),
+[how-to](https://github.com/ploeg-hq/ploeg/blob/development/docs/how-to/connect-github-as-a-forge.md))
+authenticates as a GitHub App: ploegd mints an installation token per writing Run, limited to
+that Run's repository, and revokes it when the Run settles. That App is `unfold-hq-ploeg`, a
+third one: a Run's token must not come from the gitops key (rulesets) or the bot key (Workflows
+write), and this App has neither.
+
+### Blocked: one Ploeg release speaks one forge
+
+Ploeg `0.2.0-rc.108`, the one in Unfold `0.4.0-rc.132`, can configure several forge providers in
+ploegd, but a worker pod holds one forge URL and one credential. `executor.forge` selects one
+block of the chart, and the worker clones from and pushes to that block's URL for every Run
+(`pkg/worker/target.go`: "forge is global today"). The chart schema says it outright: "One
+active forge per release". [Ploeg ADR-0023](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0023-the-forge-dialect-travels-on-the-work-item.md)
+accepted that cost and named "any deployment needing to span two forges" as its re-evaluation
+trigger. This Ploeg also works `homelab-cluster`, `erfbeeld`, `twente.dev`, `omnigraph-explorer`
+and `ploeg-bench-world` on Forgejo, so it cannot simply switch to `forge: github`.
+
+| Option | What it takes | For | Against |
+| --- | --- | --- | --- |
+| 1. Ploeg workers speak more than one forge (**recommended**) | a change in `ploeg-hq/ploeg` that supersedes ADR-0023: a forge URL and credential per dialect in the worker pod, chosen by the Work Item's `Target.Forge`; then [the wiring below](#wiring-once-ploeg-can-span-two-forges-proposed) here | one Ploeg and one Unfold; every Forgejo target keeps working | waits for a Ploeg release; a worker pod holds a credential per forge, which is the blast radius ADR-0023 avoided |
+| 2. A second Ploeg release with `forge: github` | its own namespace, database, KEDA scaler, LiteLLM team and keys, and workers | no upstream change | doubles the dispatch plane; staging Unfold connects to one Ploeg (`config.ploeg.url`), so work on GitHub would not show in it |
+| 3. Switch this Ploeg to `forge: github` | a values change | smallest diff | every Run on a Forgejo repository (`homelab-cluster`, `erfbeeld`, `twente.dev`, the bronze, copper and pewter teams) stops |
+
+Until one is chosen, the targets stay on Forgejo `webgrip/unfold`, which is archived, so Runs
+there cannot push.
+
+Report a problem is blocked separately, in Unfold: its `github` task provider reads issues but
+cannot file one (only `forgejo`, `vikunja` and `jira` can), checked on `unfold-hq/unfold`
+`development` at `ecf1d656`. `config.reports` stays on Forgejo until Unfold can.
+
+### Create the App
+
+This can be done now; nothing reads its key until the wiring lands.
+
+1. Generate the webhook secret into a file only you can read:
+   `(umask 077; openssl rand -hex 32 > unfold-hq-ploeg-webhook-secret)`.
+2. Open this link. It fills in the name, homepage, webhook and permissions:
+
+   <https://github.com/organizations/unfold-hq/settings/apps/new?name=unfold-hq-ploeg&url=https://github.com/unfold-hq&public=false&webhook_active=true&webhook_url=https://ploeg-hooks.webgrip.dev/webhooks/forge/github&events[]=pull_request&events[]=pull_request_review&events[]=check_run&events[]=status&contents=write&pull_requests=write&checks=read&statuses=read&metadata=read>
+
+3. Paste the file's content into **Webhook secret**. Check **Where can this GitHub App be
+   installed?** reads **Only on this account**, then **Create GitHub App**. Note the **App ID**.
+4. **Private keys → Generate a private key**. A `.pem` file downloads.
+
+| Repository permission | Access | Why |
+| --- | --- | --- |
+| Contents | Read and write | a writing Run clones and pushes its branch (`githubapp.WriterPermissions`) |
+| Pull requests | Read and write | a Run opens and updates its pull request; ploegd comments and reviews on it (`WriterPermissions`, `ForgePermissions`) |
+| Checks | Read-only | ploegd reads GitHub Actions results on the pushed commit; `check_run` events |
+| Commit statuses | Read-only | ploegd reads other CI results; `status` events |
+| Metadata | Read-only | GitHub requires it |
+| everything else | No access | Issues only serve GitHub Issues as a tracker, and Unfold's work comes from ClickUp and Vikunja. Workflows would let a Run change `.github/workflows`. Actions would not help: ploegd's re-run of failed CI calls the Actions API with a token that never asks for `actions`. Ploeg revokes and refuses any token wider than it asked for |
+
+The App's own webhook is Ploeg's forge webhook, so there is no repository webhook and no
+permission to manage one. ploegd verifies `X-Hub-Signature-256` against
+`PLOEG_GITHUB_FORGE_SECRET`, requires `X-GitHub-Delivery`, and accepts and drops every event it
+does not use, including `ping` and `installation` (`pkg/provider/github/webhook.go`). The events
+are the four it reads: `pull_request`, `pull_request_review`, `check_run` and `status`.
+`ploeg-hooks.webgrip.dev` already answers from Cloudflare for ClickUp: HTTPRoute
+`ploeg-clickup-webhook` in `network` forwards one exact `POST` path to ploegd. Until the wiring
+adds `POST /webhooks/forge/github` the same way, GitHub's deliveries get `404`, which harms
+nothing.
+
+### Install and store
+
+On the App's settings page click **Install App**, then **Install** next to `unfold-hq`, choose
+**Only select repositories**, pick `unfold-hq/unfold` and nothing else, and click **Install**.
+The number at the end of the URL you land on is the **installation ID**.
+
+```bash
+mise exec -- just bao-login
+export BAO_ADDR="$(mise exec -- just bao-addr)"
+mise exec -- bao kv put secret/github/unfold-hq-ploeg-app \
+  app_id=<App ID> installation_id=<installation ID> \
+  private_key=@<path to the .pem> webhook_secret=@unfold-hq-ploeg-webhook-secret
+```
+
+Delete the `.pem` and the secret file afterwards.
+
+### Verify
+
+1. `mise exec -- bao kv get -field=app_id secret/github/unfold-hq-ploeg-app` prints the App ID.
+2. `https://github.com/organizations/unfold-hq/settings/installations/<installation ID>` shows
+   **Only select repositories** with `unfold` alone, and the five permissions above.
+3. The App's **Advanced → Recent deliveries** shows the `ping`, answered `404` until the route
+   exists.
+
+### Wiring once Ploeg can span two forges (proposed)
+
+Nothing of this is in git yet: it waits for option 1, and its shape follows that Ploeg release.
+
+| Piece | Where |
+| --- | --- |
+| ESO grant `ploeg read github/unfold-hq-ploeg-app` and an ExternalSecret in `ploeg` with `private-key.pem` and `PLOEG_GITHUB_FORGE_SECRET` | `kubernetes/apps/ploeg/ploeg/app/`, then `scripts/eso_grants.py --write` |
+| `ploeg.tracker.github.appId` from the same Secret through `valuesFrom` with `targetPath` and `optional: true`, because the chart takes the App ID as a value; `ploeg.tracker.github.appPrivateKeySecret` | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` |
+| `ploeg.executor.github`: `url: https://github.com`, `webhookSecret`, `botLogin: unfold-hq-ploeg[bot]`, `tokenSecret` and, for the reviewer Roles, `readTokenSecret` | same. Open question: the chart wants a static read-only token for boot and for readers; an installation token minted by a CronJob, as `renovate-github-app-token-unfold-hq` does, ends after an hour, which a 90-minute reviewer outlives |
+| `POST /webhooks/forge/github` on `ploeg-hooks.${SECRET_DOMAIN}` | `kubernetes/apps/network/envoy-gateway/app/` |
+| `config.targets.unfold`, the Vikunja project `Ploeg Test`, the `silver` team and every task source with `ploeg.target` move to `unfold-hq/unfold`, `forge: github` | `helmrelease.yaml` |
+| Egress to `github.com` and `api.github.com` for ploegd (it mints and revokes the tokens) and the workers: `ploeg-allow-egress` and `ploeg-worker-egress` | `kubernetes/apps/ploeg/ploeg/app/networkpolicy.yaml` |
+
+To stay inert until the key exists, every reference to the new Secret must be optional: the
+chart's `secretKeyRef`s are not, so the GitHub values arrive through `valuesFrom` with
+`optional: true`.
 
 ## Rotate an App key
 
