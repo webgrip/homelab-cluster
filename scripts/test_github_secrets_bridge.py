@@ -487,13 +487,11 @@ class ManifestTest(unittest.TestCase):
     def setUp(self):
         self.targets = json.loads((BRIDGE_APP_DIR / "targets.json").read_text())
 
-    def test_targets_are_unique_and_keep_the_ploeg_state(self):
+    def test_targets_and_their_state_configmaps_are_unique(self):
         keys = [(spec["owner"], spec["repository"], spec["secret"]) for spec in self.targets]
         self.assertEqual(len(keys), len(set(keys)))
         states = [spec["state_configmap"] for spec in self.targets]
         self.assertEqual(len(states), len(set(states)))
-        release = [spec for spec in self.targets if spec["secret"] == SECRET_NAME]
-        self.assertEqual([spec["state_configmap"] for spec in release], ["github-secrets-bridge-state"])
 
     def test_every_state_configmap_is_writable_by_the_bridge(self):
         rbac = (BRIDGE_APP_DIR / "rbac.yaml").read_text()

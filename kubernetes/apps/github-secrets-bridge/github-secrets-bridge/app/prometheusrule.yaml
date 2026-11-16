@@ -29,8 +29,7 @@ spec:
               - Info only, routed to no receiver: this is the expected state until the owner does the one UI step.
 
               Impact/risk:
-              - RELEASE_CONSUMER_TOKEN_FORGEJO is not published on ploeg-hq/ploeg, and the ploeg-hq Terraform object stays suspended.
-              - Unfold bumps keep coming from Unfold's Renovate Ploeg group (unfold#437 interim).
+              - RELEASE_CONSUMER_GITHUB_APP_ID and RELEASE_CONSUMER_GITHUB_APP_PRIVATE_KEY are not published on ploeg-hq/ploeg, so a Ploeg release opens no Ploeg-pin pull request in unfold-hq/unfold.
 
               Likely causes:
               - The ploeg-hq GitHub App has not been created and installed yet.
@@ -117,16 +116,16 @@ spec:
             description: |
               What's happening:
               - The latest hourly run of the CronJob github-secrets-bridge/github-secrets-bridge has not succeeded for 20 minutes, or it has never succeeded.
-              - The job publishes the GitHub Actions secrets listed in its targets.json, such as the Forgejo token of ploeg-release as RELEASE_CONSUMER_TOKEN_FORGEJO on ploeg-hq/ploeg.
+              - The job publishes the GitHub Actions secrets listed in its targets.json, such as the unfold-hq-bot App credentials as RELEASE_CONSUMER_GITHUB_APP_* on ploeg-hq/ploeg.
               - One failing target does not stop the others; the log line "bridge failed for <owner>/<repository>/<secret>" names each failing one.
               - Missing App credentials or a missing OpenBao source are not a failure: that target exits cleanly and raises GitHubAppPloegHqPending, GitHubAppUnfoldHqPending or GitHubSecretsBridgeSourcePending instead.
 
               Impact/risk:
-              - Ploeg's release job may hold a stale or missing Forgejo token, so a Ploeg release opens no Unfold bump.
+              - Ploeg's release job may hold a stale or missing unfold-hq-bot key, so a Ploeg release opens no Unfold bump.
               - A rotated Cloudflare deploy token may not reach unfold-hq/unfold, so its deploy workflow authenticates with a revoked token.
 
               Likely causes:
-              - The source Secret github-secrets-bridge-source is empty (ExternalSecret on forgejo/ploeg-release not synced).
+              - A source path in OpenBao exists but lacks the property targets.json names.
               - OpenBao denied the github-secrets-bridge role (policy or role missing from the bootstrap config, or a new path in targets.json not granted in github-secrets-bridge.hcl).
               - GitHub refused the App JWT or the installation token (App uninstalled, key revoked, Secrets permission removed).
               - The state ConfigMap could not be written (RBAC or the apiserver CiliumNetworkPolicy).
@@ -149,7 +148,7 @@ spec:
               - The hourly CronJob github-secrets-bridge/github-secrets-bridge last succeeded more than three hours ago.
 
               Impact/risk:
-              - A rotated ploeg-release token is not republished to ploeg-hq/ploeg, so Ploeg's release hook authenticates with a revoked token.
+              - A rotated unfold-hq-bot key is not republished to ploeg-hq/ploeg, so Ploeg's release hook authenticates with a revoked key.
               - The monthly Cloudflare deploy token rotation is not republished to unfold-hq/unfold.
 
               Likely causes:
