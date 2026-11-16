@@ -29,7 +29,7 @@ import {
 }
 
 import {
-  for_each = local.rulesets
+  for_each = { for key, rule in local.rulesets : key => rule if try(rule.id, null) != null }
   to       = github_repository_ruleset.ruleset[each.key]
   id       = "${local.repos[each.value.repo].name}:${each.value.id}"
 }
