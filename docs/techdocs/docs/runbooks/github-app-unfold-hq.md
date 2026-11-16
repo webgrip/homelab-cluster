@@ -13,7 +13,8 @@ covers three stages:
    stores credentials. The one live change: the homelab stops recreating the push mirror to
    `github.com/webgrip/unfold`.
 2. **PR 2 (cutover day).** The model and the bridges switch to `unfold-hq`.
-3. **PR 3 (after cutover).** Staging Unfold, docs and the remaining Forgejo leftovers follow.
+3. **PR 3 (after cutover).** Staging Unfold, docs and the remaining Forgejo leftovers follow
+   ([what it changed](#what-pr-3-changed-after-cutover)).
 
 ## Two Apps, not one
 
@@ -39,7 +40,7 @@ account stays the current one for now.
 | OpenBao | policies `github-config-unfold-hq`, `renovate-github-app-token-unfold-hq`, and four more read paths on `github-secrets-bridge` (`kubernetes/apps/security/openbao/bootstrap/`) | grants on paths that are empty |
 | Renovate | `kubernetes/apps/renovate/renovate-operator/jobs/github-app-token-unfold-hq.cronjob.yaml`, `unfold-hq.yaml`, `configmap-unfold-hq.yaml` | the minter logs `app credentials absent` and exits 0; the RenovateJob reads its token Secret as optional and discovers nothing; `GitHubAppUnfoldHqBotPending` (info) |
 | Secrets bridge | five new targets in `kubernetes/apps/github-secrets-bridge/github-secrets-bridge/app/targets.json` | `unfold-hq/unfold` targets: `app credentials absent`, `GitHubAppUnfoldHqPending` (info). `ploeg-hq/ploeg` bot targets: `source absent`, `GitHubSecretsBridgeSourcePending` (info) |
-| Image signatures | `kubernetes/apps/kyverno/policies/app/image-verify-unfold-hq-audit.yaml` | matches no running image; Audit only |
+| Image signatures | `kubernetes/apps/kyverno/policies/app/image-verify-unfold-hq-audit.yaml` | matched no running image until PR 3; Audit only |
 | No push mirror | `unfold-distribution.job.yaml` removed from `forgejo-actions-secrets`; `scripts/forgejo-sync.sh --only mirror` skips `unfold` | live: nothing in this repository creates a push mirror to `github.com/webgrip/unfold` again |
 
 Why the push mirror had to go first: GitHub redirects git and API calls for a transferred
@@ -307,22 +308,52 @@ lets these be created: in `tofu-github/imports.tf` the ruleset import becomes
 `id` leaves the `required` list of `github-rulesets.schema.json`. Every existing ruleset has an
 id, so the `ploeg-hq` and `webgrip` plans do not change; check that with their next plan.
 
-### What PR 3 changes, after cutover
+### What PR 3 changed, after cutover
+
+The first release from GitHub is `unfold-v0.4.0-rc.132`. Its images
+`ghcr.io/unfold-hq/unfold` and `ghcr.io/unfold-hq/unfold-agent` and its chart
+`oci://ghcr.io/unfold-hq/charts/unfold` are public and signed keyless by
+`https://github.com/unfold-hq/unfold/.github/workflows/on_release_published.yml@refs/tags/unfold-v0.4.0-rc.132`
+(issuer `https://token.actions.githubusercontent.com`). Nothing publishes to Harbor's `webgrip/unfold`
+repositories any more.
 
 | Change | Where |
 | --- | --- |
-| Staging Unfold pulls `harbor.${SECRET_DOMAIN}/ghcr/unfold-hq/unfold` and `.../unfold-agent`, and its chart from `oci://ghcr.io/unfold-hq/charts/unfold` (through Harbor's GHCR proxy) | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml`, `ocirepository.yaml` |
-| Staging Unfold's connected repository `ploeg` (`url: https://forgejo.${SECRET_DOMAIN}/webgrip/unfold.git`, about line 942) moves to `unfold-hq/unfold` on GitHub; the archived Forgejo repository refuses pushes, so Runs against it fail until then | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` |
-| `docs.webgrip.dev/glide` redirects to <https://docs.unfoldhq.dev> | `kubernetes/apps/garage/docs-site/app/httproute.yaml` and `unfold-renamed-pages.httproute.yaml` |
-| Retire the Garage `docs-glide` bucket and its key | `kubernetes/apps/garage/garage/bootstrap/techdocs.job.yaml`, `techdocs-repos.pushsecret.yaml`, and `DOCS_REPOS` in `forgejo-actions-secrets.cronjob.yaml` |
-| Remove `unfold` from the Forgejo Actions secrets bridge (`SECRET_REPOS`, `DOCS_REPOS`, `VSCODE_EXTENSION_REPO`, `PLOEG_RELEASE_TOKEN`) and retire `RELEASE_CONSUMER_TOKEN_FORGEJO` with its bridge target once Ploeg no longer consumes on Forgejo | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/forgejo-actions-secrets.cronjob.yaml`, `github-secrets-bridge/.../targets.json` |
-| The TechDocs and Backstage entry for Unfold points at `unfold-hq/unfold` | the Backstage catalog location that registers Unfold's `catalog-info.yaml` (not in this repository) |
-| The CVE rescan and the Glide loop dashboard read Unfold release files and links from Forgejo `webgrip/unfold`; new tags only appear on the pull mirror or on GitHub | `kubernetes/apps/security/unfold-cve-rescan/app/rescan.sh`, `prometheusrule.yaml`, `kubernetes/apps/observability/grafana/app/dashboards/glide-loop.yaml` |
-| Promote `image-verify-unfold-hq-audit` to enforce once a signed release from `unfold-hq` runs here ([ADR-0073](../adr/adr-0073-image-admission-signatures-enforced.md)) | `kubernetes/apps/kyverno/policies/app/` |
+| Staging Unfold pulls its chart from `oci://harbor.${SECRET_DOMAIN}/ghcr/unfold-hq/charts/unfold` and its images from `harbor.${SECRET_DOMAIN}/ghcr/unfold-hq/unfold` and `.../unfold-agent`, Harbor's GHCR proxy, each pinned to `0.4.0-rc.132` by digest. The lockstep check and the Renovate release group follow the new names | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml`, `ocirepository.yaml`, `scripts/check_release_lockstep.py`, `scripts/test-release-lockstep.sh`, `.renovaterc.json5` |
+| Staging Unfold's connected repository `ploeg` names `https://github.com/unfold-hq/unfold.git` | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` |
+| The verifier probes exception accepts `unfoldhq.dev/network: none` as well as `dev.webgrip.unfold/network: none` | `kubernetes/apps/kyverno/exceptions/app/exception-unfold-verifier-cel.yaml` |
+| `docs.${SECRET_DOMAIN}/glide/<path>` answers 301 to `https://docs.unfoldhq.dev/<path>`; the renamed-page redirects go straight to the new names there | `kubernetes/apps/garage/docs-site/app/httproute.yaml`, `unfold-renamed-pages.httproute.yaml` |
+| The TechDocs bootstrap Job, the repo-keys PushSecret and `DOCS_REPOS` no longer carry `glide`; estate search no longer merges `/glide/pagefind` | `kubernetes/apps/garage/garage/bootstrap/techdocs.job.yaml`, `techdocs-repos.pushsecret.yaml`, `forgejo-actions-secrets.cronjob.yaml`, `docs/techdocs/docs/estate-search.md` |
+| The Forgejo Actions secrets bridge no longer writes to `webgrip/unfold` (`SECRET_REPOS`, `PLOEG_RELEASE_TOKEN`, `OVSX_PAT`, the agent-standards survey key and its org variables) and deletes those copies through `RETIRED_REPO_SECRETS` | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/forgejo-actions-secrets.cronjob.yaml` |
+| The CVE rescan reads Unfold's budgets from `raw.githubusercontent.com/unfold-hq/unfold` at `unfold-v<version>`; the Unfold Loop dashboard links its KPI definitions on `docs.unfoldhq.dev` | `kubernetes/apps/security/unfold-cve-rescan/app/rescan.sh`, `prometheusrule.yaml`, `kubernetes/apps/observability/grafana/app/dashboards/glide-loop.yaml` |
 
-Check before PR 2 whether Forgejo accepts Actions-secret writes on an archived repository. If it
-refuses them, the `forgejo-actions-secrets` CronJob fails on `unfold` from the day of the archive,
-and the bridge removal moves from PR 3 into PR 2.
+Forgejo accepts Actions-secret writes on an archived repository: the bridge run at 20:23 UTC on
+2026-11-16, an hour after `webgrip/unfold` was archived, set every secret on it. The bridge
+removal was therefore clean-up, not a fix.
+
+**Unfold's network label.** Unfold's identifier migration (its ADR-0067) moves the verifier
+Pods' deny-all label from `dev.webgrip.unfold/network` to `unfoldhq.dev/network`. Release 1, in
+`0.4.0-rc.132`, sets both; Unfold's release 2 drops the old key. The exception accepts either, so
+it holds before and after that release. Once a release 2 build runs here, drop the
+`dev.webgrip.unfold/network` clause from the exception.
+
+**Image admission.** Harbor's `webgrip/unfold` images were under `image-verify-harbor-enforce`.
+The GitHub images are checked only by `image-verify-unfold-hq-audit`, which already matches the
+Harbor-proxied path and the keyless attestor of the release workflow. Until it is promoted,
+Unfold's images are admitted on an Audit result. Promote it to enforce, as
+[ADR-0073](../adr/adr-0073-image-admission-signatures-enforced.md) describes, once the
+PolicyReports for the rc.132 Pods in `ploeg` and `unfold-workspaces` show `pass`.
+
+#### Still open after PR 3
+
+| Item | Where | Why it is open |
+| --- | --- | --- |
+| Ploeg's targets (`config.targets.unfold`, the Vikunja project `Ploeg Test`), the `silver` team and every task source with `ploeg.target` still name Forgejo `webgrip/unfold`; Runs against it cannot push | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` | this Ploeg has only a Forgejo forge (`executor.forge: forgejo`). Moving the targets to `unfold-hq/unfold` needs a GitHub forge for Ploeg with an App installed on `unfold-hq/unfold` ([Ploeg ADR-0086](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0086-github-is-a-forge-and-a-run-pushes-with-its-own-github-app-installation-token.md)) |
+| Report a problem files issues on Forgejo `webgrip/unfold` (`config.reports`), and the `unfold-reports`, `ploeg-forge-webhook-registration` and `forge-revocation-probe` jobs act on it | `helmrelease.yaml`, `kubernetes/apps/forgejo/forgejo-actions-secrets/app/`, `kubernetes/apps/ploeg/ploeg/app/forge-revocation-probe/` | follows the forge decision above |
+| `RELEASE_CONSUMER_TOKEN_FORGEJO`, its bridge target and the `ploeg-release` bot | `github-secrets-bridge/.../targets.json`, `externalsecret.yaml`, `forgejo-actions-secrets/app/ploeg-release-*` | Ploeg no longer consumes on Forgejo (its only consumer is `unfold-hq/unfold`), so these can go; they still succeed and harm nothing |
+| `OVSX_PAT` for the VS Code extension on `unfold-hq/unfold`, and the agent-standards survey key | OpenBao `openvsx/unfold`, `litellm/keys/agent-standards-survey` | whether the GitHub secrets bridge carries them to `unfold-hq/unfold` |
+| The Garage buckets `docs-glide`, `docs-glide-trash`, the key `docs-publish-glide`, the `glide_*` properties of OpenBao `garage/docs-repo-keys`, and Harbor's `webgrip/unfold`, `webgrip/unfold-agent` and `webgrip/charts/unfold` repositories | Garage, OpenBao, Harbor | data; nothing in git deletes them. The owner removes them by hand, or lists the Harbor repositories in `retired-repositories`. Not `webgrip/unfold-delivery-inputs`: staging still pins it for governed delivery |
+| The TechDocs and Backstage entry for Unfold | the Backstage catalog location that registers Unfold's `catalog-info.yaml` | not in this repository |
 
 ## Rotate an App key
 

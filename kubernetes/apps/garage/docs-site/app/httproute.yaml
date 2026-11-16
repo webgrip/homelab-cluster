@@ -29,27 +29,17 @@ spec:
   rules:
     - matches:
         - path:
-            type: Exact
+            type: PathPrefix
             value: /glide
       filters:
         - type: RequestRedirect
           requestRedirect:
-            statusCode: 302
+            statusCode: 301
+            scheme: https
+            hostname: docs.unfoldhq.dev
             path:
-              type: ReplaceFullPath
-              replaceFullPath: /glide/
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /glide
-      filters:
-        - type: URLRewrite
-          urlRewrite:
-            hostname: docs-glide
-      backendRefs:
-        - name: garage-s3
-          namespace: garage
-          port: 3902
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
     - matches:
         - path:
             type: PathPrefix

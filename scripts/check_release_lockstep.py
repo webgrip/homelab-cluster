@@ -38,17 +38,17 @@ UNFOLD = Release(
         Pin(
             "chart",
             "kubernetes/apps/ploeg/unfold/app/ocirepository.yaml",
-            rf"url:\s*oci://harbor\.webgrip\.dev/webgrip/charts/unfold\s*\n(?:.*\n)*?\s*tag:\s*[\"']?{SEMVER}[\"']?\s*\n\s*digest:\s*sha256:[a-f0-9]{{64}}",
+            rf"url:\s*oci://harbor\.webgrip\.dev/ghcr/unfold-hq/charts/unfold\s*\n(?:.*\n)*?\s*tag:\s*[\"']?{SEMVER}[\"']?\s*\n\s*digest:\s*sha256:[a-f0-9]{{64}}",
         ),
         Pin(
             "image",
             "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml",
-            rf"repository:\s*harbor\.webgrip\.dev/webgrip/unfold\s*\n\s*tag:\s*[\"']?{SEMVER}[\"']?\s*\n\s*digest:\s*[\"']?sha256:[a-f0-9]{{64}}",
+            rf"repository:\s*harbor\.webgrip\.dev/ghcr/unfold-hq/unfold\s*\n\s*tag:\s*[\"']?{SEMVER}[\"']?\s*\n\s*digest:\s*[\"']?sha256:[a-f0-9]{{64}}",
         ),
         Pin(
             "workspace image",
             "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml",
-            rf"workspaceImage:\s*[\"']?harbor\.webgrip\.dev/webgrip/unfold-agent:{SEMVER}{DIGEST}",
+            rf"workspaceImage:\s*[\"']?harbor\.webgrip\.dev/ghcr/unfold-hq/unfold-agent:{SEMVER}{DIGEST}",
         ),
     ),
 )
