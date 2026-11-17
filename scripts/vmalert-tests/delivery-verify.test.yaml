@@ -192,3 +192,129 @@ tests:
         exp_samples:
           - labels: 'delivery:release_running_image:info{release="unfold", workload="ploeg", image_id="harbor.webgrip.dev/ghcr/ploeg-hq/ploegd@sha256:2511828125cec9a5a88fcb685a8358a8e09bda720b1fe69ab96125558dcacdc0"}'
             value: 1
+
+  - name: a stored candidate that the HelmRelease never runs fires UnfoldBehindLatestRelease after 30 minutes
+    interval: 1m
+    input_series:
+      - series: 'flux_resource_info{kind="OCIRepository", exported_namespace="flux-system", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.134@sha256:cba789fdf5f086828e427839444673ae327973a6f5f0bd8732591dc33b3dbdbb"}'
+        values: "1x10"
+      - series: 'flux_resource_info{kind="OCIRepository", exported_namespace="flux-system", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.136@sha256:1c79c27e1153416612733cb40950c153b194ba793c5ce315303dd791fef7cbec"}'
+        values: "_x10 1x60"
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.134"}'
+        values: "1x15"
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="False", revision="0.4.0-rc.136"}'
+        values: "_x15 1x55"
+    alert_rule_test:
+      - eval_time: 35m
+        groupname: delivery-verify.alerts
+        alertname: UnfoldBehindLatestRelease
+        exp_alerts: []
+      - eval_time: 45m
+        groupname: delivery-verify.alerts
+        alertname: UnfoldBehindLatestRelease
+        exp_alerts:
+          - exp_labels:
+              release: unfold
+              version: 0.4.0-rc.136
+              severity: critical
+              owner: platform
+              service: delivery-verify
+            exp_annotations:
+              summary: "Unfold 0.4.0-rc.136 is published but not running for 30 minutes (ploeg/unfold)"
+    metricsql_expr_test:
+      - expr: delivery:release_newest_candidate:info
+        eval_time: 45m
+        exp_samples:
+          - labels: 'delivery:release_newest_candidate:info{release="unfold", version="0.4.0-rc.136"}'
+            value: 1
+
+  - name: a candidate that turns Ready within the rollout window does not fire UnfoldBehindLatestRelease
+    interval: 1m
+    input_series:
+      - series: 'flux_resource_info{kind="OCIRepository", exported_namespace="flux-system", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.136@sha256:1c79c27e1153416612733cb40950c153b194ba793c5ce315303dd791fef7cbec"}'
+        values: "1x70"
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.134"}'
+        values: "1x10"
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="Unknown", revision="0.4.0-rc.136"}'
+        values: "_x10 1x10"
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.136"}'
+        values: "_x20 1x50"
+    alert_rule_test:
+      - eval_time: 65m
+        groupname: delivery-verify.alerts
+        alertname: UnfoldBehindLatestRelease
+        exp_alerts: []
+    metricsql_expr_test:
+      - expr: delivery:release_deployed_version:info
+        eval_time: 65m
+        exp_samples:
+          - labels: 'delivery:release_deployed_version:info{release="unfold", version="0.4.0-rc.136"}'
+            value: 1
+
+  - name: an OCIRepository that fails to verify fires UnfoldReleaseSourceNotReady, a Ready one does not
+    interval: 1m
+    input_series:
+      - series: 'flux_resource_info{kind="OCIRepository", exported_namespace="flux-system", name="unfold", suspended="False", ready="True", reason="Succeeded", revision="0.4.0-rc.136@sha256:1c79c27e1153416612733cb40950c153b194ba793c5ce315303dd791fef7cbec"}'
+        values: "1x10"
+      - series: 'flux_resource_info{kind="OCIRepository", exported_namespace="flux-system", name="unfold", suspended="False", ready="False", reason="VerificationError", revision="0.4.0-rc.136@sha256:1c79c27e1153416612733cb40950c153b194ba793c5ce315303dd791fef7cbec"}'
+        values: "_x10 1x30"
+    alert_rule_test:
+      - eval_time: 10m
+        groupname: delivery-verify.alerts
+        alertname: UnfoldReleaseSourceNotReady
+        exp_alerts: []
+      - eval_time: 30m
+        groupname: delivery-verify.alerts
+        alertname: UnfoldReleaseSourceNotReady
+        exp_alerts:
+          - exp_labels:
+              exported_namespace: flux-system
+              name: unfold
+              reason: VerificationError
+              severity: warning
+              owner: platform
+              service: delivery-verify
+            exp_annotations:
+              summary: "Flux cannot read or verify the Unfold release channel, VerificationError (flux-system/unfold)"
+
+  - name: a failing Ploeg contract smoke probe fires UnfoldSmokeFailing and marks a fresh candidate unhealthy, a passing sign-in probe does not
+    interval: 1m
+    input_series:
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.135"}'
+        values: "1x119"
+      - series: 'flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", suspended="False", ready="True", revision="0.4.0-rc.136"}'
+        values: "_x119 1x60"
+      - series: 'probe_success{job="probe/observability/blackbox-unfold-ploeg-contract", endpoint="unfold-ploeg-contract"}'
+        values: "1x120 0x60"
+      - series: 'probe_success{job="probe/observability/blackbox-unfold-sign-in", endpoint="unfold-sign-in"}'
+        values: "1x180"
+    alert_rule_test:
+      - eval_time: 130m
+        groupname: delivery-verify.alerts
+        alertname: UnfoldSmokeFailing
+        exp_alerts: []
+      - eval_time: 140m
+        groupname: delivery-verify.alerts
+        alertname: UnfoldSmokeFailing
+        exp_alerts:
+          - exp_labels:
+              endpoint: unfold-ploeg-contract
+              severity: warning
+              owner: platform
+              service: delivery-verify
+            exp_annotations:
+              summary: "Unfold smoke check unfold-ploeg-contract fails for 15 minutes (ploeg/unfold)"
+      - eval_time: 140m
+        groupname: delivery-verify.alerts
+        alertname: DeliveryCandidateUnhealthy
+        exp_alerts:
+          - exp_labels:
+              release: unfold
+              revision: 0.4.0-rc.136
+              signal: smoke_failing
+              workload: unfold
+              severity: warning
+              owner: platform
+              service: delivery-verify
+            exp_annotations:
+              summary: "Release candidate 0.4.0-rc.136 is unhealthy after deploy (ploeg/unfold)"
