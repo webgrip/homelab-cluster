@@ -13,7 +13,7 @@ candidate back.
    GitHub Actions OIDC.
 2. Every two minutes the OCIRepository
    [`flux-system/unfold`](../../../../kubernetes/apps/ploeg/unfold/release/ocirepository.yaml) lists
-   the chart tags on `ghcr.io` (Harbor's proxy cache lists only tags someone already pulled), keeps
+   the chart tags on `ghcr.io` anonymously (the chart package is public), keeps
    the newest `0.x.y-rc.N`, and verifies its signature: the issuer must be
    `https://token.actions.githubusercontent.com` and the subject the `on_release_published.yml`
    workflow of `unfold-hq/unfold` at the tag `unfold-v<version>`. An unsigned chart, a chart signed by
@@ -89,9 +89,9 @@ name the stored and the running version.
 
   A release that signed nothing, or signed from another workflow, stays refused until the release is
   fixed in `unfold-hq/unfold`.
-- An authentication error: the ExternalSecret `flux-system/unfold-chart-pull` reads `GHCR_USERNAME`
-  and `GHCR_TOKEN` from OpenBao `harbor/registry-proxy`, the same GitHub read:packages token Harbor's
-  GHCR proxy uses. Rotate it there (`HarborProxyReconcileStale` fires too when it expires).
+- An authentication or `DENIED` error: Flux reads `ghcr.io/unfold-hq/charts/unfold` without
+  credentials, so the package must stay public on GitHub. Check it with
+  `crane ls ghcr.io/unfold-hq/charts/unfold` from a machine with no registry login.
 
 ## The Helm test
 
