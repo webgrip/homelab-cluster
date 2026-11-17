@@ -2,26 +2,29 @@
 
 [Ploeg](https://github.com/ploeg-hq/ploeg) turns Vikunja assignment webhooks
 into leased, audited agent runs — the event-driven replacement for ADR-0048's poll dispatcher.
-It runs inside the Unfold Helm release: homelab pins only the Unfold chart, and that chart brings
+It runs inside the Unfold Helm release: the homelab follows only the Unfold chart, and that chart brings
 the Ploeg chart and the ploegd and claude-runner image digests it was tested with.
 
 ## Releases
 
 Ploeg runs inside the Unfold Helm release (Unfold ADR-0043): the Unfold chart
-(`unfold/app/ocirepository.yaml`) carries the Ploeg chart it was tested with as its `ploeg`
+(`unfold/release/ocirepository.yaml`) carries the Ploeg chart it was tested with as its `ploeg`
 subchart, and that chart defaults the ploegd and claude-runner images to their release digests.
 `unfold/app/helmrelease.yaml` holds Ploeg's values under `ploeg:`, with `fullnameOverride` and
 `instanceOverride` set to `ploeg` so every object keeps the name and selector labels it had under the
 standalone release. ploeg-mcp, claude-runner and the `pewter-claude-login` PersistentVolumeClaim are
 rendered by the chart; their route, network policies and Secrets stay in `ploeg/app/`.
 
-Renovate moves the Unfold chart, image and workspace image in one `renovate/ploeg-unfold-release`
-PR that merges itself: Forgejo merges it once `main`'s required `e2e /` checks pass. Renovate finds a
-new release on its hourly run. `scripts/check_release_lockstep.py` keeps that PR red while those pins
-disagree, and fails if a standalone `ploeg/app/helmrelease.yaml` comes back, because two Helm releases
-would then fight over Ploeg's objects. The standalone release was retired on 2026-10-20: its Flux
-finalizer was removed before the HelmRelease and its Helm storage Secrets were deleted, so nothing was
-uninstalled.
+Flux follows the newest signed Unfold release candidate on GHCR (`unfold/release/`, applied by the
+Kustomization `unfold-release` into `flux-system`), and the chart's own values pin the Unfold, workspace, ploegd and
+claude-runner images by digest, so there is no pin and no Renovate PR
+([RFC P1c](../../../docs/techdocs/docs/rfc/rfc-unfold-release-train.md#p1c-switched-on-2026-11-17),
+[Unfold rollout runbook](../../../docs/techdocs/docs/runbooks/unfold-rollout.md)).
+`scripts/check_release_train.py` fails if an image or chart pin comes back, if the channel stops
+verifying signatures or starts accepting per-architecture tags, and if a standalone
+`ploeg/app/helmrelease.yaml` comes back, because two Helm releases would then fight over Ploeg's
+objects. The standalone release was retired on 2026-10-20: its Flux finalizer was removed before the
+HelmRelease and its Helm storage Secrets were deleted, so nothing was uninstalled.
 
 ## One-time setup after first deploy (ingest)
 

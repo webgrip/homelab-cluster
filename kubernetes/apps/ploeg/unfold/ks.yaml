@@ -25,6 +25,7 @@ spec:
   dependsOn:
     - name: ploeg
     - name: unfold-workspaces
+    - name: unfold-release
   interval: 10m
   path: ./kubernetes/apps/ploeg/unfold/app
   postBuild:
@@ -37,4 +38,24 @@ spec:
     name: flux-system
     namespace: flux-system
   targetNamespace: ploeg
+  wait: false
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: unfold-release
+spec:
+  dependsOn:
+    - name: external-secrets-stores
+      namespace: security
+    - name: kyverno-policies
+      namespace: security
+  interval: 10m
+  path: ./kubernetes/apps/ploeg/unfold/release
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  targetNamespace: flux-system
   wait: false

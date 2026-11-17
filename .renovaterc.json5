@@ -183,17 +183,6 @@
     },
     {
       customType: "regex",
-      description: "The Unfold image is pinned as repository + tag + digest, and the chart renders repository@digest whenever digest is set. helm-values and flux read only repository + tag, so their bump would move the tag and leave the digest, and the pod would keep running the old build. This manager reads all three so tag and digest move together.",
-      managerFilePatterns: [
-        "/(^|/)kubernetes/apps/ploeg/unfold/app/helmrelease\\.ya?ml$/",
-      ],
-      matchStrings: [
-        "repository:\\s*(?<depName>harbor\\.webgrip\\.dev/ghcr/unfold-hq/unfold)\\s*\\n\\s*tag:\\s*[\"']?(?<currentValue>[^@\"'\\s]+)[\"']?\\s*\\n\\s*digest:\\s*[\"']?(?<currentDigest>sha256:[a-f0-9]{64})",
-      ],
-      datasourceTemplate: "docker",
-    },
-    {
-      customType: "regex",
       description: "Ploeg's agent runner is one `runnerImage: repository:tag@digest` string in the Unfold release's values. helm-values reads only `image` keys, so the pin moved by hand from 1.2.0 to 1.4.1 between 2026-09-27 and 2026-10-18 while Renovate stayed silent. This manager reads the tag and digest together (ADR-0069, P1).",
       managerFilePatterns: [
         "/(^|/)kubernetes/apps/ploeg/unfold/app/helmrelease\\.ya?ml$/",
@@ -825,70 +814,12 @@
       ],
     },
     {
-      // Ploeg is the one app here that has never cut a stable release: it ships
-      // 0.2.0-rc.N only. The env-promotion rules above buy prerelease tracking
-      // with a PATH (kubernetes/apps/*/dev|staging/**), and ploeg does not use
-      // that tree, so it fell through to the default stability filter — which
-      // declines to offer an -rc version and says nothing about it. The chart
-      // was detected the whole time; its dependency-dashboard entry simply
-      // carried no "Updates" annotation, unlike every stable-versioned chart
-      // beside it. The pin therefore sat on rc.17 while rc.18-rc.27 published
-      // green, and only a hand-written bump ever moved it.
-      //
-      // Verified NOT to be the cause before landing this, since each looked
-      // likelier: Renovate does bump OCIRepository charts here (three Renovate
-      // Bot commits), it does hold Harbor robot credentials for the PRIVATE
-      // webgrip project (RENOVATE_HOST_RULES + HARBOR_ROBOT_*), and it does
-      // track another chart from that same project (charts/erfbeeld). The one
-      // property ploeg does not share with any of them is the prerelease
-      // version, and no prerelease dep anywhere in this repo is offered an
-      // update.
-      description: "Ploeg and Unfold charts follow 0.x prereleases. Docker versioning treats everything after '-' as a variant suffix and offers only tags with the SAME suffix, so 0.4.0-rc.58 was never an update of 0.4.0-rc.57; semver versioning orders the rc numbers. Only a plain 0.x.y or 0.x.y-rc.N tag is offered, the same filter as the images below, so a per-architecture tag can never become the chart pin.",
+      description: "Flux follows the Unfold candidate channel itself (homelab RFC rfc-unfold-release-train, P1c, D11): the OCIRepository names a semver range and verifies each chart's keyless signature, and the chart's own values pin the Unfold and workspace images by digest. Nothing in this directory is a pin for Renovate to move.",
       matchFileNames: [
-        "kubernetes/apps/ploeg/**/ocirepository.yaml"
-      ],
-      allowedVersions: "/^0\\.\\d+\\.\\d+(-rc\\.\\d+)?$/",
-      versioning: "semver",
-      ignoreUnstable: false,
-    },
-    {
-      // The SECOND knob, and the reason the rule above is not enough on its own.
-      // ploeg pins its chart in ocirepository.yaml and its image in
-      // helmrelease.yaml, and the two must move together or the Helm upgrade
-      // reports success against a binary that never changed. The rule above
-      // covers only the chart file, so the image fell through to the default
-      // stability filter — which declines to offer an -rc version and says
-      // nothing about it. Left as it was, the next Renovate run would bump the
-      // chart to the newest rc and strand the image, which is precisely the
-      // rc.27 split that motivated annotating this line in the first place
-      // (2026-08-26: chart moved, binary stayed on rc.17, pod never rolled).
-      // The pin sat on rc.28 while rc.29-rc.31 published green.
-      //
-      // Scoped by depName, NOT by widening the rule above to the whole file:
-      // helmrelease.yaml also pins agent-runner and docker-dind, and those track
-      // stable channels. A file-level ignoreUnstable would start offering THEM
-      // prereleases — a docker:*-rc on the dind sidecar of every agent run.
-      description: "Ploeg and Unfold images follow 0.x prereleases, with semver versioning for the same reason as their charts. Only the multi-architecture tag 0.x.y or 0.x.y-rc.N is offered. Since 0.4.0-rc.132 every Unfold release also publishes 0.x.y-rc.N-amd64 and 0.x.y-rc.N-arm64, and semver ranks 0.4.0-rc.134-arm64 above 0.4.0-rc.134: on 2026-11-17 PR #1079 pinned both images to their arm64 builds, every node here is amd64, the Unfold upgrade timed out three times, rolled back and stalled.",
-      matchFileNames: [
-        "kubernetes/apps/ploeg/**/helmrelease.yaml"
+        "kubernetes/apps/ploeg/unfold/**"
       ],
       matchDepNames: [
-        "harbor.webgrip.dev/ghcr/unfold-hq/unfold",
-        "harbor.webgrip.dev/ghcr/unfold-hq/unfold-agent"
-      ],
-      allowedVersions: "/^0\\.\\d+\\.\\d+(-rc\\.\\d+)?$/",
-      versioning: "semver",
-      ignoreUnstable: false,
-    },
-    {
-      description: "Unfold pins are read by exactly one manager each: the Unfold image by the repo-local repository/tag/digest manager, the workspace image by helm-values. The flux readings that duplicate them are dropped, so a release never becomes a tag bump that leaves the digest behind.",
-      matchFileNames: [
-        "kubernetes/apps/ploeg/**/helmrelease.yaml"
-      ],
-      matchManagers: [
-        "flux"
-      ],
-      matchDepNames: [
+        "ghcr.io/unfold-hq/charts/unfold",
         "harbor.webgrip.dev/ghcr/unfold-hq/unfold",
         "harbor.webgrip.dev/ghcr/unfold-hq/unfold-agent"
       ],
@@ -926,50 +857,6 @@
         "code.forgejo.org/forgejo/forgejo"
       ],
       allowedVersions: "/^15\\./",
-    },
-    {
-      description: "The helm-values reading of the Unfold image ignores how its digest is pinned; the repo-local manager owns that pin.",
-      matchFileNames: [
-        "kubernetes/apps/ploeg/unfold/app/helmrelease.yaml"
-      ],
-      matchManagers: [
-        "helm-values"
-      ],
-      matchDepNames: [
-        "harbor.webgrip.dev/ghcr/unfold-hq/unfold"
-      ],
-      enabled: false,
-    },
-    {
-      description: "One Unfold release is one PR that merges itself: the Unfold chart, which carries the Ploeg chart it was tested with and defaults the ploegd and claude-runner images to that release's digests (Unfold ADR-0043), and the Unfold image and workspace image move in a single branch. e2e fails while those pins disagree (a partial publication), so such a PR stays open until the rest lands, and a new publication rewrites the branch and re-runs e2e. The branch and PR concurrency limits are off for this branch alone (0 on any upgrade means no limit for its branch): the repository-wide limit of 15 was already reached on 2026-10-11, when sixteen renovate/* branches made the run log \"Reached branch limit - skipping branch creation\", and a release must not queue behind unrelated image bumps. platformAutomerge hands the merge to Forgejo, which merges once main's required checks pass (e2e / Lint & static validation among them, which holds the lockstep check); Renovate's own automerge merges only on its next hourly run, so on 2026-10-19 a green release waited a run each time a new release arrived.",
-      matchFileNames: [
-        "kubernetes/apps/ploeg/**"
-      ],
-      matchDepNames: [
-        "harbor.webgrip.dev/ghcr/unfold-hq/charts/unfold",
-        "harbor.webgrip.dev/ghcr/unfold-hq/unfold",
-        "harbor.webgrip.dev/ghcr/unfold-hq/unfold-agent"
-      ],
-      groupName: "Ploeg and Unfold release",
-      groupSlug: "ploeg-unfold-release",
-      group: {
-        commitMessageTopic: "{{{groupName}}}",
-      },
-      separateMajorMinor: false,
-      separateMinorPatch: false,
-      separateMultipleMajor: false,
-      commitBodyTable: true,
-      dependencyDashboardApproval: false,
-      minimumReleaseAge: "0 days",
-      schedule: [
-        "at any time"
-      ],
-      prPriority: 10,
-      branchConcurrentLimit: 0,
-      prConcurrentLimit: 0,
-      automerge: true,
-      automergeType: "pr",
-      platformAutomerge: true,
     },
     {
       description: "The agent and CI runner images are built and signed in webgrip/infrastructure and gated by this repository's e2e checks, so a release moves without the blanket patch and minor soaks, and Forgejo merges it on the last required check (ADR-0069, P1). Majors still wait for a person.",

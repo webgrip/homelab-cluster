@@ -1,0 +1,22 @@
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/source.toolkit.fluxcd.io/ocirepository_v1.json
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: unfold
+spec:
+  interval: 2m
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+  url: oci://ghcr.io/unfold-hq/charts/unfold
+  secretRef:
+    name: unfold-chart-pull
+  ref:
+    semver: ">=0.0.0-0 <1.0.0-0"
+    semverFilter: '^0\.\d+\.\d+-rc\.\d+$'
+  verify:
+    provider: cosign
+    matchOIDCIdentity:
+      - issuer: '^https://token\.actions\.githubusercontent\.com$'
+        subject: '^https://github\.com/unfold-hq/unfold/\.github/workflows/on_release_published\.yml@refs/tags/unfold-v0\.\d+\.\d+-rc\.\d+$'
