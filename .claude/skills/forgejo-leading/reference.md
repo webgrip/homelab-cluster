@@ -38,11 +38,12 @@ git push github main                         # still mirrors to GitHub until it'
 ## Step 4 — settings parity via forgejo-sync.sh
 
 `~/.config/webgrip/forgejo.env` lives **on the operator machine** (per-machine, not in the repo):
-`FORGEJO_TOKEN` (`write:repository`) + `GH_MIRROR_TOKEN` (GitHub PAT, `repo`).
+`FORGEJO_TOKEN` (`write:repository`). GitHub push mirrors are not made here: the `github-mirrors`
+reconciler creates one for every model entry with `mirror_of` (ADR-0091).
 
 ```bash
 set -a; source ~/.config/webgrip/forgejo.env; set +a
-scripts/forgejo-sync.sh --repo <name>            # dry-run: shows the planned Actions/PRs/Releases/mirror/webhook changes
+scripts/forgejo-sync.sh --repo <name>            # dry-run: shows the planned Actions/PRs/Releases/webhook changes
 scripts/forgejo-sync.sh --repo <name> --apply
 ```
 

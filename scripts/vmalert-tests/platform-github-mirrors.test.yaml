@@ -146,6 +146,31 @@ tests:
             exp_annotations:
               summary: "The webgrip-gitops App cannot write webgrip/twente.dev (github-mirrors/twente.dev)"
 
+  - name: a repository without deploy key access fires after an hour
+    interval: 15m
+    input_series:
+      - series: 'github_mirror_deploy_key_access{job="github-mirrors", repository="unfold-cluster"}'
+        values: "0x8"
+      - series: 'github_mirror_deploy_key_access{job="github-mirrors", repository="workflows"}'
+        values: "1x8"
+    alert_rule_test:
+      - eval_time: 30m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorDeployKeyAccessMissing
+        exp_alerts: []
+      - eval_time: 90m
+        groupname: platform.github-mirrors
+        alertname: GitHubMirrorDeployKeyAccessMissing
+        exp_alerts:
+          - exp_labels:
+              job: github-mirrors
+              repository: unfold-cluster
+              severity: warning
+              owner: platform
+              service: github-mirrors
+            exp_annotations:
+              summary: "The webgrip-gitops App cannot manage deploy keys of webgrip/unfold-cluster (github-mirrors/unfold-cluster)"
+
   - name: a missing credential is info, present credentials are quiet
     interval: 15m
     input_series:

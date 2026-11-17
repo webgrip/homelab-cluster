@@ -4,8 +4,11 @@ Forgejo is the source of truth. Ten repositories push-mirror to `github.com/webg
 GitHub is the cold-bootstrap and break-glass source of this cluster
 ([ADR-0012](../adr/adr-0012-external-bootstrap-fallback-source.md)). A push mirror copies git refs,
 not Forgejo Releases. The `github-mirrors` reconciler watches every mirror the repo-config model
-names and copies missing releases to GitHub
-([ADR-0085](../adr/adr-0085-github-push-mirrors-are-tracked-in-the-model-and-reconciled-for-drift-and-releases.md)).
+names, copies missing releases to GitHub
+([ADR-0085](../adr/adr-0085-github-push-mirrors-are-tracked-in-the-model-and-reconciled-for-drift-and-releases.md)),
+and creates each push mirror itself: an SSH push mirror whose key it registers as a GitHub deploy
+key, so no person's token is involved
+([ADR-0091](../adr/adr-0091-github-push-mirrors-push-with-a-deploy-key-the-reconciler-registers.md)).
 
 | Piece | Where |
 | --- | --- |
@@ -14,9 +17,10 @@ names and copies missing releases to GitHub
 | Code and tests | `app/github_mirrors.py`, `scripts/test_github_mirrors.py`, `scripts/test-github-mirrors.sh` (mutations, CI `e2e`) |
 | Alerts and their tests | `victoria-metrics/app/rules/prometheusrule-platform-github-mirrors.yaml`, `scripts/vmalert-tests/platform-github-mirrors.test.yaml` |
 | Dashboard | Grafana, folder Platform, **GitHub Mirrors / Drift** (`/d/platform-github-mirrors`) |
-| GitHub credential | OpenBao `secret/github/webgrip-app` (the `webgrip-gitops` App), read with Kubernetes role `github-mirrors`; one token per repository, `contents: write` only |
-| Forgejo credential | OpenBao `secret/forgejo/repo-config` key `FORGEJO_TOKEN` (the repo-config bot) → `ExternalSecret/github-mirrors-forgejo` |
-| Mirror creation (still by hand) | `scripts/forgejo-sync.sh --only mirror` with a person's `GH_MIRROR_TOKEN` (delivery-chain rows G10, F7) |
+| GitHub credential | OpenBao `secret/github/webgrip-app` (the `webgrip-gitops` App), read with Kubernetes role `github-mirrors`; per repository one token with `contents: write` only and one with `administration: write` only (deploy keys) |
+| Forgejo credential | OpenBao `secret/forgejo/repo-config` key `FORGEJO_TOKEN` (the repo-config bot) → `ExternalSecret/github-mirrors-forgejo`; reads status and creates, syncs and deletes push mirrors |
+| Push credential | a deploy key with write access per GitHub repository; Forgejo holds the private key (generated per push mirror, never leaves Forgejo) |
+| Mirror creation | the reconciler, from the model. `scripts/forgejo-sync.sh --only mirror` and `GH_MIRROR_TOKEN` are retired |
 
 ## What one run does
 
@@ -25,15 +29,25 @@ names and copies missing releases to GitHub
 2. For each one it reads, on Forgejo: the default-branch head, tags, releases, and the push mirror
    whose remote is `github.com/webgrip/<name>` (`last_update`, `last_error`, `interval`). On GitHub,
    with a token for that repository only, it reads the head, tags and releases.
-3. It copies each release that is on Forgejo and not on GitHub, oldest first, at most 40 per run.
+3. With a token for that repository and `administration: write` only, it converges the push mirror:
+   - No Forgejo push mirror with an SSH key: it creates one (`use_ssh`, push on commit, 8h
+     fallback, remote `ssh://git@ssh.github.com:443/webgrip/<name>.git`), adds Forgejo's public
+     key as a write deploy key titled `forgejo push mirror`, and triggers a sync. If GitHub refuses
+     the key, it deletes the mirror it just created.
+   - An SSH mirror exists: it adds the deploy key again if it is missing on GitHub.
+   - The SSH mirror has pushed with no error: it deletes every other push mirror of that
+     repository to GitHub (the old token mirrors).
+   - It changes nothing when the App lacks `administration: write`, when the GitHub repository is
+     archived, or when GitHub answers with another full name (a transferred repository).
+4. It copies each release that is on Forgejo and not on GitHub, oldest first, at most 40 per run.
    A release is skipped until its tag is on GitHub, because the reconciler never creates a tag.
    A copy is created as a draft, gets every asset, and is then published with the Forgejo draft
    and prerelease flags; only Forgejo's newest stable release is marked latest. If any step fails,
    the draft it just created is deleted. Releases already on GitHub, including ones Forgejo does
    not have, are counted and never edited or deleted.
-4. It lists public GitHub repositories with a Forgejo namesake, and Forgejo repositories that push
+5. It lists public GitHub repositories with a Forgejo namesake, and Forgejo repositories that push
    to GitHub. Any of them that the model does not name is model drift.
-5. It pushes `github_mirror_*` metrics to vmagent. The run exits 1 when it could not read a tracked
+6. It pushes `github_mirror_*` metrics to vmagent. The run exits 1 when it could not read a tracked
    mirror; missing credentials exit 0.
 
 ## Metrics
@@ -49,6 +63,8 @@ names and copies missing releases to GitHub
 | `github_mirror_releases_extra` | GitHub releases without a Forgejo release (information only) |
 | `github_mirror_releases_copied`, `github_mirror_releases_copy_failed` | copies made and refused in this run (sum over time for totals) |
 | `github_mirror_app_access` | the App could issue a token for the repository |
+| `github_mirror_deploy_key_access` | the App could issue an `administration: write` token for the repository |
+| `github_mirror_ssh_push_mirror`, `github_mirror_token_push_mirrors` | the push mirror the metrics read has an SSH key; how many push mirrors to GitHub still use a token |
 | `github_mirror_model_drift{forge,repository}`, `github_mirror_model_drift_known{forge}` | a copy outside the model; whether the check could run |
 | `github_mirror_credentials_present{credential}` | `github_app` and `forgejo_token` |
 | `github_mirror_reconciler_last_success_timestamp_seconds` | last run that read every mirror |
@@ -59,7 +75,7 @@ The job pushes every 15 minutes, so every alert and panel reads these with `last
 
 1. **App permission.** On <https://github.com/organizations/webgrip/settings/apps>, open
    `webgrip-gitops`, then **Permissions & events → Repository permissions → Contents: Read and
-   write**, and **Save changes**. Then accept the new permission on
+   write** and **Administration: Read and write** (deploy keys), and **Save changes**. Then accept the new permission on
    <https://github.com/organizations/webgrip/settings/installations> (the installation shows a
    **Review request** banner).
 2. **Installation.** In the same installation's **Repository access**, add the ten mirrors:
@@ -76,8 +92,10 @@ The job pushes every 15 minutes, so every alert and panel reads these with `last
    mise exec -- kubectl -n github-config create job --from=cronjob/github-mirrors github-mirrors-manual
    ```
 
-A repository missing from the installation shows as `GitHubMirrorAppAccessMissing`. The run still
-checks the others.
+A repository missing from the installation shows as `GitHubMirrorAppAccessMissing`; a missing
+Administration permission shows as `GitHubMirrorDeployKeyAccessMissing`. The run still checks the
+others. If the organisation or its enterprise disables deploy keys, GitHub refuses the key and the
+log names the status; enable deploy keys in the organisation settings.
 
 ## Alerts
 
@@ -89,25 +107,37 @@ mirror's interval (8h) plus an hour.
 1. On the dashboard, read **Mirror error** and **Since last mirror sync** for the repository.
 2. In Forgejo, **Settings → Repository → Mirror settings** of `webgrip/<name>`: read the error and
    press **Synchronize now**.
-3. If the error says authentication failed, the token behind the mirror expired. That token belongs
-   to a person (G10). Re-create the mirror with a new token. It needs the classic scopes `repo` and
-   `workflow`; `workflow` is required when the repository changes `.github/workflows` (`workflows`
-   does):
+3. If the error says `Invalid username or token` or authentication failed, the mirror is an old
+   token mirror (`github_mirror_token_push_mirrors` above 0). The reconciler replaces it once it
+   may manage deploy keys: check `GitHubMirrorDeployKeyAccessMissing`, then run it now:
 
    ```bash
-   GH_MIRROR_TOKEN=... scripts/forgejo-sync.sh --repo <name> --only mirror --apply
+   mise exec -- kubectl -n github-config create job --from=cronjob/github-mirrors github-mirrors-manual
    ```
 
-   Delete the old push mirror in the same settings page first. This is the 2026-10-04 repair in
-   ADR-0012.
-4. If GitHub push protection rejected a commit, rotate the leaked secret before unblocking the push
+   It creates the SSH mirror and pushes; the run after the first clean push deletes the token
+   mirror. No token is needed.
+4. If the error says `Permission denied (publickey)`, the deploy key is missing on GitHub. The next
+   run adds it again; run the job now to skip the wait.
+5. If the error names a host key, GitHub's SSH host key changed or the first connection was not to
+   GitHub. Compare with <https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints>
+   and remove the `ssh.github.com` lines from `known_hosts` under Forgejo's SSH root only when
+   GitHub announced the change.
+6. If GitHub push protection rejected a commit, rotate the leaked secret before unblocking the push
    on GitHub (ADR-0012, 2026-10-04).
-5. If GitHub's branch moved on its own (a commit or force-push on GitHub), Forgejo wins: the next
+7. If GitHub's branch moved on its own (a commit or force-push on GitHub), Forgejo wins: the next
    mirror push overwrites it.
 
 ### GitHubMirrorError
 
 Forgejo's push mirror has a `last_error`. Same steps as above; the error text names the cause.
+
+### GitHubMirrorDeployKeyAccessMissing
+
+GitHub refused an `administration: write` token for one repository, so the reconciler cannot
+create its SSH mirror or register the deploy key. Grant **Administration: Read and write** to the
+App and accept it on the installation (owner step 1). Until then the repository pushes with
+whatever credential its mirror already has.
 
 ### GitHubReleasesNotMirrored
 
@@ -167,10 +197,15 @@ blocked (`app/networkpolicy.yaml`, `forgejo/networkpolicy.yaml`, `security/netpo
 
 ## Adding or retiring a mirror
 
-1. Create the push mirror (`forgejo-sync.sh --repo <name> --only mirror --apply`).
+1. Create the empty GitHub repository `webgrip/<name>` and add it to the `webgrip-gitops`
+   installation.
 2. Add `webgrip/<name>: {forge: github, mirror_of: <name>}` to `repos.yaml`.
    Leave out `settings`, `kind` and `renovate`; the validator refuses them on an active mirror.
-3. Add the repository to the `webgrip-gitops` installation.
+3. Nothing else: the next reconciler run after the merge creates the SSH push mirror, registers its
+   deploy key and pushes.
 4. Retiring: set `settings.archived: true` on both the Forgejo source and the GitHub entry
    (ADR-0078 R4). `Terraform/webgrip` then archives the GitHub copy, and the reconciler stops
-   tracking it.
+   tracking it. Delete the Forgejo push mirror by hand; the reconciler never deletes the last one.
+5. Before a GitHub repository is transferred to another owner, delete its Forgejo push mirror: the
+   deploy key moves with the repository and the mirror would follow GitHub's redirect. The
+   reconciler refuses to touch a mirror whose GitHub repository answers with another name.
