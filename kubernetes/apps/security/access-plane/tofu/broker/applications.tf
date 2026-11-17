@@ -190,6 +190,21 @@ locals {
       extra_scopes           = ["groups"]
       adopt                  = false
     }
+    unfold-staging = {
+      provider_name          = "unfold-staging-oidc"
+      app_name               = "Unfold staging"
+      description            = "Unfold staging on the Unfold cluster, until its own identity broker runs."
+      launch_url             = "https://staging-app.unfoldhq.dev"
+      client_id              = "unfold-staging"
+      client_secret          = null
+      client_type            = "public"
+      signing_key            = true
+      grant_types            = ["authorization_code", "refresh_token"]
+      refresh_token_validity = "hours=12"
+      redirects              = [{ matching_mode = "strict", url = "https://staging-app.unfoldhq.dev/api/auth/oidc/callback" }]
+      extra_scopes           = ["groups"]
+      adopt                  = false
+    }
     ploeg-mcp = {
       provider_name         = "ploeg-mcp-oauth"
       app_name              = "Ploeg MCP"
