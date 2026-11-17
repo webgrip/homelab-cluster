@@ -180,6 +180,7 @@ def branch_rule(name, branch):
     return {**derived_rules(repo).get(branch, {}), **repo.get("branches", {}).get(branch, {})}
 
 
+rules_adr_0083_lets_merge_without_approval = {("unfold-cluster", "main")}
 review_guards = ("dismiss_stale_approvals", "block_on_rejected_reviews", "block_on_outdated_branch")
 required_check_events = ("(pull_request)", "(pull_request_target)")
 repositories_adr_0083_named_core = {"agent-standards", "workflows", "renovate-config", "homelab-cluster", "unfold-cluster"}
@@ -198,7 +199,8 @@ for name, repo in sorted(repos.items()):
                 f" push: [] (ADR-0083), and this one says {pushers!r}; changes land through pull requests"
             )
         derived = derived_rules(repo).get(branch, {})
-        if rule.get("required_approvals", 0) < derived.get("required_approvals", 0):
+        lowering_allowed = (name, branch) in rules_adr_0083_lets_merge_without_approval
+        if not lowering_allowed and rule.get("required_approvals", 0) < derived.get("required_approvals", 0):
             errors.append(
                 f"{name} {branch}: a repository rule may only tighten what its profile derives; it lowers"
                 f" required_approvals from {derived['required_approvals']} to {rule['required_approvals']}"
@@ -242,23 +244,35 @@ for name, repo in sorted(repos.items()):
         )
 
 unfold_production_deployers = {"ryangr0"}
+unfold_staging_release_merger = "renovate"
+unfold_staging_release_check = "unfold-release-check / render (pull_request)"
 unfold_main = repos.get("unfold-cluster", {}).get("branches", {}).get("main")
 if unfold_main is None:
     errors.append("unfold-cluster must declare its main rule: a merge to that main deploys to production through Flux")
 else:
-    for field in ("push", "merge"):
+    allowed_by_field = {
+        "push": unfold_production_deployers,
+        "merge": unfold_production_deployers | {unfold_staging_release_merger},
+    }
+    for field, allowed in allowed_by_field.items():
         listed = unfold_main.get(field)
         if listed is None:
             errors.append(f"unfold-cluster main must list its {field} whitelist; without one every writer may {field}")
             continue
-        outsiders = sorted(set(listed) - unfold_production_deployers)
+        outsiders = sorted(set(listed) - allowed)
         if outsiders:
             errors.append(
-                f"unfold-cluster main {field} lists {', '.join(outsiders)}; only {', '.join(sorted(unfold_production_deployers))}"
-                " may deploy to Unfold production (identity-and-access G-01)"
+                f"unfold-cluster main {field} lists {', '.join(outsiders)}; only {', '.join(sorted(allowed))}"
+                " may deploy to Unfold (identity-and-access G-01; renovate only merges, for staging's release candidates)"
             )
     if not unfold_main.get("status_checks"):
         errors.append("unfold-cluster main must require its pull request checks; a merge there deploys to production")
+    if unfold_staging_release_merger in unfold_main.get("merge", []) and unfold_staging_release_check not in unfold_main.get("status_checks", []):
+        errors.append(
+            f"unfold-cluster main lets {unfold_staging_release_merger} merge, so it must require '{unfold_staging_release_check}'."
+            " Forgejo's merge-when-checks-succeed waits only for required checks, and that check is what renders a"
+            " release candidate with staging's values before it merges itself (ADR-0083, amended 2026-11-17)."
+        )
 
 if errors:
     print("validate-repo-config-model:", *errors, sep="\n  ")
