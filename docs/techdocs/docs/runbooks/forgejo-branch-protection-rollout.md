@@ -143,8 +143,9 @@ removes Renovate's one-merge-per-run ceiling (merging one PR flips every other P
 `mergeable` flag to false for the rest of the run), letting Forgejo merge each PR as soon as its
 checks pass.
 
-`platformAutomerge: true` is set on one group so far: `ploeg-unfold-release` (2026-10-18). It is
-gated by exactly the contexts homelab-cluster's `main` rule requires.
+`platformAutomerge: true` was first set on the `ploeg-unfold-release` group (2026-10-18), which
+was removed on 2026-11-17 when Flux began following Unfold candidates itself; the agent and CI runner
+images rule still sets it. It is gated by exactly the contexts homelab-cluster's `main` rule requires.
 
 ## Verify
 

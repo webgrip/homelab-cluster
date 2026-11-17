@@ -1,0 +1,32 @@
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: vmalertmanager
+spec:
+  type: alertmanager
+  address: http://vmalertmanager-vmalertmanager.observability.svc.cluster.local:9093/api/v2/alerts
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: unfold-rollout
+spec:
+  providerRef:
+    name: vmalertmanager
+  eventSeverity: info
+  eventMetadata:
+    rollout: unfold
+    summary: Unfold rollout in the homelab
+  eventSources:
+    - kind: OCIRepository
+      name: unfold
+      namespace: flux-system
+    - kind: HelmRelease
+      name: unfold
+      namespace: ploeg
+  exclusionList:
+    - "(?i)^Reconciliation finished in .*$"
+    - "(?i)^no changes since last reconcil(i)?ation:.*$"
+    - "(?i)^Helm (install|upgrade|test|rollback) has started.*$"
+    - "(?i)^artifact up-to-date with remote revision.*$"
