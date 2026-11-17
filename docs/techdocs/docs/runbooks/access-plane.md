@@ -63,6 +63,34 @@ mise exec -- kubectl -n security annotate terraform access-broker \
   reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite
 ```
 
+## Release a stale state lock
+
+A plan or apply holds the state lock, a Lease named `lock-tfstate-default-<object>` in the
+object's namespace. When the runner dies, or a failed drift plan does not release it, every later
+plan fails with `error acquiring the state lock` and the object stays not Ready;
+`TofuTerraformNotReady` fires after 30 minutes. On 2026-11-16 a drift plan of `access-broker`
+failed at 22:42 UTC and kept its lock, and nothing applied for two hours.
+
+First make sure no runner is working: `kubectl -n security get pod access-broker-tf-runner` finds
+none, or one that started after the lock's `Created` time. Then release exactly that lock and
+reconcile:
+
+```sh
+lock=$(mise exec -- kubectl -n security get lease lock-tfstate-default-access-broker -o jsonpath='{.spec.holderIdentity}')
+mise exec -- kubectl -n security patch terraform access-broker --type merge \
+  -p "{\"spec\":{\"tfstate\":{\"forceUnlock\":\"yes\",\"lockIdentifier\":\"$lock\"}}}"
+mise exec -- kubectl -n security annotate terraform access-broker \
+  reconcile.fluxcd.io/requestedAt="$(date +%s)" --overwrite
+```
+
+When the object reads Ready again, remove the two fields, because Flux's server-side apply leaves
+fields it does not own in place:
+
+```sh
+mise exec -- kubectl -n security patch terraform access-broker --type json \
+  -p '[{"op":"remove","path":"/spec/tfstate/forceUnlock"},{"op":"remove","path":"/spec/tfstate/lockIdentifier"}]'
+```
+
 ## Suspend before working locally
 
 There is one writer. Suspend the object first, run locally, resume after.
@@ -89,6 +117,7 @@ A local `plan` needs the live systems and the state Secret; the module is writte
 | Controller logs `connection refused` to the runner on port 30000 | Ingress policy missing in `security` | `access-plane-allow-controller-to-runner` NetworkPolicy must exist |
 | Plan pending for hours | The object has no `approvePlan` | That is the cutover posture; read the plan, approve it in Git |
 | `Drifted` condition | Someone changed a managed object by hand | Let the next reconcile revert it; find who in the Authentik or OpenBao audit log |
+| `Ready=False`, message `error acquiring the state lock` | A runner or a failed drift plan kept the lock | [Release a stale state lock](#release-a-stale-state-lock) |
 
 ## What else the broker reconciles
 
