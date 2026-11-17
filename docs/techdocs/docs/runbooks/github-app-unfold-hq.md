@@ -487,12 +487,15 @@ ADR-0192, and only after the key is in OpenBao ([order](#order)).
 | HTTPRoute `ploeg-github-webhook`: `POST /webhooks/forge/github` on `ploeg-hooks.${SECRET_DOMAIN}`, admitted by the existing ReferenceGrant | `kubernetes/apps/network/envoy-gateway/app/` |
 | `config.targets.unfold`, the Vikunja project `Ploeg Test`, Unfold's repository `ploeg` (`url`) and all 19 task sources with that repository (17 ClickUp Lists, `ploeg-test`, `glide`) name `unfold-hq/unfold` on `github`, in one commit | `helmrelease.yaml` |
 | The `silver` team drops its deprecated `repoOwner`, `repoName` and `baseBranch` fallback: it serves `unfold-hq/unfold` on GitHub and `homelab-cluster` on Forgejo, so every Run takes its repository from the claim | `helmrelease.yaml` |
+| `executor.forgejo` names what a two-forge release requires: `url` (in-cluster, for workers), `publicUrl` (`https://forgejo.${SECRET_DOMAIN}`, for ploegd, replacing the post-render patch that set `PLOEG_FORGEJO_URL`), `tokenSecret`, `botPasswordSecret`, `botUser` and `webhookSecret` | `helmrelease.yaml`, `kubernetes/apps/ploeg/unfold/app/kustomization.yaml` |
 
 What is deliberately not there:
 
 - **No `readTokenSecret` or `tokenSecret` for GitHub.** Under ADR-0192 a two-forge release mints
   for readers too, so worker pods carry neither. With `tracker.github.appId` set, the chart does
-  not render `PLOEG_GITHUB_TOKEN` for ploegd.
+  not render `PLOEG_GITHUB_TOKEN` for ploegd. Forgejo's `readTokenSecret` stays: a two-forge
+  render ignores it, and without the values fragment the release is single-forge again, where
+  reading Roles need it.
 - **No egress rule in `networkpolicy.yaml`.** The Ploeg chart renders its own network policies.
   ploegd already reaches `github.com` and `api.github.com` once `executor.github.url` and
   `tracker.github.appId` are set (`_networkpolicy.tpl`), and ADR-0192 section 4 makes the workers
@@ -509,15 +512,16 @@ this is why the key goes in before the merge.
 #### Order
 
 1. Create the App and store its key ([above](#create-the-app), [install and store](#install-and-store)).
-2. Release Ploeg with ADR-0192, and an Unfold release that pins it.
+2. Release Ploeg with ADR-0192 ([ploeg-hq/ploeg#423](https://github.com/ploeg-hq/ploeg/pull/423)), and an Unfold release that pins it.
 3. Add the final commit to the branch: the Unfold release pin (chart in `ocirepository.yaml`,
    images in `helmrelease.yaml`, as Renovate writes it).
 4. `kubectl -n ploeg get externalsecret unfold-hq-ploeg-app` is `Ready`; merge.
 
 #### Verify after rollout
 
-1. ploegd is running, did not refuse to start, and its log shows a GitHub forge provider with an
-   App credential next to the Forgejo one.
+1. ploegd is running and logs `per-run forge credentials enabled` and `per-run GitHub App
+   installation tokens enabled`; a worker logs `resolved work target` with its forge and `using a
+   per-run forge credential minted for this run`.
 2. A ClickUp test task in a routed List, assigned to the Unfold agent member, opens a pull request
    on `unfold-hq/unfold` authored by `unfold-hq-ploeg[bot]`.
 3. A task on a Forgejo board (Homelab Roadmap or Dark Factory) still opens its pull request on
