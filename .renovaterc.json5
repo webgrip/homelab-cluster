@@ -843,11 +843,11 @@
       // property ploeg does not share with any of them is the prerelease
       // version, and no prerelease dep anywhere in this repo is offered an
       // update.
-      description: "Ploeg and Unfold charts follow 0.x prereleases. Docker versioning treats everything after '-' as a variant suffix and offers only tags with the SAME suffix, so 0.4.0-rc.58 was never an update of 0.4.0-rc.57; semver versioning orders the rc numbers.",
+      description: "Ploeg and Unfold charts follow 0.x prereleases. Docker versioning treats everything after '-' as a variant suffix and offers only tags with the SAME suffix, so 0.4.0-rc.58 was never an update of 0.4.0-rc.57; semver versioning orders the rc numbers. Only a plain 0.x.y or 0.x.y-rc.N tag is offered, the same filter as the images below, so a per-architecture tag can never become the chart pin.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/ocirepository.yaml"
       ],
-      allowedVersions: "/^0\\./",
+      allowedVersions: "/^0\\.\\d+\\.\\d+(-rc\\.\\d+)?$/",
       versioning: "semver",
       ignoreUnstable: false,
     },
@@ -868,7 +868,7 @@
       // helmrelease.yaml also pins agent-runner and docker-dind, and those track
       // stable channels. A file-level ignoreUnstable would start offering THEM
       // prereleases — a docker:*-rc on the dind sidecar of every agent run.
-      description: "Ploeg and Unfold images follow 0.x prereleases, with semver versioning for the same reason as their charts.",
+      description: "Ploeg and Unfold images follow 0.x prereleases, with semver versioning for the same reason as their charts. Only the multi-architecture tag 0.x.y or 0.x.y-rc.N is offered. Since 0.4.0-rc.132 every Unfold release also publishes 0.x.y-rc.N-amd64 and 0.x.y-rc.N-arm64, and semver ranks 0.4.0-rc.134-arm64 above 0.4.0-rc.134: on 2026-11-17 PR #1079 pinned both images to their arm64 builds, every node here is amd64, the Unfold upgrade timed out three times, rolled back and stalled.",
       matchFileNames: [
         "kubernetes/apps/ploeg/**/helmrelease.yaml"
       ],
@@ -876,7 +876,7 @@
         "harbor.webgrip.dev/ghcr/unfold-hq/unfold",
         "harbor.webgrip.dev/ghcr/unfold-hq/unfold-agent"
       ],
-      allowedVersions: "/^0\\./",
+      allowedVersions: "/^0\\.\\d+\\.\\d+(-rc\\.\\d+)?$/",
       versioning: "semver",
       ignoreUnstable: false,
     },
