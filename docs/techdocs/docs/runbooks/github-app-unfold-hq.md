@@ -29,7 +29,8 @@ edit the rulesets that require `gate`, the bot key can push code. On one App, wh
 key could switch off the required check and merge past it.
 
 A third App, `unfold-hq-ploeg`, is the homelab Ploeg's forge identity on `unfold-hq/unfold`
-([below](#the-ploeg-app-unfold-hq-ploeg)); its wiring is blocked on Ploeg.
+([below](#the-ploeg-app-unfold-hq-ploeg)); its wiring needs a Ploeg release that implements
+Ploeg ADR-0192 ([wiring](#wiring-for-two-forges)).
 
 `unfold-hq` holds no Webgrip secret except what this repository's bridge writes. The Cloudflare
 account stays the current one for now.
@@ -349,8 +350,7 @@ PolicyReports for the rc.132 Pods in `ploeg` and `unfold-workspaces` show `pass`
 
 | Item | Where | Why it is open |
 | --- | --- | --- |
-| Ploeg's targets (`config.targets.unfold`, the Vikunja project `Ploeg Test`), the `silver` team and every task source with `ploeg.target` still name Forgejo `webgrip/unfold`; Runs against it cannot push | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` | blocked: one Ploeg release speaks one forge, and this one also serves Forgejo repositories. The App `unfold-hq-ploeg` can be created now; see [the Ploeg App](#the-ploeg-app-unfold-hq-ploeg) for the options |
-| Report a problem files issues on Forgejo `webgrip/unfold` (`config.reports`), and the `unfold-reports`, `ploeg-forge-webhook-registration` and `forge-revocation-probe` jobs act on it | `helmrelease.yaml`, `kubernetes/apps/forgejo/forgejo-actions-secrets/app/`, `kubernetes/apps/ploeg/ploeg/app/forge-revocation-probe/` | follows the forge decision above; Report a problem also needs Unfold to file GitHub issues |
+| Report a problem files issues on Forgejo `webgrip/unfold` (`config.reports`), and the `unfold-reports`, `ploeg-forge-webhook-registration` and `forge-revocation-probe` jobs act on it | `helmrelease.yaml`, `kubernetes/apps/forgejo/forgejo-actions-secrets/app/`, `kubernetes/apps/ploeg/ploeg/app/forge-revocation-probe/` | Unfold files GitHub issues since `0.4.0-rc.134` and as a GitHub App since `0.4.0-rc.135`, but `unfold-hq-ploeg` has no Issues permission on purpose, so moving `config.reports` needs its own credential |
 | The agent-standards survey key for `unfold-hq/unfold` | OpenBao `litellm/keys/agent-standards-survey` | whether the GitHub secrets bridge carries it to `unfold-hq/unfold` |
 | The Forgejo user `ploeg-release`, its token `ploeg-release-hook`, OpenBao `forgejo/ploeg-release` and `openvsx/unfold`, and the Actions secret `RELEASE_CONSUMER_TOKEN_FORGEJO` on `ploeg-hq/ploeg` | Forgejo, OpenBao, GitHub | left behind by the [clean-up](#what-the-clean-up-after-pr-3-changed); nothing reads them. The owner deletes them by hand |
 | The Garage buckets `docs-glide`, `docs-glide-trash`, the key `docs-publish-glide`, the `glide_*` properties of OpenBao `garage/docs-repo-keys`, and Harbor's `webgrip/unfold`, `webgrip/unfold-agent` and `webgrip/charts/unfold` repositories | Garage, OpenBao, Harbor | data; nothing in git deletes them. The owner removes them by hand, or lists the Harbor repositories in `retired-repositories`. Not `webgrip/unfold-delivery-inputs`: staging still pins it for governed delivery |
@@ -382,7 +382,7 @@ that Run's repository, and revokes it when the Run settles. That App is `unfold-
 third one: a Run's token must not come from the gitops key (rulesets) or the bot key (Workflows
 write), and this App has neither.
 
-### Blocked: one Ploeg release speaks one forge
+### Why it waits: one Ploeg release spoke one forge
 
 Ploeg `0.2.0-rc.108`, the one in Unfold `0.4.0-rc.132`, can configure several forge providers in
 ploegd, but a worker pod holds one forge URL and one credential. `executor.forge` selects one
@@ -395,16 +395,27 @@ and `ploeg-bench-world` on Forgejo, so it cannot simply switch to `forge: github
 
 | Option | What it takes | For | Against |
 | --- | --- | --- | --- |
-| 1. Ploeg workers speak more than one forge (**recommended**) | a change in `ploeg-hq/ploeg` that supersedes ADR-0023: a forge URL and credential per dialect in the worker pod, chosen by the Work Item's `Target.Forge`; then [the wiring below](#wiring-once-ploeg-can-span-two-forges-proposed) here | one Ploeg and one Unfold; every Forgejo target keeps working | waits for a Ploeg release; a worker pod holds a credential per forge, which is the blast radius ADR-0023 avoided |
+| 1. Ploeg workers speak more than one forge (**recommended**) | a change in `ploeg-hq/ploeg` that supersedes ADR-0023: a forge URL and credential per dialect in the worker pod, chosen by the Work Item's `Target.Forge`; then [the wiring below](#wiring-for-two-forges) here | one Ploeg and one Unfold; every Forgejo target keeps working | waits for a Ploeg release; a worker pod holds a credential per forge, which is the blast radius ADR-0023 avoided |
 | 2. A second Ploeg release with `forge: github` | its own namespace, database, KEDA scaler, LiteLLM team and keys, and workers | no upstream change | doubles the dispatch plane; staging Unfold connects to one Ploeg (`config.ploeg.url`), so work on GitHub would not show in it |
 | 3. Switch this Ploeg to `forge: github` | a values change | smallest diff | every Run on a Forgejo repository (`homelab-cluster`, `erfbeeld`, `twente.dev`, the bronze, copper and pewter teams) stops |
 
-Until one is chosen, the targets stay on Forgejo `webgrip/unfold`, which is archived, so Runs
-there cannot push.
+Option 1 was chosen: [Ploeg ADR-0192](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0192-a-runs-forge-is-resolved-from-its-work-target-and-the-claim-carries-the-forge-and-a-credential-minted-for-that-run.md)
+supersedes ADR-0023. The claim carries the Run's forge, its URL and a credential minted for that
+Run, readers included, so no worker pod holds a standing forge credential. Each of
+`executor.forgejo`, `executor.github` and `executor.gitlab` is active when it sets `url`, and
+`executor.forge` stays the default for a target that names no forge. A release with two active
+forges refuses to start unless every one of them mints per Run: GitHub through an App, Forgejo
+through the bot password (`botPasswordSecret`) on Forgejo 15 or later. This cluster already
+gives Forgejo both: `agent-builder-password` from `forgejo/agent-builder-password`, and Forgejo
+`15.0.10`.
 
-Report a problem is blocked separately, in Unfold: its `github` task provider reads issues but
-cannot file one (only `forgejo`, `vikunja` and `jira` can), checked on `unfold-hq/unfold`
-`development` at `ecf1d656`. `config.reports` stays on Forgejo until Unfold can.
+Before a release with ADR-0192 was pinned, the targets stayed on Forgejo `webgrip/unfold`,
+which is archived, so Runs there could not push.
+
+Report a problem is a separate change. Unfold's `github` task provider files issues since
+`0.4.0-rc.134` and authenticates as a GitHub App since `0.4.0-rc.135`, but `unfold-hq-ploeg`
+has no Issues permission, so `config.reports` stays on Forgejo until it has a credential of its
+own.
 
 ### Create the App
 
@@ -461,24 +472,64 @@ Delete the `.pem` and the secret file afterwards.
 2. `https://github.com/organizations/unfold-hq/settings/installations/<installation ID>` shows
    **Only select repositories** with `unfold` alone, and the five permissions above.
 3. The App's **Advanced → Recent deliveries** shows the `ping`, answered `404` until the route
-   exists.
+   `ploeg-github-webhook` is live, and accepted by ploegd after.
 
-### Wiring once Ploeg can span two forges (proposed)
+### Wiring for two forges
 
-Nothing of this is in git yet: it waits for option 1, and its shape follows that Ploeg release.
+This wiring merges in one pull request with the pin of an Unfold release whose Ploeg implements
+ADR-0192, and only after the key is in OpenBao ([order](#order)).
 
 | Piece | Where |
 | --- | --- |
-| ESO grant `ploeg read github/unfold-hq-ploeg-app` and an ExternalSecret in `ploeg` with `private-key.pem` and `PLOEG_GITHUB_FORGE_SECRET` | `kubernetes/apps/ploeg/ploeg/app/`, then `scripts/eso_grants.py --write` |
-| `ploeg.tracker.github.appId` from the same Secret through `valuesFrom` with `targetPath` and `optional: true`, because the chart takes the App ID as a value; `ploeg.tracker.github.appPrivateKeySecret` | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` |
-| `ploeg.executor.github`: `url: https://github.com`, `webhookSecret`, `botLogin: unfold-hq-ploeg[bot]`, `tokenSecret` and, for the reviewer Roles, `readTokenSecret` | same. Open question: the chart wants a static read-only token for boot and for readers; an installation token minted by a CronJob, as `renovate-github-app-token-unfold-hq` does, ends after an hour, which a 90-minute reviewer outlives |
-| `POST /webhooks/forge/github` on `ploeg-hooks.${SECRET_DOMAIN}` | `kubernetes/apps/network/envoy-gateway/app/` |
-| `config.targets.unfold`, the Vikunja project `Ploeg Test`, the `silver` team and every task source with `ploeg.target` move to `unfold-hq/unfold`, `forge: github` | `helmrelease.yaml` |
-| Egress to `github.com` and `api.github.com` for ploegd (it mints and revokes the tokens) and the workers: `ploeg-allow-egress` and `ploeg-worker-egress` | `kubernetes/apps/ploeg/ploeg/app/networkpolicy.yaml` |
+| ESO grant `ploeg read github/unfold-hq-ploeg-app` | `kubernetes/apps/security/openbao/bootstrap/eso-grants.txt` (`scripts/eso_grants.py --write`) |
+| ExternalSecret `unfold-hq-ploeg-app`: `private-key.pem`, `PLOEG_GITHUB_FORGE_SECRET` and `values.yaml`, a values fragment that sets `ploeg.tracker.github.appId` and `appPrivateKeySecret` and `ploeg.executor.github` (`url: https://github.com`, `botLogin: unfold-hq-ploeg[bot]`, `webhookSecret`) | `kubernetes/apps/ploeg/ploeg/app/unfold-hq-ploeg-app.externalsecret.yaml` |
+| `valuesFrom` that Secret's `values.yaml`, `optional: true` | `kubernetes/apps/ploeg/unfold/app/helmrelease.yaml` |
+| HTTPRoute `ploeg-github-webhook`: `POST /webhooks/forge/github` on `ploeg-hooks.${SECRET_DOMAIN}`, admitted by the existing ReferenceGrant | `kubernetes/apps/network/envoy-gateway/app/` |
+| `config.targets.unfold`, the Vikunja project `Ploeg Test`, Unfold's repository `ploeg` (`url`) and all 19 task sources with that repository (17 ClickUp Lists, `ploeg-test`, `glide`) name `unfold-hq/unfold` on `github`, in one commit | `helmrelease.yaml` |
+| The `silver` team drops its deprecated `repoOwner`, `repoName` and `baseBranch` fallback: it serves `unfold-hq/unfold` on GitHub and `homelab-cluster` on Forgejo, so every Run takes its repository from the claim | `helmrelease.yaml` |
 
-To stay inert until the key exists, every reference to the new Secret must be optional: the
-chart's `secretKeyRef`s are not, so the GitHub values arrive through `valuesFrom` with
-`optional: true`.
+What is deliberately not there:
+
+- **No `readTokenSecret` or `tokenSecret` for GitHub.** Under ADR-0192 a two-forge release mints
+  for readers too, so worker pods carry neither. With `tracker.github.appId` set, the chart does
+  not render `PLOEG_GITHUB_TOKEN` for ploegd.
+- **No egress rule in `networkpolicy.yaml`.** The Ploeg chart renders its own network policies.
+  ploegd already reaches `github.com` and `api.github.com` once `executor.github.url` and
+  `tracker.github.appId` are set (`_networkpolicy.tpl`), and ADR-0192 section 4 makes the workers
+  reach every active forge. Check the rendered `NetworkPolicy` objects of the pinned release before
+  merging: if the worker policy does not list GitHub, the release does not implement section 4.
+- **No change for Forgejo targets.** `executor.forge` stays `forgejo`, the default for every
+  target that names no forge.
+
+The values fragment is the on/off switch. While the OpenBao path is empty the ExternalSecret is not
+ready, the Secret does not exist, `valuesFrom` skips it, and ploegd has only the Forgejo forge, as
+before. The targets then name a forge ploegd does not know, which ADR-0192 refuses at claim time;
+this is why the key goes in before the merge.
+
+#### Order
+
+1. Create the App and store its key ([above](#create-the-app), [install and store](#install-and-store)).
+2. Release Ploeg with ADR-0192, and an Unfold release that pins it.
+3. Add the final commit to the branch: the Unfold release pin (chart in `ocirepository.yaml`,
+   images in `helmrelease.yaml`, as Renovate writes it).
+4. `kubectl -n ploeg get externalsecret unfold-hq-ploeg-app` is `Ready`; merge.
+
+#### Verify after rollout
+
+1. ploegd is running, did not refuse to start, and its log shows a GitHub forge provider with an
+   App credential next to the Forgejo one.
+2. A ClickUp test task in a routed List, assigned to the Unfold agent member, opens a pull request
+   on `unfold-hq/unfold` authored by `unfold-hq-ploeg[bot]`.
+3. A task on a Forgejo board (Homelab Roadmap or Dark Factory) still opens its pull request on
+   Forgejo.
+4. The App's **Recent deliveries** show `pull_request` deliveries answered `2xx`.
+
+#### Roll back
+
+Revert the merge commit. That restores the Forgejo targets, the repository URL and the task
+sources in one step, as they must move together (Unfold refuses to start when a task source's
+target and its repository URL disagree). Deleting the OpenBao entry is not a rollback: the
+ExternalSecret keeps the Secret it already wrote.
 
 ## Rotate an App key
 
