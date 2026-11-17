@@ -30,7 +30,7 @@ The rules owned since 2026-10-26 (ADR-0083). A Forgejo repository in `repos.yaml
 
 | The repository says | Profile | Push | Merge | Approvals | Tags |
 | --- | --- | --- | --- | --- | --- |
-| `core: true` | `protected-core` | nobody | `ryangr0`, `yon`, `renovate` (unfold-cluster: `ryangr0` and `renovate`) | 1 (unfold-cluster: 0, for Unfold staging's release candidates, [ADR-0083](../adr/adr-0083-nobody-pushes-to-main-and-core-repositories-need-a-second-person.md#more-information) 2026-11-17) | `webgrip-ci` only |
+| `core: true` | `protected-core` | nobody | `ryangr0`, `yon`, `renovate` (unfold-cluster: `ryangr0` only) | 1 | `webgrip-ci` only |
 | nothing more | `protected` | nobody | `ryangr0`, `yon`, `renovate` | 0 | `webgrip-ci` only |
 | `writer: <account>` | `workspace` | that account, `main` only | `ryangr0` | 0 | none |
 | `settings.archived: true` | `baseline` | unchanged | unchanged | 0 | none |
@@ -50,7 +50,7 @@ The rules owned since 2026-10-26 (ADR-0083). A Forgejo repository in `repos.yaml
 | previews | none | | | `agent-builder` |
 | every other active repository | its kind | | | |
 
-Required contexts stay per repository, and only contexts the repository reports on pull requests: the validator refuses a context that does not end in `(pull_request)` or `(pull_request_target)`, because a check reported on `push` never reaches a pull request and blocks every merge. homelab-cluster `main` the four `e2e / … (pull_request)` jobs; semantic-release-config `development` and `main` only `* / gate (pull_request)`, the job that waits for all the others ([ADR-0084](../adr/adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md)); unfold-cluster `main` its seven checks and `unfold-release-check / render (pull_request)`; talos-kata-extension `main` its source-change check; agent-standards, ai-skills, renovate-config and omnigraph-explorer the contexts they reported on each of their last 12 pull requests. Every other repository requires none. The archived `unfold` keeps the `development` and `main` rules it had, spelled out in its entry, because every rule has `prevent_destroy` ([github-app-unfold-hq](github-app-unfold-hq.md#what-pr-2-changes)).
+Required contexts stay per repository, and only contexts the repository reports on pull requests: the validator refuses a context that does not end in `(pull_request)` or `(pull_request_target)`, because a check reported on `push` never reaches a pull request and blocks every merge. homelab-cluster `main` the four `e2e / … (pull_request)` jobs; semantic-release-config `development` and `main` only `* / gate (pull_request)`, the job that waits for all the others ([ADR-0084](../adr/adr-0084-a-branch-rule-requires-one-gate-and-forgejo-merges-renovate-on-it.md)); unfold-cluster `main` its seven checks; talos-kata-extension `main` its source-change check; agent-standards, ai-skills, renovate-config and omnigraph-explorer the contexts they reported on each of their last 12 pull requests. Every other repository requires none. The archived `unfold` keeps the `development` and `main` rules it had, spelled out in its entry, because every rule has `prevent_destroy` ([github-app-unfold-hq](github-app-unfold-hq.md#what-pr-2-changes)).
 
 Private repositories are in the model with `settings.private: true`, so tofu keeps them private: compyutah, erfbeeld, obsidian-vault, omnigraph-explorer, ploeg-bench, ploeg-bench-world, previews and talos-kata-extension. ploeg-bench-world's default branch is `bench/void`, which the bench harness resets, so only its unused `main` carries the rule.
 
@@ -143,8 +143,9 @@ removes Renovate's one-merge-per-run ceiling (merging one PR flips every other P
 `mergeable` flag to false for the rest of the run), letting Forgejo merge each PR as soon as its
 checks pass.
 
-`platformAutomerge: true` is set on one group so far: `ploeg-unfold-release` (2026-10-18). It is
-gated by exactly the contexts homelab-cluster's `main` rule requires.
+`platformAutomerge: true` was first set on the `ploeg-unfold-release` group (2026-10-18), which
+was removed on 2026-11-17 when Flux began following Unfold candidates itself; the agent and CI runner
+images rule still sets it. It is gated by exactly the contexts homelab-cluster's `main` rule requires.
 
 ## Verify
 

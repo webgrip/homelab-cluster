@@ -12,7 +12,6 @@
 #              Releases tab to publish into. Git tags mirror over, but Release OBJECTS do not — and
 #              historical GitHub releases never backfill; this only enables the unit for new ones.
 #              Always-on parity.
-#   mirror   — add a Forgejo -> GitHub push-mirror (auto-backup) if none points at github.com
 #   webhook  — register a Forgejo repo webhook -> the renovate-operator receiver so ticking a
 #              Dependency-Dashboard / PR checkbox triggers an immediate Renovate run (not the 6h cron).
 #              Idempotent: matches an existing hook by receiver URL; creates if missing, refreshes if
@@ -24,7 +23,6 @@
 # Requires:
 #   FORGEJO_TOKEN   Forgejo PAT, scope write:repository (+ repo admin for `webhook`). Never printed.
 #   gh              GitHub CLI, authenticated (for reading GitHub state).
-#   GH_MIRROR_TOKEN GitHub PAT (classic, scope `repo`) — ONLY needed for `mirror`. Never printed.
 #   RENOVATE_WEBHOOK_AUTH_TOKEN  bearer the hook sends to the receiver — ONLY for `webhook`. Optional:
 #              if unset and kubectl is configured, falls back to Secret renovate/renovate-webhook-auth
 #              key `token`. Never printed.
@@ -32,21 +30,19 @@
 # Usage:
 #   scripts/forgejo-sync.sh --repo workflows                 # dry-run, all actions, one repo
 #   scripts/forgejo-sync.sh --repo workflows --apply
-#   scripts/forgejo-sync.sh --all --only actions,mirror --apply
+#   scripts/forgejo-sync.sh --all --only actions,prs --apply
 set -euo pipefail
 
 FORGEJO_API="https://forgejo.webgrip.dev/api/v1"
-GITHUB_HOST="github.com"
 ORG="webgrip"
 APPLY=0
-ONLY="actions,prs,releases,mirror,webhook"
+ONLY="actions,prs,releases,webhook"
 REPOS=()
 # Reusable-workflow LIBRARY repos: their workflows are `on: workflow_call` and run in the *caller*
 # repo, never here. Keep the Forgejo Actions unit OFF for these even though GitHub has it on, so
 # pushes/PRs don't spawn stray in-repo runs (disabling the unit does NOT break `uses:` consumers —
 # the caller's runner resolves+executes the reusable workflow).
 ACTIONS_OFF_REPOS="workflows"
-GITHUB_IS_SOURCE_REPOS="unfold"
 # Renovate webhook receiver. Forgejo is IN-CLUSTER, so the hook targets the operator Service directly
 # (http, port 8082) — no envoy-external hairpin / public round-trip needed. The ?namespace=&job= params
 # route the inbound event to the Forgejo RenovateJob.
@@ -55,7 +51,6 @@ RENOVATE_WEBHOOK_URL="http://renovate-operator.renovate.svc.cluster.local:8082/w
 die() { echo "ERROR: $*" >&2; exit 1; }
 have() { echo ",$ONLY," | grep -q ",$1,"; }
 is_actions_off() { echo " $ACTIONS_OFF_REPOS " | grep -q " $1 "; }
-github_is_source() { echo " $GITHUB_IS_SOURCE_REPOS " | grep -q " $1 "; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -71,6 +66,7 @@ done
 for retired in protect settings; do
   have "$retired" && die "--only $retired is retired: branch protection and repository settings are owned by the repo-config Terraform module. Edit kubernetes/apps/repo-config/repo-config/model and let Flux apply it."
 done
+have mirror && die "--only mirror is retired: the github-config/github-mirrors reconciler creates every GitHub push mirror the repo-config model names, with an SSH deploy key and no personal token (ADR-0091). Add webgrip/<name>: {forge: github, mirror_of: <name>} to kubernetes/apps/repo-config/repo-config/model/repos.yaml."
 
 [ -n "${FORGEJO_TOKEN:-}" ] || die "FORGEJO_TOKEN not set (Forgejo Settings -> Applications -> generate, scope write:repository)"
 # gh is only needed for GitHub-reading actions (`actions` parity); prs/releases/webhook
@@ -149,33 +145,6 @@ sync_releases() {
   fi
 }
 
-sync_mirror() {
-  local r="$1"
-  local exists
-  if github_is_source "$r"; then
-    note "mirror: SKIP — $r moves to a GitHub organisation that is its source of truth; a push mirror would overwrite it (docs/techdocs/docs/runbooks/github-app-unfold-hq.md)"
-    return
-  fi
-  exists=$(fj "$FORGEJO_API/repos/$ORG/$r/push_mirrors" \
-    | python3 -c "import sys,json;print(any('$GITHUB_HOST' in m.get('remote_address','') for m in json.load(sys.stdin)))" 2>/dev/null || echo False)
-  if [ "$exists" = "True" ]; then note "mirror: already mirrors to $GITHUB_HOST"; return; fi
-  [ -n "${GH_MIRROR_TOKEN:-}" ] || { note "mirror: SKIP — GH_MIRROR_TOKEN not set (GitHub PAT, scope repo)"; return; }
-  if [ -z "${GH_MIRROR_USER:-}" ]; then  # resolve token owner once; that's the auth username GitHub wants
-    GH_MIRROR_USER=$(curl -fsS -H "Authorization: token $GH_MIRROR_TOKEN" https://api.github.com/user 2>/dev/null \
-      | python3 -c 'import sys,json;print(json.load(sys.stdin)["login"])' 2>/dev/null || echo "")
-  fi
-  [ -n "$GH_MIRROR_USER" ] || { note "mirror: SKIP — GH_MIRROR_TOKEN invalid (api.github.com/user failed)"; return; }
-  local body
-  body=$(python3 -c "import json;print(json.dumps({'remote_address':'https://$GITHUB_HOST/$ORG/$r.git','remote_username':'$GH_MIRROR_USER','remote_password':'__TOKEN__','interval':'8h0m0s','sync_on_commit':True}))")
-  if [ "$APPLY" = 1 ]; then
-    note "APPLY: add push-mirror $r -> $GITHUB_HOST"
-    fj -X POST "$FORGEJO_API/repos/$ORG/$r/push_mirrors" \
-       -d "${body/__TOKEN__/$GH_MIRROR_TOKEN}" >/dev/null && note "  ok" || note "  FAILED"
-  else
-    note "DRY-RUN would: add push-mirror $r -> $GITHUB_HOST (sync_on_commit, 8h fallback)"
-  fi
-}
-
 # Resolve the receiver bearer token once (env wins; else the in-cluster Secret). Never printed.
 # Lazy: only invoked from sync_webhook, so a no-webhook run never needs kubectl or the token.
 WEBHOOK_TOKEN=""
@@ -199,7 +168,7 @@ sync_webhook() {
   local id
   id=$(fj "$FORGEJO_API/repos/$ORG/$r/hooks" 2>/dev/null \
     | python3 -c "import sys,json;h=json.load(sys.stdin);print(next((str(x['id']) for x in h if x.get('config',{}).get('url','').split('?')[0]=='$base'),''))" 2>/dev/null || echo "")
-  # __TOKEN__ placeholder so the bearer never appears in any echo/dry-run line (like sync_mirror).
+  # __TOKEN__ placeholder so the bearer never appears in any echo/dry-run line.
   # NB: authorization_header is a TOP-LEVEL field in the Forgejo hook API, NOT a config key — Forgejo
   # silently drops unknown config keys, so nesting it sends NO Authorization header → receiver 401s.
   local body
@@ -229,7 +198,6 @@ for r in "${REPOS[@]}"; do
   have actions  && sync_actions  "$r"
   have prs      && sync_prs      "$r"
   have releases && sync_releases "$r"
-  have mirror   && sync_mirror   "$r"
   have webhook && sync_webhook "$r"
 done
 echo "done.${APPLY:+}"

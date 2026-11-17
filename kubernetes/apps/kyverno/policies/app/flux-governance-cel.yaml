@@ -124,11 +124,17 @@ spec:
         object.spec.?ref.orValue({}).?digest.orValue('').startsWith('sha256:') ||
         (object.spec.?ref.orValue({}).?semver.orValue('') != '' &&
          object.spec.?verify.orValue({}).?provider.orValue('') == 'cosign' &&
-         object.spec.?verify.orValue({}).?secretRef.orValue({}).?name.orValue('') == 'cosign-webgrip-pub')
+         (object.spec.?verify.orValue({}).?secretRef.orValue({}).?name.orValue('') == 'cosign-webgrip-pub' ||
+          (!has(object.spec.verify.secretRef) &&
+           object.spec.?verify.orValue({}).?matchOIDCIdentity.orValue([]).size() > 0 &&
+           object.spec.verify.matchOIDCIdentity.all(identity,
+             identity.?issuer.orValue('').startsWith('^') && identity.?issuer.orValue('').endsWith('$') &&
+             identity.?subject.orValue('').startsWith('^') && identity.?subject.orValue('').endsWith('$')))))
       message: >-
         OCIRepository resources must pin spec.ref.digest, or follow a spec.ref.semver
-        channel whose artifacts Flux verifies against the estate signing key
-        (spec.verify.provider cosign, secretRef cosign-webgrip-pub).
+        channel whose artifacts Flux verifies with cosign: against the estate signing key
+        (secretRef cosign-webgrip-pub), or keyless against anchored matchOIDCIdentity
+        issuer and subject patterns.
     # Two allowed URLs, PERMANENTLY: Forgejo is the steady-state source (ADR-0011)
     # and GitHub is the sanctioned break-glass/bootstrap source (ADR-0012) — the
     # break-glass repoint must pass admission (drilled 2026-07-14,

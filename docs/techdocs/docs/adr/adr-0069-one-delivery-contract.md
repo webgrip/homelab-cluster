@@ -108,3 +108,10 @@ with machinery that already runs here, and confines forge differences to one ada
   the RFC's "Status on 2026-10-22". Unfold ADR-0043 makes one Unfold chart, carrying Ploeg, the
   release a cluster consumes, which this contract's consumption layer allows: the registry still
   carries it and Renovate still reads it.
+* 2026-11-17 — For Unfold in the homelab, the consumption layer is no longer a Renovate automerge:
+  Flux follows the newest signed `0.x.y-rc.N` Unfold chart on GHCR itself, verifying its keyless
+  signature from the Unfold release workflow, and the chart's values pin the images (the RFC's P1c,
+  decisions D11 to D13). The Confirmation item "`grep` over the homelab's Ploeg, Unfold and runner
+  pins finds no pin Renovate does not manage" now reads: no Unfold or Ploeg pin exists, and
+  `scripts/check_release_train.py` fails if one comes back. The stable channel and the runner images
+  keep the Renovate path. Rollout signals: [Unfold rollout runbook](../runbooks/unfold-rollout.md).

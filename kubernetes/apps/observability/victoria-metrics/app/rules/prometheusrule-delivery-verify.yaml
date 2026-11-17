@@ -111,6 +111,45 @@ spec:
                 "release", "unfold", "", ""
               )
             )
+        - record: delivery:release_unhealthy:signal
+          labels:
+            signal: smoke_failing
+          expr: |
+            max by (release, workload) (
+              label_replace(
+                label_replace(
+                  (1 - probe_success{job=~"probe/observability/blackbox-unfold-(ploeg-contract|sign-in)"}) > 0,
+                  "workload", "unfold", "", ""
+                ),
+                "release", "unfold", "", ""
+              )
+            )
+
+    - name: delivery-verify.train
+      interval: 1m
+      rules:
+        - record: delivery:release_newest_candidate:info
+          expr: |
+            max by (release, version) (
+              label_replace(
+                label_replace(
+                  flux_resource_info{kind="OCIRepository", exported_namespace="flux-system", name="unfold", suspended="False"},
+                  "version", "$$1", "revision", "([^@]+)@sha256:.+"
+                ),
+                "release", "$$1", "name", "(.+)"
+              )
+            )
+        - record: delivery:release_deployed_version:info
+          expr: |
+            max by (release, version) (
+              label_replace(
+                label_replace(
+                  flux_resource_info{kind="HelmRelease", exported_namespace="ploeg", name="unfold", ready="True", suspended="False"},
+                  "version", "$$1", "revision", "(.+)"
+                ),
+                "release", "$$1", "name", "(.+)"
+              )
+            )
 
     - name: delivery-verify.alerts
       interval: 1m
@@ -131,10 +170,10 @@ spec:
               What's happening:
               - Flux moved ploeg/{{ $labels.release }} to {{ $labels.revision }} less than an hour ago, and the verify signal {{ $labels.signal }} has held for 15 minutes on workload {{ $labels.workload }}.
               - The Unfold release carries Ploeg (Unfold ADR-0043), so ploeg, ploeg-mcp, claude-runner and unfold all report under release unfold.
-              - Signals: release_not_ready (HelmRelease not Ready), replicas_unavailable (Deployment below spec), container_restarting (two or more restarts in 15 minutes), route_probe_failing (the Unfold gateway probe).
+              - Signals: release_not_ready (HelmRelease not Ready), replicas_unavailable (Deployment below spec), container_restarting (two or more restarts in 15 minutes), route_probe_failing (the Unfold gateway probe), smoke_failing (the Ploeg contract or sign-in smoke probe).
 
               Impact/risk:
-              - A candidate from the prerelease channel reached the homelab through a Renovate automerge with no person in between (ADR-0069). Agent work routed through Ploeg or followed in Unfold may be failing.
+              - Flux followed a signed candidate from the prerelease channel into the homelab with no person in between (RFC rfc-unfold-release-train, P1c). Agent work routed through Ploeg or followed in Unfold may be failing.
               - Nothing reverts the bump yet; until P4's revert step lands, the bad candidate stays until a person acts.
 
               Likely causes:
@@ -146,8 +185,95 @@ spec:
               - flux -n ploeg get helmrelease {{ $labels.release }} and kubectl -n ploeg describe deployment {{ $labels.workload }}
               - kubectl -n ploeg logs deploy/{{ $labels.workload }} --previous
               - Compare with the version that ran before: delivery:release_deployed:info{release="{{ $labels.release }}"} over the last 24h
-              - To roll back, revert the Renovate "update ploeg and unfold release" commit on main
+              - To skip this candidate, add ", !={{ $labels.revision }}" to spec.ref.semver in kubernetes/apps/ploeg/unfold/release/ocirepository.yaml (a hold, RFC D12)
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/rfc/rfc-unfold-release-train/#p4-verify"
+        - alert: UnfoldBehindLatestRelease
+          expr: |
+            delivery:release_newest_candidate:info{release="unfold"}
+            unless on (release, version)
+            delivery:release_deployed_version:info{release="unfold"}
+          for: 30m
+          labels:
+            severity: critical
+            owner: platform
+            service: delivery-verify
+          annotations:
+            summary: "Unfold {{ $labels.version }} is published but not running for 30 minutes (ploeg/unfold)"
+            description: |
+              What's happening:
+              - Flux holds the signed chart {{ $labels.version }} from the candidate channel (OCIRepository flux-system/unfold), and the HelmRelease ploeg/unfold has not been Ready on that version for 30 minutes.
+              - The homelab follows every Unfold release candidate through Flux (RFC rfc-unfold-release-train, P1c); a healthy rollout finishes within about ten minutes of the chart being stored.
+
+              Impact/risk:
+              - The homelab runs an older Unfold than the release train shipped, or none at all if the upgrade is stuck mid-way.
+              - A HelmRelease that exhausted its retries (Stalled, RetriesExceeded) stays rolled back until a person acts; on 2026-11-17 one went unnoticed for hours.
+
+              Likely causes:
+              - The upgrade failed (image pull, a pod that never turns Ready, a Kyverno denial, a failing Helm test) and was rolled back, possibly past its retries.
+              - The HelmRelease is suspended or held to an exact version on purpose (a hold, D12).
+              - The Ploeg and Unfold pair in this chart is incompatible.
+
+              First actions:
+              - flux -n ploeg get helmrelease unfold and flux -n flux-system get source oci unfold
+              - kubectl -n ploeg describe helmrelease unfold (look for RetriesExceeded, UpgradeFailed, RollbackSucceeded)
+              - To skip this candidate, add ", !={{ $labels.version }}" to spec.ref.semver in kubernetes/apps/ploeg/unfold/release/ocirepository.yaml; to retry it, flux -n ploeg reconcile helmrelease unfold --force
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/unfold-rollout/"
+        - alert: UnfoldReleaseSourceNotReady
+          expr: |
+            max by (exported_namespace, name, reason) (
+              flux_resource_info{kind="OCIRepository", exported_namespace="flux-system", name="unfold", ready!="True", suspended="False"}
+            ) == 1
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: delivery-verify
+          annotations:
+            summary: "Flux cannot read or verify the Unfold release channel, {{ $labels.reason }} (flux-system/unfold)"
+            description: |
+              What's happening:
+              - OCIRepository flux-system/unfold has not been Ready for 15 minutes (reason {{ $labels.reason }}).
+
+              Impact/risk:
+              - Flux keeps the last chart it verified, so no newer Unfold candidate reaches the homelab, and UnfoldBehindLatestRelease cannot see the newer one either.
+
+              Likely causes:
+              - The newest candidate's signature does not match the release workflow identity (spec.verify), or it is unsigned.
+              - The chart package on ghcr.io stopped being public, so Flux's anonymous tag list is refused.
+              - ghcr.io or Sigstore's trust root is unreachable.
+
+              First actions:
+              - flux -n flux-system get source oci unfold and kubectl -n flux-system describe ocirepository unfold
+              - cosign verify the tag with the identity in kubernetes/apps/ploeg/unfold/release/ocirepository.yaml
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/unfold-rollout/"
+        - alert: UnfoldSmokeFailing
+          expr: |
+            max by (endpoint) (1 - probe_success{job=~"probe/observability/blackbox-unfold-(ploeg-contract|sign-in)"}) > 0
+          for: 15m
+          labels:
+            severity: warning
+            owner: platform
+            service: delivery-verify
+          annotations:
+            summary: "Unfold smoke check {{ $labels.endpoint }} fails for 15 minutes (ploeg/unfold)"
+            description: |
+              What's happening:
+              - unfold-ploeg-contract: /healthz does not report ploegContract state compatible.
+              - unfold-sign-in: /api/auth/methods, which the sign-in page reads, does not offer the OIDC sign-in.
+
+              Impact/risk:
+              - With an incompatible Ploeg contract, Unfold refuses to start or follow agent work. Without the OIDC method, nobody can sign in.
+
+              Likely causes:
+              - The chart paired an Unfold and a Ploeg that do not serve each other's contract majors.
+              - Ploeg is down, so the contract stays unchecked.
+              - The OIDC configuration or Authentik application changed.
+
+              First actions:
+              - curl -s https://unfold.<domain>/healthz and https://unfold.<domain>/api/auth/methods
+              - kubectl -n ploeg logs deploy/unfold | grep ploeg.contract
+              - flux -n ploeg get helmrelease unfold
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/unfold-rollout/"
         - alert: DeliveryVerifySignalMissing
           expr: |
             absent(delivery:release_revision:current{release="unfold"})

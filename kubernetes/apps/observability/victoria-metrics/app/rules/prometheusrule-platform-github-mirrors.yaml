@@ -38,14 +38,14 @@ spec:
               - Public readers and GitHub-based consumers see an old version.
 
               Likely causes:
-              - The GitHub token behind the Forgejo push mirror expired or lost access (this stopped every mirror from 2026-07-25 to 2026-10-04)
+              - The push mirror still authenticates with a person's token that expired (2026-07-25, 2026-11-17), or its SSH deploy key was removed on GitHub
               - GitHub push protection rejected a commit
               - The push mirror was deleted, or a force-push on GitHub diverged the branch
 
               First actions:
               - Open the GitHub mirrors dashboard and read the error and last-sync columns for the repository
               - In Forgejo, Settings, Repository, Mirror settings of webgrip/{{ $labels.repository }}: read the last error and press Synchronize now
-              - Follow the runbook for an expired mirror token
+              - Follow the runbook section on push mirror credentials
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"
 
@@ -66,7 +66,7 @@ spec:
               - New commits and tags stop reaching GitHub; GitHubMirrorStale follows once the heads differ.
 
               Likely causes:
-              - The mirror's GitHub token expired, was revoked, or lacks the workflow scope for a changed workflow file
+              - A person's token behind a not-yet-converted mirror expired, or the SSH deploy key was removed on GitHub (the reconciler registers it again within 15 minutes)
               - GitHub push protection blocked a commit that contains a secret
               - The GitHub repository was renamed, archived or deleted
 
@@ -152,6 +152,31 @@ spec:
 
               First actions:
               - GitHub, organisation settings, GitHub Apps, webgrip-gitops, Configure: add the repository and accept pending permissions
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"
+
+        - alert: GitHubMirrorDeployKeyAccessMissing
+          expr: last_over_time(github_mirror_deploy_key_access{job="github-mirrors"}[1h]) == 0
+          for: 1h
+          labels:
+            severity: warning
+            owner: platform
+            service: github-mirrors
+          annotations:
+            summary: "The webgrip-gitops App cannot manage deploy keys of webgrip/{{ $labels.repository }} (github-mirrors/{{ $labels.repository }})"
+            description: |
+              What's happening:
+              - GitHub refused an installation token with Administration write for webgrip/{{ $labels.repository }}, so the reconciler cannot give the Forgejo push mirror its SSH deploy key.
+
+              Impact/risk:
+              - The repository keeps pushing with whatever credential its push mirror already has; a person's token there stops every push when it expires (2026-07-25, 2026-11-17).
+
+              Likely causes:
+              - The App lacks the Administration read and write permission, or the new permission was not accepted on the installation
+              - The repository is not in the webgrip-gitops installation
+
+              First actions:
+              - GitHub, organisation settings, GitHub Apps, webgrip-gitops: grant Administration read and write and accept it on the installation
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/github-mirrors/"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/platform-github-mirrors"
 

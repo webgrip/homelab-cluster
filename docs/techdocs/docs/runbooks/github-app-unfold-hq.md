@@ -45,7 +45,7 @@ account stays the current one for now.
 | Renovate | `kubernetes/apps/renovate/renovate-operator/jobs/github-app-token-unfold-hq.cronjob.yaml`, `unfold-hq.yaml`, `configmap-unfold-hq.yaml` | the minter logs `app credentials absent` and exits 0; the RenovateJob reads its token Secret as optional and discovers nothing; `GitHubAppUnfoldHqBotPending` (info) |
 | Secrets bridge | five new targets in `kubernetes/apps/github-secrets-bridge/github-secrets-bridge/app/targets.json` | `unfold-hq/unfold` targets: `app credentials absent`, `GitHubAppUnfoldHqPending` (info). `ploeg-hq/ploeg` bot targets: `source absent`, `GitHubSecretsBridgeSourcePending` (info) |
 | Image signatures | `kubernetes/apps/kyverno/policies/app/image-verify-unfold-hq-audit.yaml` | matched no running image until PR 3; Audit only |
-| No push mirror | `unfold-distribution.job.yaml` removed from `forgejo-actions-secrets`; `scripts/forgejo-sync.sh --only mirror` skips `unfold` | live: nothing in this repository creates a push mirror to `github.com/webgrip/unfold` again |
+| No push mirror | `unfold-distribution.job.yaml` removed from `forgejo-actions-secrets`; `scripts/forgejo-sync.sh --only mirror` is retired, and the `github-mirrors` reconciler only creates mirrors the model names (`webgrip/unfold` is not modelled) | live: nothing in this repository creates a push mirror to `github.com/webgrip/unfold` again |
 
 Why the push mirror had to go first: GitHub redirects git and API calls for a transferred
 repository. A Forgejo push mirror to `ssh://git@github.com/webgrip/unfold.git` would follow that
@@ -53,8 +53,10 @@ redirect and force-push stale Forgejo state over `unfold-hq/unfold`, and its dep
 the repository, so the push would be accepted. The removed Job recreated that mirror and its
 deploy key whenever they were missing. Its other step, `OVSX_PAT` on Forgejo `webgrip/unfold`, is
 already bridged hourly by `forgejo-actions-secrets.cronjob.yaml` (`VSCODE_EXTENSION_REPO`), so
-nothing else was lost. The `github-mirrors` reconciler never creates mirrors: it reads Forgejo's
-push mirrors and copies missing releases to GitHub. It does write releases to the tracked
+nothing else was lost. Since [ADR-0091](../adr/adr-0091-github-push-mirrors-push-with-a-deploy-key-the-reconciler-registers.md)
+the `github-mirrors` reconciler creates push mirrors, but only for entries the model names with
+`mirror_of`, and it refuses one whose GitHub repository answers with another full name. It also
+writes releases to the tracked
 `webgrip/unfold` entry, which is why PR 2 removes that entry on the same day as the transfer.
 
 The existing push mirror on Forgejo is still live and keeps pushing to `github.com/webgrip/unfold`
@@ -234,7 +236,7 @@ the GitHub and Forgejo UIs; step 5 is PR 2.
 | Switch `release_consumers` of `ploeg-hq/ploeg` to `[{"forge":"github","url":"https://github.com","repo":"unfold-hq/unfold","base":"development","recipe":"scripts/consume-ploeg-release.sh","message":"fix(ploeg): update Ploeg to {version}","merge":"by-consumer"}]` | `repos.yaml`, entry `ploeg-hq/ploeg` | Ploeg's release opens the pin PR on GitHub with the `unfold-hq-bot` token. Needs the matching change in `ploeg-hq/ploeg`'s workflow (`actions/create-github-app-token`): merged in [ploeg-hq/ploeg#415](https://github.com/ploeg-hq/ploeg/pull/415) and in releases from `v0.2.0-rc.106` |
 | Point the Unfold DNS source at the pull mirror: `unfoldhq-dev|webgrip/unfold-mirror|development|apps/site/ops/dns` | `kubernetes/apps/forgejo/forgejo-actions-secrets/app/dns-reconciler.cronjob.yaml` | the archived repository stops changing; the mirror follows GitHub |
 | Two validator test cases that mutated the `unfold` entry's branch rules mutate `semantic-release-config` instead: the archived entry is skipped by the push and Renovate-gate checks, so the cases would no longer fail for the reason they name | `scripts/test-validate-repo-config-model.sh` | the test keeps testing what it says |
-| Keep `GITHUB_IS_SOURCE_REPOS="unfold"` in `scripts/forgejo-sync.sh`: `--all` still lists an archived repository | `scripts/forgejo-sync.sh` | no change |
+| `GITHUB_IS_SOURCE_REPOS="unfold"` guarded `forgejo-sync.sh --only mirror`, which is retired (ADR-0091); the guard went with it | `scripts/forgejo-sync.sh` | no change |
 
 The pull mirror itself is created in the Forgejo UI, the way `webgrip/ploeg-mirror` was: **New
 Migration → GitHub**, URL `https://github.com/unfold-hq/unfold.git`, owner `webgrip`, name
@@ -409,7 +411,7 @@ through the bot password (`botPasswordSecret`) on Forgejo 15 or later. This clus
 gives Forgejo both: `agent-builder-password` from `forgejo/agent-builder-password`, and Forgejo
 `15.0.10`.
 
-Before a release with ADR-0192 was pinned, the targets stayed on Forgejo `webgrip/unfold`,
+Before a release with ADR-0192 ran here, the targets stayed on Forgejo `webgrip/unfold`,
 which is archived, so Runs there could not push.
 
 Report a problem is a separate change. Unfold's `github` task provider files issues since
@@ -476,7 +478,7 @@ Delete the `.pem` and the secret file afterwards.
 
 ### Wiring for two forges
 
-This wiring merges in one pull request with the pin of an Unfold release whose Ploeg implements
+This wiring merges only once the Unfold release running here carries a Ploeg that implements
 ADR-0192, and only after the key is in OpenBao ([order](#order)).
 
 | Piece | Where |
@@ -513,8 +515,10 @@ this is why the key goes in before the merge.
 
 1. Create the App and store its key ([above](#create-the-app), [install and store](#install-and-store)).
 2. Release Ploeg with ADR-0192 ([ploeg-hq/ploeg#423](https://github.com/ploeg-hq/ploeg/pull/423)), and an Unfold release that pins it.
-3. Add the final commit to the branch: the Unfold release pin (chart in `ocirepository.yaml`,
-   images in `helmrelease.yaml`, as Renovate writes it).
+3. Flux follows Unfold's signed candidate channel (`kubernetes/apps/ploeg/unfold/release/`,
+   [unfold-rollout](unfold-rollout.md)), so no pin commit is needed: wait until the chart version
+   of `HelmRelease/unfold` is that Unfold release or later. Merging before it repeats the failure
+   #1082 reverted, because older workers clone every target from the Forgejo URL.
 4. `kubectl -n ploeg get externalsecret unfold-hq-ploeg-app` is `Ready`; merge.
 
 #### Verify after rollout

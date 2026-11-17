@@ -17,6 +17,9 @@ METRIC_PREFIX = "github_mirror_"
 PAGE_SIZE_FORGEJO = 50
 PAGE_SIZE_GITHUB = 100
 MAX_PAGES = 200
+CONTENTS_WRITE = {"contents": "write"}
+ADMINISTRATION_WRITE = {"administration": "write"}
+DEPLOY_KEY_TITLE = "forgejo push mirror"
 
 
 class CredentialsAbsent(Exception):
@@ -322,6 +325,29 @@ class Forgejo:
             raise ReconcilerFailure(f"Forgejo raw {repository}/{path}@{ref} returned {status}")
         return raw.decode()
 
+    def write(self, method, path, body=None):
+        status, response = http_json(method, f"{self.api}{path}", headers=self.headers(), body=body)
+        if status not in (200, 201, 204):
+            raise ReconcilerFailure(f"Forgejo {method} {path} returned {status}")
+        return response
+
+    def create_ssh_push_mirror(self, repository, remote_address, interval):
+        created = self.write("POST", f"/repos/{self.owner}/{repository}/push_mirrors", body={
+            "remote_address": remote_address,
+            "use_ssh": True,
+            "sync_on_commit": True,
+            "interval": interval,
+        })
+        if not created or not (created.get("public_key") or "").strip() or not created.get("remote_name"):
+            raise ReconcilerFailure(f"Forgejo created a push mirror of {repository} without an SSH public key")
+        return created
+
+    def delete_push_mirror(self, repository, remote_name):
+        self.write("DELETE", f"/repos/{self.owner}/{repository}/push_mirrors/{urllib.parse.quote(remote_name, safe='')}")
+
+    def sync_push_mirrors(self, repository):
+        self.write("POST", f"/repos/{self.owner}/{repository}/push_mirrors-sync")
+
     def push_mirrors(self, repository):
         if not self.token:
             return None
@@ -354,11 +380,38 @@ class Forgejo:
         return target, written
 
 
+GITHUB_REMOTE = re.compile(
+    r"^(?:[a-z][a-z0-9+.-]*://)?(?:[^@/]+@)?(?:ssh\.)?github\.com(?::\d*)?[:/]+(?P<path>[^?#]+?)(?:\.git)?/*$",
+    re.IGNORECASE)
+
+
+def github_remote_path(address):
+    match = GITHUB_REMOTE.match((address or "").strip())
+    return match.group("path").lower() if match else None
+
+
+def github_mirrors_of(push_mirrors, github_owner, repository):
+    wanted = f"{github_owner}/{repository}".lower()
+    return [mirror for mirror in push_mirrors if github_remote_path(mirror.get("remote_address")) == wanted]
+
+
+def is_keyed(mirror):
+    return bool((mirror.get("public_key") or "").strip())
+
+
 def github_mirror_of(push_mirrors, github_owner, repository):
-    wanted = f"github.com/{github_owner}/{repository}".lower()
-    matches = [mirror for mirror in push_mirrors
-               if (mirror.get("remote_address") or "").lower().removesuffix(".git").endswith(wanted)]
-    return matches[0] if matches else None
+    matches = github_mirrors_of(push_mirrors, github_owner, repository)
+    keyed = [mirror for mirror in matches if is_keyed(mirror)]
+    preferred = keyed or matches
+    return preferred[0] if preferred else None
+
+
+def has_pushed_cleanly(mirror):
+    return timestamp_seconds(mirror.get("last_update")) > 0 and not (mirror.get("last_error") or "").strip()
+
+
+def key_material(public_key):
+    return " ".join((public_key or "").split()[:2])
 
 
 class GitHubApp:
@@ -369,14 +422,15 @@ class GitHubApp:
         self.installation_id = installation_id
         self.private_key = private_key
 
-    def repository(self, name):
+    def repository(self, name, permissions=CONTENTS_WRITE):
         app_jwt = github_app_jwt(self.app_id, self.private_key, time.time())
         status, body = http_json(
             "POST", f"{self.api}/app/installations/{self.installation_id}/access_tokens",
             headers=github_headers(app_jwt),
-            body={"repositories": [name], "permissions": {"contents": "write"}})
+            body={"repositories": [name], "permissions": dict(permissions)})
         if status in (404, 422):
-            raise NoAppAccess(f"the App installation does not cover {self.owner}/{name} with contents write ({status})")
+            granted = ", ".join(f"{key} {value}" for key, value in sorted(permissions.items()))
+            raise NoAppAccess(f"the App installation does not cover {self.owner}/{name} with {granted} ({status})")
         if status != 201 or not body or "token" not in body:
             raise ReconcilerFailure(f"GitHub refused an installation token for {self.owner}/{name} ({status})")
         forbid_in_output(body["token"])
@@ -456,6 +510,17 @@ class GitHubRepository:
         self.call("DELETE", f"/releases/{release_id}")
         self.created_release_ids.discard(release_id)
 
+    def ensure_deploy_key(self, public_key):
+        wanted = key_material(public_key)
+        if not wanted:
+            raise ReconcilerFailure(f"no public key to register on {self.owner}/{self.name}")
+        if any(key_material(key.get("key")) == wanted for key in self.pages("/keys")):
+            return False
+        status, _ = self.call("POST", "/keys", body={"title": DEPLOY_KEY_TITLE, "key": wanted, "read_only": False})
+        if status != 201:
+            raise ReconcilerFailure(f"GitHub refused the deploy key on {self.owner}/{self.name} ({status})")
+        return True
+
     def revoke(self):
         http_json("DELETE", f"{self.api}/installation/token", headers=github_headers(self.token))
 
@@ -481,6 +546,60 @@ def copy_release(github, forgejo, release, make_latest, scratch, max_asset_bytes
         raise
 
 
+def create_keyed_mirror(config, forgejo, admin, github_repository, forgejo_repository):
+    remote = config["github_ssh_remote"].format(owner=config["github_owner"], repository=github_repository)
+    created = forgejo.create_ssh_push_mirror(forgejo_repository, remote, config["push_mirror_interval"])
+    try:
+        admin.ensure_deploy_key(created["public_key"])
+    except ReconcilerFailure:
+        forgejo.delete_push_mirror(forgejo_repository, created["remote_name"])
+        raise
+    forgejo.sync_push_mirrors(forgejo_repository)
+    log(f"{forgejo_repository}: created an SSH push mirror to {remote} and registered its deploy key")
+
+
+def retire_other_mirrors(forgejo, forgejo_repository, keep, mirrors):
+    retired = 0
+    for mirror in mirrors:
+        if mirror is keep or not mirror.get("remote_name"):
+            continue
+        forgejo.delete_push_mirror(forgejo_repository, mirror["remote_name"])
+        retired += 1
+        log(f"{forgejo_repository}: removed push mirror {mirror['remote_name']}; the SSH mirror {keep['remote_name']} pushes cleanly")
+    return retired
+
+
+def converge_push_mirror(config, forgejo, app, github_repository, forgejo_repository, push_mirrors, metrics):
+    labels = {"repository": forgejo_repository}
+    mirrors = github_mirrors_of(push_mirrors, config["github_owner"], github_repository)
+    try:
+        admin = app.repository(github_repository, ADMINISTRATION_WRITE)
+    except NoAppAccess as missing:
+        log(f"{forgejo_repository}: {missing}; push mirror left as it is")
+        metrics.set("deploy_key_access", labels, 0)
+        return push_mirrors
+    metrics.set("deploy_key_access", labels, 1)
+    try:
+        target = admin.get("")
+        expected_name = f"{config['github_owner']}/{github_repository}"
+        if (target.get("full_name") or "").lower() != expected_name.lower():
+            raise ReconcilerFailure(f"GitHub answers {expected_name} with {target.get('full_name')}: the repository moved, so no push mirror is touched")
+        if target.get("archived"):
+            return push_mirrors
+        keyed = [mirror for mirror in mirrors if is_keyed(mirror)]
+        if not keyed:
+            create_keyed_mirror(config, forgejo, admin, github_repository, forgejo_repository)
+            return forgejo.push_mirrors(forgejo_repository) or []
+        keep = keyed[0]
+        if admin.ensure_deploy_key(keep["public_key"]):
+            log(f"{forgejo_repository}: registered the deploy key of push mirror {keep.get('remote_name')} again")
+        if has_pushed_cleanly(keep) and retire_other_mirrors(forgejo, forgejo_repository, keep, mirrors):
+            return forgejo.push_mirrors(forgejo_repository) or []
+        return push_mirrors
+    finally:
+        admin.revoke()
+
+
 def reconcile_mirror(config, forgejo, app, github_repository, forgejo_repository, metrics, copy_budget):
     labels = {"repository": forgejo_repository}
     metrics.set("tracked", labels, 1)
@@ -490,12 +609,18 @@ def reconcile_mirror(config, forgejo, app, github_repository, forgejo_repository
     source_head = forgejo.get(f"/repos/{forgejo.owner}/{forgejo_repository}/branches/{urllib.parse.quote(source_branch, safe='')}")["commit"]["id"]
 
     push_mirrors = forgejo.push_mirrors(forgejo_repository)
+    if push_mirrors is not None and config["manage_push_mirrors"]:
+        push_mirrors = converge_push_mirror(config, forgejo, app, github_repository, forgejo_repository,
+                                            push_mirrors, metrics)
     if push_mirrors is None:
         metrics.set("push_status_known", labels, 0)
     else:
         metrics.set("push_status_known", labels, 1)
         mirror = github_mirror_of(push_mirrors, config["github_owner"], github_repository)
+        mirrors = github_mirrors_of(push_mirrors, config["github_owner"], github_repository)
         metrics.set("push_mirror_configured", labels, 1 if mirror else 0)
+        metrics.set("ssh_push_mirror", labels, 1 if mirror and is_keyed(mirror) else 0)
+        metrics.set("token_push_mirrors", labels, sum(1 for each in mirrors if not is_keyed(each)))
         if mirror:
             metrics.set("error", labels, 1 if (mirror.get("last_error") or "").strip() else 0)
             metrics.set("last_update_timestamp_seconds", labels, timestamp_seconds(mirror.get("last_update")))
@@ -639,6 +764,9 @@ def read_config():
         "copy_budget": int(env("MAX_RELEASE_COPIES_PER_RUN", "25")),
         "max_asset_bytes": int(env("MAX_ASSET_BYTES", str(1 << 30))),
         "scratch": env("SCRATCH_DIR", tempfile.gettempdir()),
+        "manage_push_mirrors": env("MANAGE_PUSH_MIRRORS", "true") == "true",
+        "github_ssh_remote": env("GITHUB_SSH_REMOTE", "ssh://git@ssh.github.com:443/{owner}/{repository}.git"),
+        "push_mirror_interval": env("PUSH_MIRROR_INTERVAL", "8h0m0s"),
     }
 
 

@@ -1,7 +1,7 @@
 # Keep an external mirror as the cold-bootstrap + break-glass GitOps source
 
 * Status: accepted
-* Date: 2026-10-27
+* Date: 2026-11-17
 
 Technical Story: [RFC: Cutting the GitOps umbilical](../rfc/rfc-flux-forgejo-source.md)
 
@@ -70,3 +70,4 @@ Break-glass rehearsed 2026-07-14 04:01Z: patch FluxInstance → GitHub URL, Read
 * 2026-10-04 — the GitHub copy of `main` is stale at 01114137 (2026-07-25): the push-mirror stopped without an alert, the staleness alerting this record requires is still unbuilt (VIK-227) (logged in audit 2026-10-04)
 * 2026-10-04 — mirrors repaired: the GitHub token behind every push-mirror had stopped working on 2026-07-25; the mirrors were re-created with a new token carrying `repo` + `workflow` (the `workflows` repo also needed `workflow`). homelab-cluster was additionally blocked by GitHub push protection on a Google OAuth broker secret committed in 83edc9f7 and public in history since 2026-09-14; the secret was rotated and the old one deleted before the block was lifted. GitHub `main` matches Forgejo again
 * 2026-10-27 — the staleness alerting is built ([ADR-0085](adr-0085-github-push-mirrors-are-tracked-in-the-model-and-reconciled-for-drift-and-releases.md)): the ten live push mirrors are in the repo-config model, CronJob `github-config/github-mirrors` compares heads, tags, releases and Forgejo push-mirror errors every 15 minutes, and `GitHubMirrorStale` / `GitHubMirrorError` alert ([runbook](../runbooks/github-mirrors.md)). Forgejo releases are copied to GitHub as well
+* 2026-11-17 — the mirror token failed again (`unfold-cluster`, `infrastructure`: `Invalid username or token`); GitHub `main` of `unfold-cluster` was moved forward by hand. [ADR-0091](adr-0091-github-push-mirrors-push-with-a-deploy-key-the-reconciler-registers.md) (proposed) replaces the person's token with a deploy key per mirror that the `github-mirrors` reconciler registers

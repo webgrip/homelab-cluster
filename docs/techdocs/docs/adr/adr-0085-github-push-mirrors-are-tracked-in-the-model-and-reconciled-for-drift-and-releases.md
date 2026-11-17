@@ -1,6 +1,6 @@
 ---
 status: accepted
-date: 2026-10-27
+date: 2026-11-17
 decision-makers: Ryan Grippeling
 ---
 
@@ -64,3 +64,4 @@ Chosen option: "Mirrors are tracked in the model, not managed", because it puts 
 * 2026-10-27 — decided by Ryan Grippeling: tracked, not managed; releases copied, never changed or deleted; the App gets Contents read and write on the ten mirrors.
 * 2026-10-27 — the four copies left out above are modelled after all (owner): `discord-moon`, `techdocs-builder` and `techdocs-runner` as archived Forgejo sources with archived GitHub mirrors, and `webgrip.nl` as an archived GitHub entry without `mirror_of`. They are not in the `webgrip-gitops` installation yet, so their GitHub entries carry `managed: false`, a new model field that keeps an archived entry out of `tofu-github` until the installation covers it ([runbook](../runbooks/github-mirrors.md#mirrormodeldrift-info)).
 * 2026-10-27 — amended by [ADR-0086](adr-0086-a-repository-states-what-it-is-and-its-protection-follows.md): a GitHub entry no longer names `profile: baseline`; an active mirror is `{forge: github, mirror_of: <name>}`, and the three archived Forgejo sources above derive `baseline` from `settings.archived` instead of naming it.
+* 2026-11-17 — amended by [ADR-0091](adr-0091-github-push-mirrors-push-with-a-deploy-key-the-reconciler-registers.md) (proposed): the reconciler creates each tracked mirror as a Forgejo SSH push mirror, registers its key as a GitHub deploy key with an `administration: write` token, and removes the token mirror once the SSH mirror pushes. Item 4 no longer holds that the job only reads Forgejo, and the follow-up above is done by the reconciler instead of a tofu `restapi` resource. Trigger: `unfold-cluster` and `infrastructure` failed with `Invalid username or token` on 2026-11-17.

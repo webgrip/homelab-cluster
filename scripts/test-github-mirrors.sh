@@ -79,9 +79,52 @@ mutate mirror-error-ignored test_push_mirror_status_is_exported \
 mutate budget-ignored test_copy_budget_copies_the_oldest_first \
   'if copied >= copy_budget or not writable:' \
   'if not writable:'
-mutate token-not-scoped test_installation_tokens_are_scoped_to_one_repository_and_contents \
-  'body={"repositories": [name], "permissions": {"contents": "write"}})' \
+mutate token-not-scoped test_installation_tokens_are_scoped_to_one_repository_and_one_permission \
+  'body={"repositories": [name], "permissions": dict(permissions)})' \
   'body={"repositories": [name]})'
+mutate administration-token-asks-for-everything test_installation_tokens_are_scoped_to_one_repository_and_one_permission \
+  'ADMINISTRATION_WRITE = {"administration": "write"}' \
+  'ADMINISTRATION_WRITE = {"administration": "write", "contents": "write"}'
+mutate token-mirror-removed-before-the-ssh-mirror-pushed test_a_token_mirror_is_replaced_by_a_keyed_ssh_mirror_once_that_pushes \
+  'if has_pushed_cleanly(keep) and retire_other_mirrors(' \
+  'if retire_other_mirrors('
+mutate token-mirror-removed-while-the-ssh-mirror-fails test_a_failing_ssh_mirror_keeps_the_token_mirror \
+  'return timestamp_seconds(mirror.get("last_update")) > 0 and not (mirror.get("last_error") or "").strip()' \
+  'return timestamp_seconds(mirror.get("last_update")) > 0'
+mutate token-mirror-never-retired test_a_token_mirror_is_replaced_by_a_keyed_ssh_mirror_once_that_pushes \
+  'if has_pushed_cleanly(keep) and retire_other_mirrors(' \
+  'if False and retire_other_mirrors('
+mutate deploy-key-read-only test_a_token_mirror_is_replaced_by_a_keyed_ssh_mirror_once_that_pushes \
+  '"key": wanted, "read_only": False}' \
+  '"key": wanted, "read_only": True}'
+mutate mirror-not-pushed-on-commit test_a_token_mirror_is_replaced_by_a_keyed_ssh_mirror_once_that_pushes \
+  '"sync_on_commit": True,' \
+  '"sync_on_commit": False,'
+mutate first-push-not-triggered test_a_token_mirror_is_replaced_by_a_keyed_ssh_mirror_once_that_pushes \
+  '    forgejo.sync_push_mirrors(forgejo_repository)
+    log(' \
+  '    log('
+mutate deleted-deploy-key-left-missing test_a_deleted_deploy_key_is_registered_again \
+  'if admin.ensure_deploy_key(keep["public_key"]):' \
+  'if False:'
+mutate refused-key-leaves-an-orphan-mirror test_a_refused_deploy_key_removes_the_new_mirror_and_fails_the_check \
+  '    except ReconcilerFailure:
+        forgejo.delete_push_mirror(forgejo_repository, created["remote_name"])
+        raise' \
+  '    except ReconcilerFailure:
+        raise'
+mutate mirror-changed-without-deploy-key-access test_without_deploy_key_access_the_push_mirror_is_left_alone \
+  '        metrics.set("deploy_key_access", labels, 0)
+        return push_mirrors' \
+  '        metrics.set("deploy_key_access", labels, 0)
+        create_keyed_mirror(config, forgejo, app.repository(github_repository), github_repository, forgejo_repository)
+        return push_mirrors'
+mutate mirror-follows-a-transferred-repository test_a_repository_that_moved_on_github_gets_no_push_mirror \
+  'if (target.get("full_name") or "").lower() != expected_name.lower():' \
+  'if False:'
+mutate token-mirror-count-dropped test_a_token_mirror_is_replaced_by_a_keyed_ssh_mirror_once_that_pushes \
+  'metrics.set("token_push_mirrors", labels, sum(1 for each in mirrors if not is_keyed(each)))' \
+  'pass'
 mutate absent-credentials-exit-nonzero test_absent_app_credentials_exit_zero_and_touch_nothing_on_github \
   '            metrics.set("reconciler_last_success_timestamp_seconds", {}, int(time.time()))
             return 0' \

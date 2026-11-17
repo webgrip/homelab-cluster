@@ -129,15 +129,11 @@ operator is down. Neither fails the release; the hourly run picks the update up 
 
 ## Unfold releases reach the homelab
 
-An Unfold release is one chart that carries the Ploeg chart it was tested with
-([Unfold ADR-0043](https://forgejo.webgrip.dev/webgrip/unfold/src/branch/development/docs/adr/adr-0043-an-unfold-release-is-one-chart-that-carries-the-ploeg-it-was-tested-with.md)),
-published only after all its images. The hourly `webgrip-forgejo` run opens or updates the
-`ploeg-unfold-release` PR, and that group's `platformAutomerge: true` lets Forgejo merge it on its last
-required `e2e /` status. That is safe only while homelab `main` requires the `e2e / Lint & static
-validation` context; `scripts/validate-repo-config-model.sh` fails when it stops doing so. For a
-faster pickup, force a run (above). The Harbor release relay that triggered runs on each push was
-removed on 2026-10-20, and its webhook policy `unfold-release-renovate` was deleted from Harbor
-project `webgrip` on 2026-10-22.
+Not through Renovate since 2026-11-17. Flux follows the newest signed Unfold release candidate on
+GHCR itself, and one `.renovaterc.json5` rule disables Renovate for `kubernetes/apps/ploeg/unfold/**`
+([RFC P1c](../rfc/rfc-unfold-release-train.md#p1c-switched-on-2026-11-17)). How a rollout reports
+itself and how to hold a candidate back: [Unfold rollout](unfold-rollout.md). Until then the hourly
+`webgrip-forgejo` run opened a self-merging `ploeg-unfold-release` PR.
 
 ## All PRs red at once: OCI digest drift
 
