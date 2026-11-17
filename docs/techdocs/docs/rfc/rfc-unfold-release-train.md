@@ -209,6 +209,26 @@ image automation, producer-opened PRs, a promotion tool such as Kargo, an event 
 Implementation runs in a separate work stream; its first slice is the homelab branch
 `fix/renovate-ploeg-unfold-release`.
 
+#### Amendment 2026-11-17: a release watcher triggers `webgrip/unfold-cluster`
+
+Decided by the owner on 2026-11-17 (design "B′"). Unfold staging runs as `unfold-staging` on the
+rented cluster in `webgrip/unfold-cluster`, and Renovate opens and merges the "Unfold release" pull
+request there (identity-and-access G-01 amendment of the same day). That hop waited for the hourly
+`webgrip-forgejo` run, the wait P1b removed for the other hops. Unfold releases on GitHub, which
+cannot reach the LAN-only schedule endpoint, and D7's Harbor push webhook does not apply because
+the chart goes to `ghcr.io`. The homelab's own Unfold moves to the candidate channel of P1c in a
+separate change; the watcher does not touch it.
+
+| # | Decision |
+| --- | --- |
+| D15 | CronJob `renovate/unfold-release-watch` polls `unfold-hq/unfold` releases every two minutes and schedules `webgrip/unfold-cluster` on `webgrip-forgejo` once the new candidate's chart is on `ghcr.io` |
+| D16 | A trigger counts only when a Renovate run of the project starts after it; until then it repeats every two minutes while the project is not running, for at most an hour. Operator 5.6.0 still drops a schedule for a running project and answers 200, as P1b found for 5.2.0 |
+| D17 | The owner always learns how a staging rollout ended: the watcher logs `staging_deployed`, or `staging_behind` from 45 minutes after the chart (alert `UnfoldStagingBehindRelease`); `webgrip/unfold-cluster` adds a Flux notification for every upgrade, a lag alert and a post-upgrade smoke test that rolls a failed candidate back |
+
+Measured latency is in the watcher's log lines (`chart_after_publish_seconds`,
+`run_after_publish_seconds`, `deployed_after_publish_seconds`). Mechanics, alerts and access:
+[Run Renovate when an Unfold release candidate is published](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/kubernetes/apps/renovate/renovate-operator/jobs/README.md#run-renovate-when-an-unfold-release-candidate-is-published).
+
 ### P1c the homelab follows the candidate channel
 
 Accepted 2026-10-24 (D11 to D13). **Retires D7 for the homelab hop**: it is the registry-following
