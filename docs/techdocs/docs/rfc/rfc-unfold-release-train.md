@@ -295,6 +295,46 @@ Decided by the owner on 2026-10-24:
 | --- | --- |
 | D14 | Ploeg's pin PRs into Unfold stop merging themselves. Ploeg's release still opens them (D5); Unfold's release train merges the newest green pin PR first, closes the ones it supersedes, and then checks and releases that head. Other consumers keep merge-when-green |
 
+### P1c switched on (2026-11-17)
+
+The owner switched P1c on on 2026-11-17. The Renovate pull request for Unfold is gone; what stood in
+its way is replaced by train checks, signature verification, a smoke check and alerts. What landed
+differs from the proposal above in four places, each forced by what the registry and the release do
+today:
+
+| Proposal | What landed | Why |
+| --- | --- | --- |
+| `url` through Harbor's GHCR proxy | `oci://ghcr.io/unfold-hq/charts/unfold`, read with the GHCR token Harbor's proxy already uses (OpenBao `harbor/registry-proxy`), in `flux-system` | Harbor's proxy cache answers a tag list with the tags it has cached: on 2026-11-17 it listed `0.4.0-rc.132` to `rc.136` and nothing older, so Flux would only see a candidate after something else pulled it. The images still come through the proxy, by digest |
+| `spec.verify` with the OpenBao Transit public key | keyless: `matchOIDCIdentity` with issuer `https://token.actions.githubusercontent.com` and the `on_release_published.yml` workflow of `unfold-hq/unfold` at `refs/tags/unfold-v0.x.y-rc.N` | Since Unfold moved to GitHub its release signs keyless with GitHub Actions OIDC; `cosign verify` with that identity passed for `0.4.0-rc.136` through the proxy and failed for any other workflow. The Kyverno rule `flux-governance-enforce` admits a semver OCIRepository with keyless verification only when every issuer and subject pattern is anchored |
+| `semver: ">=0.4.0-0"` with `semverFilter: "-rc\\."` | `semver: ">=0.0.0-0 <1.0.0-0"` with `semverFilter: '^0\.\d+\.\d+-rc\.\d+$'` | since `0.4.0-rc.132` every release also publishes `-amd64` and `-arm64` tags, which semver ranks above the multi-architecture tag (PR #1079 pinned arm64 builds on 2026-11-17 and the upgrade stalled); the anchored filter keeps only `0.x.y-rc.N` |
+| the lockstep check loses its Unfold entries | `scripts/check_release_lockstep.py` is replaced by `scripts/check_release_train.py` | the check now guards the train itself: a semver channel with no exact pin, a filter that refuses per-architecture tags, anchored signature identities, no image pin in the HelmRelease, and still no standalone Ploeg release |
+
+The HelmRelease sets only the Harbor proxy repositories (`image.repository`,
+`workspaceAgentImage.repository`); the chart's stamped tag and digest decide both images, so chart and
+images move together by construction. The `ploeg-unfold-release` Renovate group, the Unfold image
+regex manager and the Ploeg/Unfold prerelease rules are removed, and one rule disables Renovate for
+`kubernetes/apps/ploeg/unfold/**`. No Ploeg-only pin remains: Ploeg's images come from the chart it
+carries.
+
+How the owner knows a rollout went well, in the [Unfold rollout runbook](../runbooks/unfold-rollout.md):
+
+- **Flux events.** Alert `flux-system/unfold-rollout` sends the OCIRepository's and HelmRelease's
+  events to Alertmanager through Flux's `alertmanager` provider; failures reach ntfy `alerts-critical`
+  at urgent priority, successes `alerts-warning`. The Grafana annotations now include the HelmRelease.
+  On 2026-11-17 a stalled HelmRelease (`RetriesExceeded`) fired `FluxHelmReleaseNotReady` and
+  `DeliveryCandidateUnhealthy` on the warning leg and still went unnoticed for hours.
+- **Train alerts.** `UnfoldBehindLatestRelease` (critical) fires when the stored signed chart has not
+  been the HelmRelease's Ready version for 30 minutes, from flux-operator's `flux_resource_info` alone;
+  `UnfoldReleaseSourceNotReady` fires when Flux cannot list or verify the channel.
+- **Smoke check.** Two blackbox probes check that `/healthz` reports the Ploeg contract `compatible`
+  and that `/api/auth/methods` offers the OIDC sign-in; they feed `DeliveryCandidateUnhealthy` as
+  `smoke_failing` and `UnfoldSmokeFailing`. The HelmRelease runs the chart's Helm tests with
+  `ignoreFailures: false`, so a failing test rolls the upgrade back, but the Unfold chart has no test
+  hook yet: until it ships one, the smoke check alerts and does not roll back.
+
+P4 slice 2 now writes a hold, as decided under P1c, and its design text above about reverting a
+Renovate commit and `check_release_lockstep.py` is historical.
+
 ## Risks
 
 - **More tags.** Every releasable Ploeg merge is a candidate; ADR-0028 already treats candidates as
