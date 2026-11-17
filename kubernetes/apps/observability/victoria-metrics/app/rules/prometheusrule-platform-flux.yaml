@@ -126,3 +126,42 @@ spec:
                 exclusion list in this rule and note why.
             runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/#flux"
             dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"
+
+        - alert: TofuTerraformNotReady
+          expr: |
+            max by (terraform_namespace, terraform_name) (
+              tofu_terraform_status_condition{
+                type="Ready",
+                status!="True",
+                reason!="TerraformAppliedSucceed",
+                terraform_namespace!~"repo-config|github-config"
+              }
+            ) == 1
+          for: 30m
+          labels:
+            severity: warning
+            owner: platform
+            service: tofu-controller
+          annotations:
+            summary: "Terraform object not Ready for 30m ({{$labels.terraform_namespace}}/{{$labels.terraform_name}})"
+            description: |
+              What's happening:
+              - tofu-controller has not reported Ready=True for the Terraform object {{$labels.terraform_namespace}}/{{$labels.terraform_name}} for 30 minutes.
+              - A failing object retries every two minutes and reads Ready=Unknown during each try, so this counts every state but True.
+              - repo-config and github-config are excluded: their own alerts wait three hours for their hourly interval.
+
+              Impact/risk:
+              - Nothing merged for this object is planned or applied, and drift is not corrected. For security/access-broker that is every Authentik application, group and OpenBao role the access plane owns.
+
+              Likely causes:
+              - A stale state lock: a runner took the lock and died, or a failed drift plan left it held, so every later plan fails on "error acquiring the state lock" (2026-11-16, security/access-broker)
+              - OpenBao sealed, or a policy that does not cover a path the module reads
+              - A provider error from the system it manages (Authentik, Forgejo, GitHub) or registry.opentofu.org unreachable during init
+              - A model change that fails a precondition or the provider schema
+
+              First actions:
+              - kubectl -n {{$labels.terraform_namespace}} get terraform {{$labels.terraform_name}} -o jsonpath='{.status.conditions}'
+              - kubectl -n flux-system logs deploy/tofu-controller | grep '"name":"{{$labels.terraform_name}}"'
+              - For a stale lock: the access plane runbook, section "Release a stale state lock"
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/access-plane/#release-a-stale-state-lock"
+            dashboard_url: "https://grafana.${SECRET_DOMAIN}/d/gitops-flux-health/flux-gitops-health"

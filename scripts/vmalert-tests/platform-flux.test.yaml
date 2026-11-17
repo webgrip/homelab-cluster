@@ -1,0 +1,42 @@
+---
+rule_files:
+  - rules/platform-flux.yaml
+evaluation_interval: 1m
+tests:
+  - name: a Terraform object flapping between Unknown and False fires after 30 minutes, a healthy one does not
+    interval: 1m
+    input_series:
+      - series: 'tofu_terraform_status_condition{terraform_namespace="security", terraform_name="access-broker", type="Ready", status="False", reason="TFExecPlanFailed"}'
+        values: "1 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 1 0 1 1"
+      - series: 'tofu_terraform_status_condition{terraform_namespace="security", terraform_name="access-broker", type="Ready", status="Unknown", reason="Progressing"}'
+        values: "0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0 1 0 0"
+      - series: 'tofu_terraform_status_condition{terraform_namespace="security", terraform_name="access-kubernetes", type="Ready", status="True", reason="NoDrift"}'
+        values: "1x40"
+    alert_rule_test:
+      - eval_time: 20m
+        groupname: platform.flux
+        alertname: TofuTerraformNotReady
+        exp_alerts: []
+      - eval_time: 35m
+        groupname: platform.flux
+        alertname: TofuTerraformNotReady
+        exp_alerts:
+          - exp_labels:
+              terraform_namespace: security
+              terraform_name: access-broker
+              severity: warning
+              owner: platform
+              service: tofu-controller
+            exp_annotations:
+              summary: "Terraform object not Ready for 30m (security/access-broker)"
+
+  - name: repo-config and github-config are left to their own alerts
+    interval: 1m
+    input_series:
+      - series: 'tofu_terraform_status_condition{terraform_namespace="repo-config", terraform_name="repo-config", type="Ready", status="False", reason="TFExecPlanFailed"}'
+        values: "1x40"
+    alert_rule_test:
+      - eval_time: 35m
+        groupname: platform.flux
+        alertname: TofuTerraformNotReady
+        exp_alerts: []
