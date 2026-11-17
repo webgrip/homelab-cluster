@@ -96,5 +96,6 @@ name the stored and the running version.
 ## The Helm test
 
 `spec.test.enable` is on, with `ignoreFailures: false`, so a failing chart test rolls the upgrade
-back. Until the Unfold chart ships a test hook, Helm reports no tests and the smoke probes above are
-the only post-rollout check; they alert but do not roll back.
+back. The Unfold chart has no test hook yet; a `templates/tests/smoke.yaml` is being added in
+`unfold-hq/unfold`. Until a chart release carries it, Helm reports no tests, `spec.test.enable` is a
+no-op, and the smoke probes above are the only post-rollout check: they alert but do not roll back.

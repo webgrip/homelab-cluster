@@ -330,10 +330,15 @@ How the owner knows a rollout went well, in the [Unfold rollout runbook](../runb
   and that `/api/auth/methods` offers the OIDC sign-in; they feed `DeliveryCandidateUnhealthy` as
   `smoke_failing` and `UnfoldSmokeFailing`. The HelmRelease runs the chart's Helm tests with
   `ignoreFailures: false`, so a failing test rolls the upgrade back, but the Unfold chart has no test
-  hook yet: until it ships one, the smoke check alerts and does not roll back.
+  hook yet (a `templates/tests/smoke.yaml` is being added in `unfold-hq/unfold`): until a chart
+  release carries it, `spec.test.enable` is a no-op and the smoke check alerts but does not roll back.
 
 P4 slice 2 now writes a hold, as decided under P1c, and its design text above about reverting a
 Renovate commit and `check_release_lockstep.py` is historical.
+
+This adds no decision of its own: it carries out D11 to D13. Unfold staging on the rented cluster in
+`webgrip/unfold-cluster` keeps its Renovate pull request, triggered by the release watcher of the P1b
+amendment of 2026-11-17 (D15 to D17); this section is only the homelab's own Unfold.
 
 ## Risks
 
