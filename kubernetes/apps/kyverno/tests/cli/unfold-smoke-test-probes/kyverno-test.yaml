@@ -1,0 +1,23 @@
+---
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: unfold-smoke-test-probes
+policies:
+  - ../../policies/require-probes-cel.yaml
+exceptions:
+  - ../../policies/exception-unfold-smoke-test-probes-cel.yaml
+resources:
+  - resources.yaml
+variables: values.yaml
+results:
+  - policy: require-pod-probes-audit
+    resources:
+      - ploeg/unfold-smoke-test
+    kind: Pod
+    result: skip
+  - policy: require-pod-probes-audit
+    resources:
+      - app/unfold-smoke-test
+    kind: Pod
+    result: fail

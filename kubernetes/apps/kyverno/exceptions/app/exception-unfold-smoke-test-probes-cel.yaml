@@ -1,0 +1,29 @@
+---
+apiVersion: policies.kyverno.io/v1
+kind: PolicyException
+metadata:
+  name: exception-unfold-smoke-test-probes-cel
+  namespace: security
+  labels:
+    owner: platform-team
+  annotations:
+    policies.kyverno.io/description: >-
+      The Unfold chart's Helm test is a bare, run-to-completion Pod that checks
+      /readyz, /healthz and /api/auth/methods once and exits, so it has nothing
+      to probe and no Job owner to put it outside require-pod-probes-audit.
+      Flux runs it after every upgrade and rolls back when it cannot start.
+      Waived only for the unfold-smoke-test Pod in ploeg that carries the
+      chart's test component label and the helm.sh/hook=test annotation.
+spec:
+  policyRefs:
+    - kind: ValidatingPolicy
+      name: require-pod-probes-audit
+  matchConditions:
+    - name: unfold-helm-test-pod
+      expression: >-
+        object.kind == 'Pod' &&
+        object.metadata.namespace == 'ploeg' &&
+        object.metadata.name == 'unfold-smoke-test' &&
+        object.metadata.?labels[?'app.kubernetes.io/name'].orValue('') == 'unfold-smoke-test' &&
+        object.metadata.?labels[?'app.kubernetes.io/component'].orValue('') == 'test' &&
+        object.metadata.?annotations[?'helm.sh/hook'].orValue('') == 'test'
