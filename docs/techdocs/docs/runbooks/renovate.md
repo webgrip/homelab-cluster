@@ -139,6 +139,56 @@ faster pickup, force a run (above). The Harbor release relay that triggered runs
 removed on 2026-10-20, and its webhook policy `unfold-release-renovate` was deleted from Harbor
 project `webgrip` on 2026-10-22.
 
+## Unfold release candidates reach unfold-staging
+
+CronJob `renovate/unfold-release-watch` polls the GitHub releases of `unfold-hq/unfold` every two
+minutes and, once a new candidate's chart is on `ghcr.io`, schedules `webgrip/unfold-cluster` on
+`webgrip-forgejo`, retrying until a run starts after the trigger, for at most an hour. It then
+watches the staging HelmRelease on `webgrip/unfold-cluster` until it runs that version. How it
+works, the state it keeps and the latency fields:
+[`jobs/README.md`](https://forgejo.webgrip.dev/webgrip/homelab-cluster/src/branch/main/kubernetes/apps/renovate/renovate-operator/jobs/README.md#run-renovate-when-an-unfold-release-candidate-is-published).
+What the rollout itself looks like on the Unfold cluster is the unfold-cluster runbook
+[Staging rollouts](https://forgejo.webgrip.dev/webgrip/unfold-cluster/src/branch/main/docs/runbooks/staging-rollouts.md).
+
+Where the current candidate is:
+
+```bash
+kubectl -n renovate get configmap unfold-release-watch-state -o jsonpath='{.data}' | jq
+```
+
+```logsql
+_time:6h namespace:=renovate pod:~"^unfold-release-watch-"
+| fields _time, event, version, run_status, reason, deployed, behind_seconds
+```
+
+### UnfoldReleaseWatchStale
+
+No run of the CronJob succeeded for 15 minutes. Every failed tick logs one `tick_failed` line whose
+`reason` names the step:
+
+- `github releases unreadable`, `ghcr token unavailable`, `ghcr manifest …`: egress or GitHub. A
+  rejected installation token shows as a 401 in the pod log; check the
+  [token minter](#fast-triage).
+- `schedule answered 401`: the first entry of `renovate-webhook-auth`/`token` is no longer accepted.
+- `schedule answered 404`: `webgrip/unfold-cluster` dropped out of the `webgrip-forgejo` project list
+  (it lost the `renovate` topic, or discovery failed).
+- `renovate-operator unreachable`: the operator pod is down.
+- `state configmap unreadable`: the ConfigMap or the Role is missing; Flux recreates both.
+
+### UnfoldStagingBehindRelease
+
+A candidate's chart has been on `ghcr.io` for 45 minutes and the staging HelmRelease still reports
+another version. The `outcome` label says how far the watcher got:
+
+- `triggering` or `gave-up`: no Renovate run of `webgrip/unfold-cluster` started after the trigger.
+  Check the project's entry in `kubectl get renovatejob -n renovate webgrip-forgejo -o json` and
+  [force a run](#force-a-run).
+- `handled`: Renovate ran. Open the "Unfold release" pull request on `webgrip/unfold-cluster`: a red
+  or missing required check keeps Forgejo from merging it. When it merged, follow the unfold-cluster
+  runbook: the upgrade failed and Flux rolled it back, or Flux has not reconciled yet.
+- `deployed` is `unknown`: the Unfold cluster's metrics no longer reach `vmsingle-unfold`
+  (`UnfoldMetricsAbsent`).
+
 ## All PRs red at once: OCI digest drift
 
 If `verify-oci-digests` FAILs the same file on main **and** every PR, an upstream chart tag was re-pushed (coredns `1.46.0` has shipped three digests). Confirm against the registry, then let the automerged digest PR fix it (or bump the pin by hand — precedent: `72f52195`, `796989d0`):

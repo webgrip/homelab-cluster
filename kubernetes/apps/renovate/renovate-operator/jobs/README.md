@@ -167,6 +167,68 @@ secret (ADR-0055 L3):
 Rotating `renovate/webhook-auth` needs nothing extra: the ExternalSecret refreshes hourly and the
 CronJob republishes on its next tick.
 
+## Run Renovate when an Unfold release candidate is published
+
+Unfold is released on GitHub (`unfold-hq/unfold`), which cannot reach the LAN-only schedule
+endpoint, so the trigger polls instead. CronJob `unfold-release-watch` (`unfold-release-watch.yaml`,
+script `unfold-release-watch.sh`) runs every two minutes and schedules `webgrip/unfold-cluster` on
+the `webgrip-forgejo` job as soon as a new candidate's chart is on `ghcr.io`. Renovate then opens
+the "Unfold release" pull request there, which merges itself on its required checks. Owner
+decision 2026-11-17, recorded as an amendment to P1b of the
+[Unfold release train RFC](../../../../../docs/techdocs/docs/rfc/rfc-unfold-release-train.md#p1b-events-not-schedules).
+
+Each tick:
+
+1. Reads `GET https://api.github.com/repos/unfold-hq/unfold/releases?per_page=30` with the
+   `renovate-runtime-token` installation token (anonymous when it is missing) and keeps the
+   newest non-draft tag matching `^unfold-v0\.\d+\.\d+-rc\.\d+$`, by `published_at`.
+2. A version that differs from ConfigMap `unfold-release-watch-state` starts over: it is recorded
+   and logged as `release_seen`.
+3. The Unfold release publishes its chart last, after every image and well after the GitHub release
+   turns non-draft, so the watcher waits until `ghcr.io/unfold-hq/charts/unfold:<version>` answers
+   200 (`chart_pending`, then `chart_seen`). Renovate reads that chart straight from `ghcr.io`
+   (no Harbor proxy in `webgrip/unfold-cluster`'s config), and each executor pod starts with an
+   empty package cache, so the first run after `chart_seen` sees the version.
+4. It POSTs the schedule endpoint with the first entry of `renovate-webhook-auth`/`token`
+   (`renovate_triggered`). Anything but `200` fails the tick.
+5. On later ticks it reads `status.projects[]` of RenovateJob `webgrip-forgejo` for
+   `webgrip/unfold-cluster` (fields `status`, `lastTransition`, `duration`). The version counts as
+   handled (`renovate_run_started`) once a run started after the first trigger: `running` with
+   `lastTransition` after it, or `completed`/`failed`/`cancelled` with `lastTransition - duration`
+   (minus 60 s for the operator's rounding) after it.
+6. Until then it re-triggers every two minutes while the project is neither `running` nor
+   `scheduled`, for at most an hour (`renovate_trigger_gave_up`).
+7. After that it reads the staging HelmRelease's chart version from `flux_resource_info` in
+   `vmsingle-unfold` and logs `staging_deployed` once it matches, or `staging_behind` on every tick
+   from 45 minutes after `chart_seen`.
+
+Why the retries: operator 5.6.0 drops a schedule for a project that is `running` and still answers
+`200` (`src/internal/utils/projectStatus.go`, `validateProjectStatusScheduled`: "cannot schedule a
+project that is currently running"). A run that started before the chart existed may not see the
+version, so only a run that started after the trigger counts.
+
+Latency per release is in the log lines: `seen_after_publish_seconds`, `chart_after_publish_seconds`,
+`run_after_publish_seconds`, `run_after_trigger_seconds`, `deployed_after_publish_seconds` and
+`deployed_after_chart_seconds`. The pull request's own creation time on Forgejo closes the gap
+between the run and the deploy.
+
+```logsql
+_time:7d namespace:=renovate pod:~"^unfold-release-watch-" event:in("release_seen", "chart_seen", "renovate_run_started", "staging_deployed")
+| fields _time, event, version, chart_after_publish_seconds, run_after_publish_seconds, deployed_after_publish_seconds
+```
+
+Alerts: `UnfoldReleaseWatchStale` (`unfold-release-watch.prometheusrule.yaml`, no successful tick
+for 15 minutes) and `UnfoldStagingBehindRelease` (`unfold-release-watch.vmrule.yaml`, a
+`staging_behind` line in the last 10 minutes); both in the
+[Renovate runbook](../../../../../docs/techdocs/docs/runbooks/renovate.md#unfold-release-candidates-reach-unfold-staging).
+
+Access: Role `unfold-release-watch` may `get` and `patch` only its state ConfigMap and `get` only
+RenovateJob `webgrip-forgejo`. The state ConfigMap is in git without data and carries
+`kustomize.toolkit.fluxcd.io/ssa: IfNotPresent`, so Flux creates it once and never resets what the
+watcher writes. The `renovate` namespace has no NetworkPolicy, so the pod reaches the operator on
+8082, `vmsingle-unfold` on 8428 (which has no ingress policy either), `api.github.com` and
+`ghcr.io`; a policy added to either namespace must keep those flows.
+
 ## Renovate manifests
 
 - RenovateJob: `webgrip-gitops.yaml`

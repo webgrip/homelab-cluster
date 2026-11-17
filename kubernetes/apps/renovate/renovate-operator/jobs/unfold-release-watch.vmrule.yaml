@@ -1,0 +1,43 @@
+---
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMRule
+metadata:
+  name: unfold-release-watch
+  labels:
+    app.kubernetes.io/name: unfold-release-watch
+    rules: logs
+spec:
+  groups:
+    - name: unfold-release-watch
+      type: vlogs
+      interval: 5m
+      rules:
+        - alert: UnfoldStagingBehindRelease
+          expr: >-
+            _time:10m namespace:=renovate pod:~"^unfold-release-watch-" event:="staging_behind"
+            | stats by (version, deployed, outcome) max(behind_seconds) as behind_seconds
+          for: 0m
+          labels:
+            severity: warning
+            owner: platform
+            service: unfold
+          annotations:
+            summary: "Unfold staging still runs {{ $labels.deployed }} 45 minutes after chart {{ $labels.version }} was published (unfold-staging/unfold)"
+            description: |
+              What's happening:
+              - The chart of Unfold {{ $labels.version }} has been on ghcr.io for {{ $value }} seconds, and HelmRelease unfold-staging/unfold on webgrip/unfold-cluster still reports {{ $labels.deployed }}.
+              - The watcher's own step is "{{ $labels.outcome }}": triggering means no Renovate run of webgrip/unfold-cluster started after the trigger; gave-up means an hour of re-triggers did not start one; handled means Renovate ran and the rest of the chain is stuck.
+
+              Impact/risk:
+              - Staging is not testing the newest release candidate.
+
+              Likely causes:
+              - The Renovate pull request on webgrip/unfold-cluster is open with a red or missing required check, so Forgejo does not merge it.
+              - The pull request merged but the upgrade failed and Flux rolled it back (UnfoldFluxReconcileFailing and the Flux notification on unfold-cluster say so).
+              - Renovate did not run for webgrip/unfold-cluster (outcome triggering or gave-up).
+              - deployed is unknown: the unfold-cluster metrics no longer reach vmsingle-unfold.
+
+              First actions:
+              - Open the "Unfold release" pull request on webgrip/unfold-cluster and read its checks.
+              - Follow the unfold-cluster runbook "Staging rollouts".
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/renovate/#unfoldstagingbehindrelease"

@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://k8s-schemas.bjw-s.dev/monitoring.coreos.com/prometheusrule_v1.json
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: unfold-release-watch
+  namespace: renovate
+  labels:
+    app.kubernetes.io/name: unfold-release-watch
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: unfold-release-watch.rules
+      rules:
+        - alert: UnfoldReleaseWatchStale
+          expr: |
+            (time() - max(kube_cronjob_status_last_successful_time{exported_namespace="renovate", cronjob="unfold-release-watch"}) > 900)
+            or
+            (
+              (time() - max(kube_cronjob_created{exported_namespace="renovate", cronjob="unfold-release-watch"}) > 900)
+              unless on() kube_cronjob_status_last_successful_time{exported_namespace="renovate", cronjob="unfold-release-watch"}
+            )
+          for: 2m
+          labels:
+            severity: warning
+            owner: platform
+            service: renovate
+          annotations:
+            summary: "The Unfold release watcher has not succeeded for 15 minutes (renovate/unfold-release-watch)"
+            description: |
+              What's happening:
+              - CronJob renovate/unfold-release-watch runs every two minutes and has not finished a run successfully for more than 15 minutes.
+
+              Impact/risk:
+              - A new Unfold release candidate no longer schedules Renovate for webgrip/unfold-cluster; staging waits for the hourly webgrip-forgejo run instead.
+              - The staging_behind check stops too, so UnfoldStagingBehindRelease cannot fire.
+
+              Likely causes:
+              - api.github.com or ghcr.io unreachable, or the GitHub App token rejected.
+              - renovate-operator down or the webhook token rejected (the tick_failed line names the status).
+              - The CronJob suspended or its pods unschedulable.
+
+              First actions:
+              - kubectl -n renovate get jobs -l app.kubernetes.io/name=unfold-release-watch --sort-by=.status.startTime
+              - Read the tick_failed lines with the LogsQL in the runbook section.
+            runbook_url: "https://backstage.${SECRET_DOMAIN}/docs/default/component/homelab-cluster/runbooks/renovate/#unfoldreleasewatchstale"
