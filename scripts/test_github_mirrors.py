@@ -61,8 +61,18 @@ repos:
 """
 
 
-def installation_token(repository):
-    return f"ghs_fakeInstallationTokenFor{repository.replace('.', '').replace('-', '')}0123456789"
+def installation_token(repository, permission="contents"):
+    return f"ghs_fake{permission.capitalize()}TokenFor{repository.replace('.', '').replace('-', '')}0123456789"
+
+
+def ssh_public_key(remote_name):
+    return f"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA{remote_name.replace('_', '')}"
+
+
+def ssh_mirror(remote_name, repository, **extra):
+    return {"remote_name": remote_name, "remote_address": f"ssh://git@ssh.github.com:443/webgrip/{repository}.git",
+            "public_key": ssh_public_key(remote_name) + "\n", "last_update": "", "last_error": "",
+            "interval": "8h0m0s", "sync_on_commit": True, **extra}
 
 
 def jwt_parts(token):
@@ -90,12 +100,14 @@ class FakeWorld:
             "renovate-config": {"default_branch": "main", "head": "9163c948", "tags": ["v1.0.0", "v1.1.0"],
                                 "releases": [release(11, "v1.0.0", "2026-01-01T00:00:00Z"),
                                              release(12, "v1.1.0", "2026-02-01T00:00:00Z")],
-                                "push_mirrors": [{"remote_address": "https://github.com/webgrip/renovate-config.git",
+                                "push_mirrors": [{"remote_name": "remote_mirror_token1",
+                                                  "remote_address": "https://github.com/webgrip/renovate-config.git",
                                                   "last_update": "2026-10-27T16:00:00Z", "last_error": "",
-                                                  "interval": "8h0m0s"}]},
+                                                  "interval": "8h0m0s", "public_key": ""}]},
             "telemetry-service": {"default_branch": "main", "head": "15ed6273", "tags": ["v0.1.0"],
                                   "releases": [release(21, "v0.1.0", "2026-03-01T00:00:00Z")],
-                                  "push_mirrors": [{"remote_address": "https://github.com/webgrip/telemetry-service",
+                                  "push_mirrors": [{"remote_name": "remote_mirror_token2",
+                                                    "remote_address": "https://github.com/webgrip/telemetry-service",
                                                     "last_update": "2026-10-27T16:00:00Z", "last_error": "",
                                                     "interval": "8h0m0s"}]},
             "ledgerflow": {"default_branch": "main", "head": "35a599b6", "tags": [], "releases": [],
@@ -119,6 +131,13 @@ class FakeWorld:
                         "fork": True},
         }
         self.installed = {"renovate-config", "telemetry-service"}
+        self.administration_granted = False
+        self.key_status = 201
+        self.next_mirror = 0
+        self.mirror_writes = []
+        self.syncs = []
+        for repo in self.github.values():
+            repo["keys"] = []
         self.vault_secret_present = True
         self.upload_status = 201
         self.next_release_id = 9000
@@ -180,7 +199,7 @@ def handler_for(world):
                 return self.reply(200, {"data": {"data": world.app_secret}})
 
             if path.startswith("/forgejo/"):
-                return self.forgejo(method, path.removeprefix("/forgejo"), query)
+                return self.forgejo(method, path.removeprefix("/forgejo"), query, body)
             if path.startswith("/github/") or path.startswith("/uploads/"):
                 return self.github(method, path, query, body)
             if method == "POST" and path.startswith("/api/v1/import/prometheus"):
@@ -188,7 +207,7 @@ def handler_for(world):
                 return self.reply(204)
             return self.reply(500, {"message": f"unexpected {method} {path}"})
 
-        def forgejo(self, method, path, query):
+        def forgejo(self, method, path, query, body):
             authorised = self.headers.get("Authorization") == f"token {FORGEJO_TOKEN}"
             if path.startswith("/attachments/"):
                 return self.reply(200, raw=world.attachments[path.rsplit("/", 1)[-1]])
@@ -210,10 +229,31 @@ def handler_for(world):
                 return self.paged([{"name": tag} for tag in repo["tags"]], query, "limit", "30")
             if rest == "/releases":
                 return self.paged([forgejo_release_view(r) for r in repo["releases"]], query, "limit", "30")
-            if rest == "/push_mirrors":
+            if rest == "/push_mirrors" and method == "GET":
                 if not authorised:
                     return self.reply(403, {"message": "token required"})
                 return self.reply(200, repo["push_mirrors"])
+            if not authorised and rest.startswith("/push_mirrors"):
+                return self.reply(403, {"message": "token required"})
+            if rest == "/push_mirrors" and method == "POST":
+                request = json.loads(body)
+                world.mirror_writes.append(("forgejo-create", match.group(1), request))
+                if not request.get("use_ssh") or request.get("remote_username") or request.get("remote_password"):
+                    return self.reply(400, {"message": "only SSH mirrors in this fake"})
+                world.next_mirror += 1
+                created = ssh_mirror(f"remote_mirror_new{world.next_mirror}", "",
+                                     remote_address=request["remote_address"], interval=request["interval"],
+                                     sync_on_commit=request["sync_on_commit"])
+                repo["push_mirrors"].append(created)
+                return self.reply(200, created)
+            if rest == "/push_mirrors-sync" and method == "POST":
+                world.syncs.append(match.group(1))
+                return self.reply(200)
+            deletion = re.fullmatch(r"/push_mirrors/([^/]+)", rest)
+            if deletion and method == "DELETE":
+                world.mirror_writes.append(("forgejo-delete", match.group(1), deletion.group(1)))
+                repo["push_mirrors"] = [m for m in repo["push_mirrors"] if m.get("remote_name") != deletion.group(1)]
+                return self.reply(204)
             return self.reply(404, {})
 
         def github(self, method, path, query, body):
@@ -227,6 +267,13 @@ def handler_for(world):
                 repositories = request.get("repositories") or []
                 if len(repositories) != 1 or repositories[0] not in world.installed:
                     return self.reply(422, {"message": "not installed"})
+                permissions = request.get("permissions")
+                if permissions == {"administration": "write"}:
+                    if not world.administration_granted:
+                        return self.reply(422, {"message": "The permissions requested are not granted to this installation."})
+                    return self.reply(201, {"token": installation_token(repositories[0], "administration")})
+                if permissions != {"contents": "write"}:
+                    return self.reply(422, {"message": "unexpected permissions"})
                 return self.reply(201, {"token": installation_token(repositories[0])})
             if method == "DELETE" and path == "/github/installation/token":
                 return self.reply(204)
@@ -247,10 +294,27 @@ def handler_for(world):
             if not match or match.group(1) not in world.github:
                 return self.reply(404, {})
             name = match.group(1)
-            if self.headers.get("Authorization") != f"Bearer {installation_token(name)}":
-                return self.reply(401, {"message": "Bad credentials"})
             repo = world.github[name]
             rest = match.group(2) or ""
+            bearer = self.headers.get("Authorization")
+            administration = bearer == f"Bearer {installation_token(name, 'administration')}"
+            if rest == "/keys":
+                if not administration:
+                    return self.reply(403, {"message": "Resource not accessible by integration"})
+                if method == "GET":
+                    return self.paged(repo["keys"], query, "per_page", "30")
+                request = json.loads(body)
+                world.mirror_writes.append(("github-key", name, request))
+                if world.key_status != 201:
+                    return self.reply(world.key_status, {"message": "key refused"})
+                repo["keys"].append({"id": len(repo["keys"]) + 1, "key": request["key"],
+                                     "title": request["title"], "read_only": request["read_only"]})
+                return self.reply(201, repo["keys"][-1])
+            if method == "GET" and rest == "" and administration:
+                return self.reply(200, {"name": name, "full_name": repo.get("full_name", f"webgrip/{name}"),
+                                        "default_branch": repo["default_branch"], "archived": repo["archived"]})
+            if bearer != f"Bearer {installation_token(name)}":
+                return self.reply(401, {"message": "Bad credentials"})
             if method == "GET" and rest == "":
                 return self.reply(200, {"name": name, "default_branch": repo["default_branch"], "archived": repo["archived"]})
             if method == "GET" and rest == f"/branches/{repo['default_branch']}":
@@ -429,14 +493,98 @@ class ReconcilerTest(unittest.TestCase):
         self.assertEqual(self.metric("releases_missing", repository="renovate-config"), 1)
         self.assert_no_preexisting_release_touched()
 
-    def test_installation_tokens_are_scoped_to_one_repository_and_contents(self):
+    def test_installation_tokens_are_scoped_to_one_repository_and_one_permission(self):
+        self.world.administration_granted = True
         self.assertEqual(self.run_reconciler(), 0, self.output)
         self.assertTrue(self.world.token_requests)
         for request in self.world.token_requests:
             self.assertEqual(len(request["repositories"]), 1)
-            self.assertEqual(request["permissions"], {"contents": "write"})
+            self.assertIn(request["permissions"], ({"contents": "write"}, {"administration": "write"}))
+        self.assertIn({"administration": "write"}, [request["permissions"] for request in self.world.token_requests])
         self.assertNotIn(installation_token("renovate-config"), self.output)
+        self.assertNotIn(installation_token("renovate-config", "administration"), self.output)
         self.assertNotIn(FORGEJO_TOKEN, self.output)
+
+    def test_without_deploy_key_access_the_push_mirror_is_left_alone(self):
+        self.assertEqual(self.run_reconciler(), 0, self.output)
+        self.assertEqual(self.world.mirror_writes, [])
+        self.assertEqual(self.metric("deploy_key_access", repository="renovate-config"), 0)
+        self.assertEqual(self.metric("ssh_push_mirror", repository="renovate-config"), 0)
+        self.assertEqual(self.metric("token_push_mirrors", repository="renovate-config"), 1)
+        self.assertEqual(self.metric("app_access", repository="renovate-config"), 1)
+
+    def test_a_token_mirror_is_replaced_by_a_keyed_ssh_mirror_once_that_pushes(self):
+        self.world.administration_granted = True
+        self.assertEqual(self.run_reconciler(), 0, self.output)
+        creates = [write for write in self.world.mirror_writes if write[0] == "forgejo-create"]
+        self.assertEqual([(write[1], write[2]) for write in creates], [
+            ("renovate-config", {"remote_address": "ssh://git@ssh.github.com:443/webgrip/renovate-config.git",
+                                 "use_ssh": True, "sync_on_commit": True, "interval": "8h0m0s"}),
+            ("telemetry-service", {"remote_address": "ssh://git@ssh.github.com:443/webgrip/telemetry-service.git",
+                                   "use_ssh": True, "sync_on_commit": True, "interval": "8h0m0s"})])
+        new_mirror = self.world.forgejo["renovate-config"]["push_mirrors"][-1]
+        self.assertEqual(self.world.github["renovate-config"]["keys"], [
+            {"id": 1, "key": ssh_public_key(new_mirror["remote_name"]), "title": "forgejo push mirror",
+             "read_only": False}])
+        self.assertIn("renovate-config", self.world.syncs)
+        self.assertFalse([write for write in self.world.mirror_writes if write[0] == "forgejo-delete"])
+        self.assertEqual(self.metric("ssh_push_mirror", repository="renovate-config"), 1)
+        self.assertEqual(self.metric("token_push_mirrors", repository="renovate-config"), 1)
+        self.assertEqual(self.metric("error", repository="renovate-config"), 0)
+
+        new_mirror["last_update"] = "2026-11-17T17:00:00Z"
+        self.world.mirror_writes.clear()
+        self.world.metrics.clear()
+        self.assertEqual(self.run_reconciler(), 0, self.output)
+        self.assertEqual(self.world.mirror_writes, [("forgejo-delete", "renovate-config", "remote_mirror_token1")])
+        self.assertEqual(self.world.forgejo["renovate-config"]["push_mirrors"], [new_mirror])
+        self.assertEqual(len(self.world.github["renovate-config"]["keys"]), 1)
+        self.assertEqual(self.metric("token_push_mirrors", repository="renovate-config"), 0)
+        self.assertEqual(self.metric("token_push_mirrors", repository="telemetry-service"), 1)
+
+    def test_a_failing_ssh_mirror_keeps_the_token_mirror(self):
+        self.world.administration_granted = True
+        keyed = ssh_mirror("remote_mirror_ssh1", "renovate-config", last_update="2026-11-17T17:00:00Z",
+                           last_error="Permission denied (publickey)")
+        self.world.forgejo["renovate-config"]["push_mirrors"].append(keyed)
+        self.world.github["renovate-config"]["keys"].append({"id": 7, "key": ssh_public_key("remote_mirror_ssh1")})
+        self.assertEqual(self.run_reconciler(), 0, self.output)
+        self.assertFalse([write for write in self.world.mirror_writes if write[1] == "renovate-config"])
+        self.assertEqual(self.metric("error", repository="renovate-config"), 1)
+        self.assertEqual(self.metric("token_push_mirrors", repository="renovate-config"), 1)
+
+    def test_a_deleted_deploy_key_is_registered_again(self):
+        self.world.administration_granted = True
+        self.world.forgejo["renovate-config"]["push_mirrors"] = [ssh_mirror("remote_mirror_ssh1", "renovate-config")]
+        self.assertEqual(self.run_reconciler(), 0, self.output)
+        self.assertEqual([write[0] for write in self.world.mirror_writes if write[1] == "renovate-config"],
+                         ["github-key"])
+        self.assertEqual([key["key"] for key in self.world.github["renovate-config"]["keys"]],
+                         [ssh_public_key("remote_mirror_ssh1")])
+
+    def test_a_refused_deploy_key_removes_the_new_mirror_and_fails_the_check(self):
+        self.world.administration_granted = True
+        self.world.key_status = 422
+        self.assertEqual(self.run_reconciler(), 1, self.output)
+        self.assertEqual([m["remote_name"] for m in self.world.forgejo["renovate-config"]["push_mirrors"]],
+                         ["remote_mirror_token1"])
+        self.assertIn(("forgejo-delete", "renovate-config", "remote_mirror_new1"), self.world.mirror_writes)
+        self.assertEqual(self.metric("check_ok", repository="renovate-config"), 0)
+
+    def test_a_repository_that_moved_on_github_gets_no_push_mirror(self):
+        self.world.administration_granted = True
+        self.world.github["renovate-config"]["full_name"] = "renovate-hq/renovate-config"
+        self.assertEqual(self.run_reconciler(), 1, self.output)
+        self.assertFalse([write for write in self.world.mirror_writes if write[1] == "renovate-config"])
+        self.assertEqual(self.metric("check_ok", repository="renovate-config"), 0)
+
+    def test_a_modelled_repository_without_a_push_mirror_gets_one(self):
+        self.world.administration_granted = True
+        self.world.forgejo["renovate-config"]["push_mirrors"] = []
+        self.assertEqual(self.run_reconciler(), 0, self.output)
+        self.assertEqual(len(self.world.forgejo["renovate-config"]["push_mirrors"]), 1)
+        self.assertEqual(self.metric("push_mirror_configured", repository="renovate-config"), 1)
+        self.assertEqual(self.metric("ssh_push_mirror", repository="renovate-config"), 1)
 
     def test_archived_and_untracked_repositories_are_left_alone(self):
         self.assertEqual(self.run_reconciler(), 0, self.output)
