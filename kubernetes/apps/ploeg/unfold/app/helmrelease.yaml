@@ -22,6 +22,11 @@ spec:
     enable: true
     ignoreFailures: false
     timeout: 5m
+  valuesFrom:
+    - kind: Secret
+      name: unfold-hq-ploeg-app
+      valuesKey: values.yaml
+      optional: true
   values:
     mode: live
     ploeg:
@@ -123,9 +128,9 @@ spec:
       config:
         targets:
           unfold:
-            repo: webgrip/unfold
+            repo: unfold-hq/unfold
             branch: development
-            forge: forgejo
+            forge: github
           homelab-cluster:
             repo: webgrip/homelab-cluster
             branch: main
@@ -148,9 +153,9 @@ spec:
               - name: "Ploeg Test"
                 id: "11"
                 team: unfold
-                repo: webgrip/unfold
+                repo: unfold-hq/unfold
                 branch: development
-                forge: forgejo
+                forge: github
               - name: "Unfold"
                 id: "10"
                 default: unfold
@@ -184,8 +189,8 @@ spec:
           # The Unfold Space in ClickUp (Workspace WebGrip). Only assigning an
           # agent member dispatches: a person assigning themselves or a
           # colleague starts nothing. A task's `repo/homelab-cluster` tag sends
-          # it to homelab-cluster instead. The Ploeg Space is not routed: its
-          # repository lives on GitHub and this executor has only Forgejo.
+          # it to homelab-cluster instead. The Ploeg Space is not routed: the
+          # unfold-hq-ploeg App is installed on unfold-hq/unfold only.
           clickup:
             agents:
               - ryan+unfold-agent@webgrip.nl
@@ -364,6 +369,11 @@ spec:
           keyIsolation: proxy
         forgejo:
           url: http://forgejo-http.forgejo.svc.cluster.local:3000
+          publicUrl: https://forgejo.${SECRET_DOMAIN}
+          tokenSecret:
+            name: agent-builder-token
+            key: FORGEJO_TOKEN
+          botUser: agent-builder
           readTokenSecret:
             name: agent-reviewer-token
             key: FORGEJO_TOKEN
@@ -489,9 +499,6 @@ spec:
           - name: silver
             model: litellm_proxy/fireworks-deepseek-v4p1-flash
             budget: "6"
-            repoOwner: webgrip
-            repoName: unfold
-            baseBranch: development
             maxReplicaCount: 1
             maxFixRounds: 1
             plan:
@@ -944,7 +951,7 @@ spec:
         - id: ploeg
           name: Unfold
           description: Unfold development
-          url: https://forgejo.${SECRET_DOMAIN}/webgrip/unfold.git
+          url: https://github.com/unfold-hq/unfold.git
           baseBranch: development
           executionOwner: ploeg
           verify:
@@ -1006,8 +1013,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63739
@@ -1020,8 +1027,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63740
@@ -1034,8 +1041,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63741
@@ -1048,8 +1055,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63742
@@ -1062,8 +1069,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63743
@@ -1076,8 +1083,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63744
@@ -1090,8 +1097,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63726
@@ -1104,8 +1111,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63745
@@ -1118,8 +1125,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63746
@@ -1132,8 +1139,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63747
@@ -1146,8 +1153,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63748
@@ -1160,8 +1167,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63749
@@ -1174,8 +1181,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63750
@@ -1188,8 +1195,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63751
@@ -1202,8 +1209,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63752
@@ -1216,8 +1223,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: clickup-63753
@@ -1230,8 +1237,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: ploeg-test
@@ -1244,8 +1251,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: glide
@@ -1258,8 +1265,8 @@ spec:
           executionOwner: ploeg
           ploeg:
             target:
-              forge: forgejo
-              owner: webgrip
+              forge: github
+              owner: unfold-hq
               repo: unfold
               baseBranch: development
         - id: erfbeeld
