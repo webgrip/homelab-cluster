@@ -154,3 +154,9 @@ leaves every LAN request on the route it takes today.
   [ADR-0056](adr-0056-searxng-public-behind-gateway-basic-auth.md),
   [ADR-0057](adr-0057-google-only-login-closed-enrolment.md),
   [ADR-0058](adr-0058-access-plane-one-module-one-model.md).
+
+## History
+
+* 2026-11-18: [ADR-0092](adr-0092-authentik-sign-in-is-public-through-the-tunnel.md) publishes
+  Authentik through the tunnel, so the Anthropic-only route on its token endpoint is removed. The
+  Unfold half of this record stands.

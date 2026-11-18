@@ -93,6 +93,7 @@ What the cluster runs on, and the cross-cutting patterns everything above assume
 | [0071](adr-0071-agent-egress-reaches-only-what-it-needs.md) | Agent egress reaches only what it needs: DNS, the model gateway, the forge and its own control plane | accepted | 2026-10-18 |
 | [0077](adr-0077-admins-prove-a-security-key-at-google-and-sessions-end-in-twelve-hours.md) | Admins prove a security key at Google, and the estate re-checks Google every twelve hours | accepted | 2026-10-18 |
 | [0090](adr-0090-claude-reaches-unfold-mcp-through-the-tunnel-from-anthropic-addresses-only.md) | Claude reaches Unfold's MCP endpoint through the tunnel, from Anthropic's addresses only | accepted | 2026-11-01 |
+| [0092](adr-0092-authentik-sign-in-is-public-through-the-tunnel.md) | Authentik's sign-in is public through the tunnel, its admin interface stays on the LAN | accepted | 2026-11-18 |
 
 ### 3. Storage
 

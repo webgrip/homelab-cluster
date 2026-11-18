@@ -125,19 +125,13 @@ spec:
               - hostname: "unfold.${SECRET_DOMAIN}"
                 service: http_status:404
               - hostname: "authentik.${SECRET_DOMAIN}"
-                path: '^/(application/o/token/|application/o/unfold-mcp/\.well-known/openid-configuration|\.well-known/oauth-authorization-server/application/o/unfold-mcp/)\z'
-                originRequest:
-                  http2Origin: true
-                  originServerName: authentik.${SECRET_DOMAIN}
-                service: https://envoy-internal.{{ .Release.Namespace }}.svc.cluster.local:443
-              - hostname: "authentik.${SECRET_DOMAIN}"
-                path: '^/application/o/unfold-kubernetes/(\.well-known/openid-configuration|jwks/)\z'
-                originRequest:
-                  http2Origin: true
-                  originServerName: authentik.${SECRET_DOMAIN}
-                service: https://envoy-internal.{{ .Release.Namespace }}.svc.cluster.local:443
-              - hostname: "authentik.${SECRET_DOMAIN}"
+                path: '^/if/admin(/|\z)'
                 service: http_status:404
+              - hostname: "authentik.${SECRET_DOMAIN}"
+                originRequest:
+                  http2Origin: true
+                  originServerName: authentik.${SECRET_DOMAIN}
+                service: https://envoy-internal.{{ .Release.Namespace }}.svc.cluster.local:443
               - hostname: "*.${SECRET_DOMAIN}"
                 originRequest:
                   http2Origin: true
