@@ -238,3 +238,10 @@ picks up the rest.
   The PushSecret `cloudflare-edge-tokens` writes it with the account and zone ids to
   `secret/cloudflare/unfold-tunnel`, which only the `ci-unfold-cluster` role reads. Permission
   group names are now separated by `|`, because the Access group's own name contains commas.
+* 2026-11-18 — `edge-<zone>` gains Access: Service Tokens Write on the account, so unfold-cluster
+  can declare the Access service token a client without a browser presents to Unfold staging
+  (unfold-cluster ADR 0017, history of 2026-11-18). The minter sees the changed permission groups
+  and mints a new edge token on its next run. `ci-unfold-cluster` may also write
+  `secret/cloudflare/unfold-staging-access`, where the apply puts that service token's client id
+  and secret. No ExternalSecret grant names that path, so besides the role only an OpenBao
+  administrator reads it.

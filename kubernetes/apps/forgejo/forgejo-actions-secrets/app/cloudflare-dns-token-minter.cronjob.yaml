@@ -75,7 +75,8 @@ spec:
                     --argjson tunnel "$(first_group_id "Cloudflare Tunnel Write|Cloudflare Tunnel Edit|Cloudflare One Connector: cloudflared Write|Cloudflare One Connector: cloudflared Edit")" \
                     --argjson apps "$(first_group_id "Access: Apps and Policies Write|Access: Apps and Policies Edit")" \
                     --argjson orgs "$(first_group_id "Access: Organizations, Identity Providers, and Groups Write|Access: Organizations, Identity Providers, and Groups Edit")" \
-                    '$tunnel + $apps + $orgs')"
+                    --argjson service_tokens "$(first_group_id "Access: Service Tokens Write|Access: Service Tokens Edit")" \
+                    '$tunnel + $apps + $orgs + $service_tokens')"
                   if [ "$(echo "${ro_groups}" | jq length)" != 3 ] || [ "$(echo "${rw_groups}" | jq length)" != 3 ] || [ "$(echo "${acme_groups}" | jq length)" != 2 ]; then
                     log "ERROR: Cloudflare permission groups not found by name; nothing minted"
                     exit 1
@@ -151,9 +152,9 @@ spec:
                     slug="$(echo "${zone}" | tr . -)"
                     mint "${slug}-acme" "dns-acme-${slug}" "$(zone_policies "${zone_id}" "${acme_groups}")"
                   done
-                  if [ "$(echo "${edge_account_groups}" | jq length)" != 3 ]; then
+                  if [ "$(echo "${edge_account_groups}" | jq length)" != 4 ]; then
                     log "ERROR: the tunnel and Access permission groups were not all found by name; no edge token minted"
-                    log "permission groups offered: $(echo "${groups_json}" | jq -r '[.result[].name | select(test("Tunnel|cloudflared|Access: (Apps and Policies|Organizations)"))] | join("; ")')"
+                    log "permission groups offered: $(echo "${groups_json}" | jq -r '[.result[].name | select(test("Tunnel|cloudflared|Access: (Apps and Policies|Organizations|Service Tokens)"))] | join("; ")')"
                     failed=1
                     EDGE_ZONES=""
                   fi
