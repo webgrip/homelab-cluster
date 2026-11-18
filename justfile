@@ -469,9 +469,9 @@ clickup-token:
 # ClickUp generates a webhook's signing secret when the webhook is created, so
 # registering it and storing the secret are one step: the token is read from
 # OpenBao and the secret goes straight back into it; neither is printed.
-[doc('Register the Workspace webhook that sends ClickUp assignments to ploegd and store its secret at secret/clickup/ploeg webhook_secret')]
+[doc('Register the Workspace webhook that sends ClickUp assignments to a ploegd and store its secret in OpenBao; defaults to the homelab ploegd at secret/clickup/ploeg webhook_secret')]
 [group('secrets')]
-clickup-webhook workspace="1500520000009653" endpoint="https://ploeg-hooks.webgrip.dev/webhooks/tracker/clickup":
+clickup-webhook workspace="1500520000009653" endpoint="https://ploeg-hooks.webgrip.dev/webhooks/tracker/clickup" path="clickup/ploeg" key="webhook_secret":
     #!/usr/bin/env bash
     set -euo pipefail
     just _need bao curl python3
@@ -491,9 +491,18 @@ clickup-webhook workspace="1500520000009653" endpoint="https://ploeg-hooks.webgr
     else
         echo "the ClickUp webhook for {{ endpoint }} already exists; storing its secret"
     fi
-    printf '%s' "${secret}" | bao kv patch secret/clickup/ploeg webhook_secret=- >/dev/null
+    if bao kv get "secret/{{ path }}" >/dev/null 2>&1; then
+        printf '%s' "${secret}" | bao kv patch "secret/{{ path }}" "{{ key }}=-" >/dev/null
+    else
+        printf '%s' "${secret}" | bao kv put "secret/{{ path }}" "{{ key }}=-" >/dev/null
+    fi
     unset token secret
-    echo "wrote webhook_secret to secret/clickup/ploeg — ESO syncs the ploeg-clickup Secret within 1h, or force it with: kubectl -n ploeg annotate externalsecret ploeg-clickup force-sync=$(date +%s) --overwrite"
+    echo "wrote {{ key }} to secret/{{ path }}; External Secrets syncs it within 1h"
+
+[doc('Register the ClickUp webhook of Unfold staging with the Ploeg bot and store its secret where unfold-cluster reads it')]
+[group('secrets')]
+clickup-webhook-unfold-staging:
+    just clickup-webhook 1500520000009653 https://staging-app.unfoldhq.dev/webhooks/tracker/clickup unfold-main/staging/clickup webhook-secret
 
 [doc('Seed Harbor’s Garage S3 registry key into OpenBao (secret/harbor/s3)')]
 [group('secrets')]
