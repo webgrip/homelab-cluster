@@ -74,3 +74,11 @@ public for every client.
   so the token endpoint would need an exception anyway, and an expiring Access session in front of
   the identity provider is a worse failure mode than the exposure it removes (the trade-off
   [ADR-0054](adr-0054-forgejo-ssh-off-lan-cloudflare-tunnel.md) made for Forgejo SSH).
+
+## More Information
+
+* Narrows [ADR-0021](adr-0021-lan-only-exposure.md) for Authentik and supersedes the Authentik half
+  of [ADR-0090](adr-0090-claude-reaches-unfold-mcp-through-the-tunnel-from-anthropic-addresses-only.md).
+* Supported by [ADR-0057](adr-0057-google-only-login-closed-enrolment.md) and
+  [ADR-0077](adr-0077-admins-prove-a-security-key-at-google-and-sessions-end-in-twelve-hours.md).
+* 2026-11-18 — accepted and implemented (7e877869).
