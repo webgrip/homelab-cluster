@@ -73,6 +73,7 @@ spec:
               - bronze
               - silver
               - copper
+              - pewter
             execute: true
             maxBudgetUsd: 1.00
             audiences:
@@ -86,6 +87,7 @@ spec:
               - bronze
               - silver
               - copper
+              - pewter
             execute: false
             tokenSecret:
               name: ploeg-mcp-reader
@@ -96,6 +98,7 @@ spec:
               - bronze
               - silver
               - copper
+              - pewter
             execute: true
             maxBudgetUsd: 1.00
             audiences:
@@ -320,6 +323,9 @@ spec:
               model: hetzner-qwen3-8-27b
           copper:
             assignees: []
+          pewter:
+            assignees:
+              - copper
           unfold:
             assignees: []
       tracker:
@@ -346,14 +352,46 @@ spec:
       env:
         PLOEG_DEFAULT_TEAM: copper
         PLOEG_LEASE_TTL: 15m
+        PLOEG_CLAUDE_ROUTINES: "true"
         # Where a Work Item is followed. Ploeg fills {id} and puts the link in
         # the usage report on the pull request and in the comment it posts on
         # the tracker task when a Shift opens.
         PLOEG_REPORT_WORK_ITEM_URL: "https://unfold.${SECRET_DOMAIN}/#work/{id}"
+      networkPolicy:
+        kubernetesApi:
+          peers:
+            - ipBlock:
+                cidr: 10.0.0.20/32
+            - ipBlock:
+                cidr: 10.0.0.21/32
+            - ipBlock:
+                cidr: 10.0.0.22/32
+          ports:
+            - protocol: TCP
+              port: 6443
+        anthropic:
+          peers:
+            - ipBlock:
+                cidr: 160.79.104.0/23
+            - ipBlock:
+                cidr: 153.61.224.0/22
+            - ipBlock:
+                cidr: 2607:6bc0::/48
+      secretStore:
+        type: openbao
+        openbao:
+          address: http://openbao.security.svc.cluster.local:8200
+          role: ploegd-connections
+          kvMount: secret
+          pathPrefix: ploegd-connections
+          allowInsecureHttp: true
       executor:
         enabled: true
         nodeSelector:
           node.webgrip.io/pool: worker
+        credentialGateway:
+          enabled: true
+          acknowledgeSingleNode: false
         dindImage: harbor.webgrip.dev/dockerhub/library/docker:29.8.2-dind@sha256:1e08cdb63405ca788aea94ef35b792d1e299607c667d33d7bcbcae1fd2611ced
         forge: forgejo
         forgeTokenIsolation: proxy
@@ -379,6 +417,7 @@ spec:
             key: PLOEG_FORGEJO_SECRET
         workerAuth:
           mode: managed
+          hmacCapability: issue
           signingKeySecret:
             name: ploeg-worker-signing
             key: key
@@ -542,6 +581,20 @@ spec:
                 - "ploeg-canary"
                 - "{taskspec}"
               dind: false
+          - name: pewter
+            model: litellm_proxy/fireworks-deepseek-v4p1-flash
+            budget: "0.10"
+            repoOwner: webgrip
+            repoName: erfbeeld
+            baseBranch: main
+            maxReplicaCount: 1
+            harness:
+              name: claude-environment
+              dind: false
+              timeout: 100m
+              claudeEnvironment:
+                environmentId: ccpool_017SvGpGv1jLfduyvyWMRh3F
+                carrier: routine
       mcp:
         enabled: true
         name: ploeg-mcp
@@ -585,7 +638,8 @@ spec:
           - secretRef:
               name: ploeg-mcp-consumers
       claudeRunner:
-        enabled: false
+        enabled: true
+        mode: orchestrator
         name: claude-runner
         image:
           repository: harbor.webgrip.dev/ghcr/ploeg-hq/claude-runner
@@ -608,10 +662,6 @@ spec:
           OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: cumulative
           OTEL_LOG_TOOL_DETAILS: "1"
           OTEL_RESOURCE_ATTRIBUTES: service.namespace=ai,deployment.environment=homelab,client=claude-runner,ploeg.team=pewter
-        loginVolumes:
-          - name: pewter-claude-login
-            size: 1Gi
-            storageClassName: longhorn-general
     baseUrl: https://unfold.${SECRET_DOMAIN}
     image:
       repository: harbor.webgrip.dev/ghcr/unfold-hq/unfold
@@ -904,6 +954,7 @@ spec:
           - bronze
           - silver
           - copper
+          - pewter
       observability:
         grafanaUrl: https://grafana.${SECRET_DOMAIN}
         dashboards:
