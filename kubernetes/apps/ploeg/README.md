@@ -12,8 +12,8 @@ Ploeg runs inside the Unfold Helm release (Unfold ADR-0043): the Unfold chart
 subchart, and that chart defaults the ploegd and claude-runner images to their release digests.
 `unfold/app/helmrelease.yaml` holds Ploeg's values under `ploeg:`, with `fullnameOverride` and
 `instanceOverride` set to `ploeg` so every object keeps the name and selector labels it had under the
-standalone release. ploeg-mcp, claude-runner and the `pewter-claude-login` PersistentVolumeClaim are
-rendered by the chart; their route, network policies and Secrets stay in `ploeg/app/`.
+standalone release. ploeg-mcp, the credential gateway and the claude-runner orchestrator are rendered
+by the chart; their route, network policies and Secrets stay in `ploeg/app/`.
 
 Flux follows the newest signed Unfold release candidate on GHCR (`unfold/release/`, applied by the
 Kustomization `unfold-release` into `flux-system`), and the chart's own values pin the Unfold, workspace, ploegd and
@@ -59,16 +59,30 @@ containers run in CI, in CI's own images.
 
 ### What a Run can reach
 
-A worker pod (`app.kubernetes.io/name: ploeg-worker`) reaches DNS, ploegd on 8080, the LiteLLM pods
-on 4000, the Forgejo pods on 3000 and Alloy on 4318, through `ploeg-worker-egress`
+Every Run pod sits behind the credential gateway
+([Ploeg ADR-0197](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md)).
+A worker pod (`app.kubernetes.io/name: ploeg-worker`) holds no Secret, no ServiceAccount token and
+no forge or model credential; its per-Run capability is the only bearer value in it. It reaches DNS
+and `ploeg-credential-gateway` on 8080 to 8083 through the chart's `ploeg-worker` policy, and Alloy
+on 4318 through `ploeg-worker-egress`
 ([ADR-0071](../../../docs/techdocs/docs/adr/adr-0071-agent-egress-reaches-only-what-it-needs.md)).
-It has no route to the database, Unfold, ploeg-mcp or any other pod in `ploeg`, to Vikunja or
-Omnigraph, to the public gateway, the LAN or the internet: `ploeg-allow-egress` leaves out
-`ploeg-worker`, `ploeg-sandbox-launcher` and `claude-runner`, and `allow-gateway-egress` (from
-`components/gateway-egress`, patched in `unfold/app/kustomization.yaml`) selects only `unfold`
-and `ploeg` (ploegd). A sandbox launcher reaches only ploegd and the API server.
+ploegd, LiteLLM and Forgejo are reached only through the gateway, which attaches the Run's minted
+credential. A Run pod has no route to the database, Unfold, ploeg-mcp or any other pod in `ploeg`,
+to Vikunja or Omnigraph, to the public gateway, the LAN or the internet: `ploeg-allow-egress` leaves
+out `ploeg-worker`, `ploeg-sandbox-launcher`, `ploeg-claude-runner-session` and
+`claude-runner-orchestrator`, and `allow-gateway-egress` (from `components/gateway-egress`, patched
+in `unfold/app/kustomization.yaml`) selects only `unfold` and `ploeg` (ploegd). A sandbox launcher
+reaches only ploegd and the API server; it runs no harness and keeps its bootstrap token.
 `worker-egress-probe` checks both halves as a worker-labelled Job; rerun it by changing its
 `PROBED_POLICY` value.
+
+The gateway and the claude-runner orchestrator run on the soyo nodes: the chart keeps both off
+every node that runs a Run pod and out of `executor.nodeSelector`'s worker pool, so
+`unfold/app/kustomization.yaml` narrows the worker-pool component's Deployment pin to `unfold`,
+`ploeg` and `ploeg-mcp`. They reach the API server through
+[`credential-gateway.ciliumnetworkpolicy.yaml`](ploeg/app/credential-gateway.ciliumnetworkpolicy.yaml),
+which also admits ploegd for its TokenReviews; the chart's own API rule is an `ipBlock` of the
+control-plane addresses, which Cilium does not match against the kube-apiserver identity.
 
 Two more worker-labelled Jobs qualify Ploeg's profile P1 (ploeg-hq/ploeg #16 and #17). Each is deleted
 seven days after it finishes and Flux recreates it, so both rerun about weekly; a failure fires
@@ -77,14 +91,25 @@ seven days after it finishes and Flux recreates it, so both rerun about weekly; 
 - `worker-boundary-probe` runs Ploeg's `scripts/worker-boundary-probe.sh` (copied from ploeg-hq/ploeg
   PR #291 into [`worker-boundary-probe/`](ploeg/app/worker-boundary-probe/)) in a Kata pod with the
   `ploeg-worker` service account: no root, no capabilities, seccomp on, no service-account token, no host
-  paths or runtime sockets, no metadata endpoint, no Kubernetes API, no egress beyond ploegd, LiteLLM and
-  Forgejo.
+  paths or runtime sockets, no metadata endpoint, no Kubernetes API, no direct route to ploegd, LiteLLM
+  or Forgejo, and a connection to the credential gateway.
 - `forge-revocation-probe` mints a Forgejo token for `agent-builder` with the bot password ploegd's
   forge broker uses, proves it works, revokes it, and replays it five times against the API and git
   discovery; every replay must answer 401. The password stays in the pod's environment and the token is
   never printed; an exit trap revokes the token if the probe stops early.
 
-The Claude runner (`app.kubernetes.io/name: claude-runner`, Kata) is left out of `ploeg-allow-egress`. It reaches only DNS, `api.anthropic.com:443`, ploegd on 8080 (the checkout and post-session hooks), the public gateway on 10443 (it clones `https://forgejo.<domain>`), and Alloy on 4318: no LiteLLM, no database, no other pod in `ploeg`.
+The claude-runner runs in orchestrator mode (Ploeg ADR-0197 section 7). The orchestrator
+(`claude-runner-orchestrator`) alone mounts `claude-runner-environment` and runs no session. For
+each session it starts one Kata runner Job (`app.kubernetes.io/name: ploeg-claude-runner-session`)
+that holds no Secret and no ServiceAccount token and reaches only DNS, the gateway's session port
+8084 and Anthropic. Both reach Anthropic on 443 only at the ranges in `networkPolicy.anthropic.peers`,
+which are Anthropic's published inbound API addresses
+([IP addresses](https://platform.claude.com/docs/en/api/ip-addresses), read 2026-11-19:
+`160.79.104.0/23`, `153.61.224.0/22`, `2607:6bc0::/48`; `api.anthropic.com` resolved to
+`160.79.104.10`). Both install Claude Code from `downloads.claude.ai` at start, which is outside
+those ranges, so
+[`claude-code-download.ciliumnetworkpolicy.yaml`](ploeg/app/claude-runner/claude-code-download.ciliumnetworkpolicy.yaml)
+admits that one host by name. The sessions' OTLP telemetry does not leave the runner pod.
 
 - Workers clone, push and call the PR API through `ploeg.executor.forgejo.url`, the in-cluster
   service. ploegd keeps the public `https://forgejo.<domain>` through a post-render env patch in
@@ -93,8 +118,8 @@ The Claude runner (`app.kubernetes.io/name: claude-runner`, Kata) is left out of
   asks the chart for a separate value so the patch can go.
 - `ploeg.executor.forgeTokenIsolation: proxy` and `ploeg.executor.litellm.keyIsolation: proxy`
   ([Ploeg ADR-0034](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md))
-  keep the forge token and the per-Run LiteLLM key in `ploeg-worker`; OpenHands gets placeholders
-  and loopback URLs.
+  stay set, so turning the credential gateway off returns to the in-worker proxies; with the
+  gateway on, no credential reaches the worker at all.
 
 Failure-mode drills and the full e2e runbook live in the executor PR description.
 
@@ -141,9 +166,20 @@ without comments. This section keeps the reasons, by key path. Ploeg ADRs are in
 
 - `PLOEG_CLAUDE_ENVIRONMENTS=true`, set by the post-render patch in
   [`unfold/app/kustomization.yaml`](unfold/app/kustomization.yaml), turns on the routes team
-  pewter's runner uses to exchange its session token for the Run's push credential and to report
-  the session's end
+  pewter's runner sessions report on
   ([Ploeg ADR-0084](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md)).
+- `ploeg.env.PLOEG_CLAUDE_ROUTINES: "true"` lets a person register their own claude.ai routine
+  for pewter and start a pewter Run by firing it (Ploeg ADR-0197 section 7). ploegd refuses it
+  without the credential gateway, and stores the routine's trigger token in its secret store.
+- `ploeg.secretStore`: ploegd writes the secrets of connections made through its operator API,
+  the routine trigger tokens among them, to OpenBao under `secret/ploegd-connections/`, signing in
+  with its ServiceAccount through the Kubernetes auth role `ploegd-connections`
+  ([Ploeg ADR-0184](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0184-tracker-and-forge-connection-secrets-live-in-a-secret-store-ploeg-writes-itself-and-no-person-handles-them.md)).
+  The role and its policy are in `security/openbao/bootstrap/` (`ploegd-connections.hcl`,
+  `config.sh`), and `security-allow-ploegd-openbao` in `security/netpol/app/` admits ploegd to
+  OpenBao on 8200. The prefix is not `ploeg/`, which holds the entries External Secrets reads, so
+  ploegd cannot read or delete those. The address is plain HTTP, as for Unfold's audit signing,
+  hence `allowInsecureHttp`.
 - `ploeg.env.PLOEG_DEFAULT_TEAM: copper`: an assignee no team lists falls through to the default
   team. copper's exec harness makes no model call, opens no pull request, prints nothing and ends
   `stuck` with "copper only runs canary items", so a person assigned by mistake on a board with the
@@ -245,6 +281,18 @@ the board is just not updated.
 
 ### `ploeg.executor`
 
+- `credentialGateway.enabled: true` puts every team behind the credential gateway (Ploeg ADR-0197):
+  no credential enters a Run pod, and the gateway outside it attaches the Run's minted forge
+  credential and model key. It needs managed `workerAuth` with `hmacCapability: issue`, because
+  the capability the gateway accepts is the Run's HMAC `controlToken`, and per-Run forge
+  credentials: Forgejo through `forgejo.botPasswordSecret`, GitHub through the App
+  `unfold-hq-ploeg` (`unfold-hq-ploeg-app`). The gateway mounts only the `<team>--<role>` entries
+  of `ploeg-worker-bootstrap`. `acknowledgeSingleNode` stays `false`: the soyo nodes are outside
+  the worker pool and run no Run pod, so the required anti-affinity can be met.
+- `networkPolicy.kubernetesApi` names the three control-plane addresses on 6443 instead of the
+  chart's default of any peer on 443 and 6443, which would have opened every public HTTPS host to
+  the orchestrator, the one pod holding the environment secret. Cilium admits the API server by
+  identity through `ploeg/app/credential-gateway.ciliumnetworkpolicy.yaml`.
 - `forgeTokenIsolation: proxy`: a writer's forge token stays inside `ploeg-worker`; the harness
   gets a placeholder and reaches only the Run's own repository through a loopback proxy
   ([Ploeg ADR-0034](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0034-the-harness-gets-placeholders-the-worker-keeps-credentials.md),
@@ -344,10 +392,13 @@ its `model` only scopes the key.
 
 ### `ploeg.executor.teams[pewter]`
 
-pewter Runs execute as Claude Code sessions
-([Ploeg ADR-0084](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md)).
-The worker only signs in as a WebGrip Team member, dispatches the Run to the self-hosted
-environment `unfold-spike` and waits; the session runs on claude-runner (`ploeg.claudeRunner`)
-and is paid by the Team plan. `model` and `budget` only scope the gateway key every Run still
-mints, and spend stays 0 until a plan-paid cost status exists. There is no `plan`: one writer per
-Work Item.
+pewter Runs execute as Claude Code sessions in the self-hosted environment `unfold-spike`
+([Ploeg ADR-0084](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0084-a-claude-code-run-can-execute-in-a-teams-self-hosted-claude-environment.md)),
+started through the person's own claude.ai routine (`claudeEnvironment.carrier: routine`,
+[Ploeg ADR-0197 section 7](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0197-no-credential-enters-a-run-pod-and-a-credential-gateway-outside-it-attaches-each-one-a-run-uses.md)).
+No worker renders for pewter and Ploeg holds no Claude login: the person registers the routine's
+fire URL and trigger token once through an operator consumer, and a Run starts when the person it
+acts for fires it. The session runs on a runner pod the orchestrator starts, and clones and pushes
+through the gateway, which attaches the Run's minted Forgejo credential. Work nobody starts waits
+for its person. `model` and `budget` only scope the gateway key, and spend stays 0 until a
+plan-paid cost status exists. There is no `plan`: one writer per Work Item.

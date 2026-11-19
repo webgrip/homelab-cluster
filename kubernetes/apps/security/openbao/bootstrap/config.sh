@@ -44,6 +44,7 @@ bao policy write renovate-github-app-token-wellhead-dev /scripts/renovate-github
 bao policy write renovate-github-app-token-unfold-hq /scripts/renovate-github-app-token-unfold-hq.hcl
 bao policy write homelab-etcd-age-keygen /scripts/homelab-etcd-age-keygen.hcl
 bao policy write unfold-audit-checkpoints /scripts/unfold-audit-checkpoints.hcl
+bao policy write ploegd-connections /scripts/ploegd-connections.hcl
 
 echo "==> kubernetes roles"
 for retired in external-secrets external-secrets-push; do
@@ -96,6 +97,9 @@ bao write auth/kubernetes/role/homelab-etcd-age-keygen \
 bao write auth/kubernetes/role/unfold-audit \
   bound_service_account_names=unfold bound_service_account_namespaces=ploeg \
   policies=unfold-audit-checkpoints ttl=1h >/dev/null
+bao write auth/kubernetes/role/ploegd-connections \
+  bound_service_account_names=ploeg bound_service_account_namespaces=ploeg \
+  policies=ploegd-connections ttl=1h >/dev/null
 
 echo "==> transit keys"
 if bao read transit/keys/unfold-audit >/dev/null 2>&1; then
