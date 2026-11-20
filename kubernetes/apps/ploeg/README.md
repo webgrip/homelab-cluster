@@ -217,6 +217,12 @@ KEDA operator keeps 5432 from the `keda` namespace, the CNPG operator 5432 and 8
 - `consumers[mcp-operator]` is ploeg-mcp acting for a person in Authentik's `ploeg-operators`
   group, after that person confirms each action
   ([Ploeg ADR-0108](https://github.com/ploeg-hq/ploeg/blob/development/docs/adrs/0108-every-operator-action-names-its-person-and-channel-and-an-mcp-action-needs-the-persons-confirmation.md)).
+- `consumers[unfold]` manages tracker and forge connections (`manageConnections`, Ploeg ADR-0195),
+  so an Admin connects ClickUp and GitHub from Unfold's onboarding while Ploeg keeps the token. It
+  reads every tracker connection's Scopes (`readTrackers: ["*"]`, ADR-0196), because a runtime
+  connection's id exists only once it is made, and binds Scopes to its Teams (`bindScopes`,
+  ADR-0186) where a Team's `trackerBindings` accepts them. `connectionRedirectUris` are Unfold's
+  ClickUp and GitHub callbacks.
 - `consumers[unfold-verifier]` is Unfold's trusted verifier: it records delivery candidates,
   receipts and publication status for the `unfold` team, and never executes or approves.
 - `deliveryPolicies`: one policy per delivery repository. `policySha256` is Unfold's
