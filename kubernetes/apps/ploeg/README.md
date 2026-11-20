@@ -222,7 +222,9 @@ KEDA operator keeps 5432 from the `keda` namespace, the CNPG operator 5432 and 8
   reads every tracker connection's Scopes (`readTrackers: ["*"]`, ADR-0196), because a runtime
   connection's id exists only once it is made, and binds Scopes to its Teams (`bindScopes`,
   ADR-0186) where a Team's `trackerBindings` accepts them. `connectionRedirectUris` are Unfold's
-  ClickUp and GitHub callbacks.
+  ClickUp and GitHub callbacks. Ploeg accepts such a connection only where `config.connections`
+  allows it: today a ClickUp tracker connection made with a pasted member token, stored in OpenBao.
+  ClickUp OAuth and GitHub need their own `instances` and `allow` entries first.
 - `consumers[unfold-verifier]` is Unfold's trusted verifier: it records delivery candidates,
   receipts and publication status for the `unfold` team, and never executes or approves.
 - `deliveryPolicies`: one policy per delivery repository. `policySha256` is Unfold's
