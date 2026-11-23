@@ -176,6 +176,31 @@ resource "github_repository_ruleset" "ruleset" {
         }
       }
     }
+
+    dynamic "pull_request" {
+      for_each = try(each.value.pull_request, null) != null ? [each.value.pull_request] : []
+      content {
+        required_approving_review_count   = pull_request.value.required_approving_review_count
+        allowed_merge_methods             = pull_request.value.allowed_merge_methods
+        dismiss_stale_reviews_on_push     = try(pull_request.value.dismiss_stale_reviews_on_push, false)
+        require_code_owner_review         = try(pull_request.value.require_code_owner_review, false)
+        require_last_push_approval        = try(pull_request.value.require_last_push_approval, false)
+        required_review_thread_resolution = try(pull_request.value.required_review_thread_resolution, false)
+      }
+    }
+
+    dynamic "merge_queue" {
+      for_each = try(each.value.merge_queue, null) != null ? [each.value.merge_queue] : []
+      content {
+        merge_method                      = merge_queue.value.merge_method
+        grouping_strategy                 = merge_queue.value.grouping_strategy
+        check_response_timeout_minutes    = try(merge_queue.value.check_response_timeout_minutes, 60)
+        max_entries_to_build              = try(merge_queue.value.max_entries_to_build, 5)
+        max_entries_to_merge              = try(merge_queue.value.max_entries_to_merge, 5)
+        min_entries_to_merge              = try(merge_queue.value.min_entries_to_merge, 1)
+        min_entries_to_merge_wait_minutes = try(merge_queue.value.min_entries_to_merge_wait_minutes, 5)
+      }
+    }
   }
 
   lifecycle {

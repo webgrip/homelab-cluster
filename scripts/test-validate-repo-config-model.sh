@@ -56,6 +56,8 @@ run_case fail github-release-consumers-not-json "sed -i 's/^      \\[{\"forge\"/
 run_case fail github-ruleset-missing-field "sed -i '/^        update: true$/d' repos.yaml"
 run_case fail github-status-check-without-integration "sed -i '0,/^            integration_id: 15368$/{/^            integration_id: 15368$/d}' repos.yaml"
 run_case fail github-ruleset-id-not-a-number "sed -i 's/^        id: 24445407$/        id: release-tags/' repos.yaml"
+run_case fail github-merge-queue-unknown-method "sed -i 's/^          merge_method: MERGE$/          merge_method: FOO/' repos.yaml"
+run_case fail github-pull-request-without-merge-methods "sed -i '/^          allowed_merge_methods:$/,+1d' repos.yaml"
 run_case fail github-mirror-of-unknown-repo "sed -i 's/^    mirror_of: ledgerflow$/    mirror_of: ledger-flow/' repos.yaml"
 run_case fail github-mirror-of-github-repo "sed -i 's|^    mirror_of: ledgerflow$|    mirror_of: ploeg-hq/ploeg|' repos.yaml"
 run_case fail github-mirror-of-archived-repo-left-active "python3 -c 'import pathlib; p=pathlib.Path(\"repos.yaml\"); p.write_text(p.read_text().replace(\"    mirror_of: ledgerflow\n    settings:\n      archived: true\n\", \"    mirror_of: ledgerflow\n    settings:\n      archived: false\n      default_branch: main\n\"))'"
