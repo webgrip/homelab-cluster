@@ -49,6 +49,38 @@
         "type": "array",
         "uniqueItems": true,
         "items": { "type": "integer", "minimum": 1 }
+      },
+      "pull_request": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["required_approving_review_count", "allowed_merge_methods"],
+        "properties": {
+          "required_approving_review_count": { "type": "integer", "minimum": 0, "maximum": 10 },
+          "allowed_merge_methods": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "enum": ["merge", "squash", "rebase"] }
+          },
+          "dismiss_stale_reviews_on_push": { "type": "boolean" },
+          "require_code_owner_review": { "type": "boolean" },
+          "require_last_push_approval": { "type": "boolean" },
+          "required_review_thread_resolution": { "type": "boolean" }
+        }
+      },
+      "merge_queue": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["merge_method", "grouping_strategy"],
+        "properties": {
+          "merge_method": { "enum": ["MERGE", "SQUASH", "REBASE"] },
+          "grouping_strategy": { "enum": ["ALLGREEN", "HEADGREEN"] },
+          "check_response_timeout_minutes": { "type": "integer", "minimum": 1, "maximum": 360 },
+          "max_entries_to_build": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "max_entries_to_merge": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "min_entries_to_merge": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "min_entries_to_merge_wait_minutes": { "type": "integer", "minimum": 0, "maximum": 360 }
+        }
       }
     }
   }

@@ -312,6 +312,12 @@ lets these be created: in `tofu-github/imports.tf` the ruleset import becomes
 `id` leaves the `required` list of `github-rulesets.schema.json`. Every existing ruleset has an
 id, so the `ploeg-hq` and `webgrip` plans do not change; check that with their next plan.
 
+Since 2026-11-23 `development` on both `unfold-hq/unfold` and `ploeg-hq/ploeg` merges through a
+merge queue with no bypass, as Unfold's ADR-0061 records. The model says so with the optional
+`pull_request` and `merge_queue` blocks of a ruleset and an empty `bypass_repository_role_ids`.
+The snippet above is the state at cutover. A rule the model does not name is a rule the hourly
+apply removes: on 2026-11-23 it removed both queues, which had been set by hand on 2026-11-19.
+
 ### What PR 3 changed, after cutover
 
 The first release from GitHub is `unfold-v0.4.0-rc.132`. Its images
